@@ -5,13 +5,11 @@ import { useOrganization } from '../contexts/OrganizationContext';
 import {
   Plus,
   X,
-  Calendar,
   Clock,
   MoreHorizontal,
   Edit2,
   Trash2,
   Search,
-  CheckSquare,
   Paperclip,
   MessageSquare,
   Filter,
@@ -443,7 +441,8 @@ export function Tasks() {
               </div>
 
               {/* ── Cards ── */}
-              <div className="flex-1 px-3 pb-3 space-y-3 overflow-y-auto" style={{ maxHeight: 'calc(100vh - 260px)' }}>
+              <div className="flex-1 px-3 pb-3 overflow-y-auto" style={{ maxHeight: 'calc(100vh - 260px)', paddingTop: '14px' }}>
+                <div className="space-y-5">
                 {colTasks.map(task => {
                   const pCfg = PRIORITY_CONFIG[task.priority] || PRIORITY_CONFIG.Medium;
                   const sCfg = STATUS_CONFIG[task.status] || STATUS_CONFIG.not_started;
@@ -458,160 +457,150 @@ export function Tasks() {
                       draggable
                       onDragStart={e => handleDragStart(e, task.id)}
                       onDragEnd={handleDragEnd}
-                      className="rounded-xl p-4 cursor-grab active:cursor-grabbing relative group transition-all duration-150"
+                      className="rounded-xl cursor-grab active:cursor-grabbing relative group transition-all duration-150"
                       style={{
                         background: isDragging ? '#16162a' : '#13131f',
-                        border: `1px solid ${isDragging ? col.accent + '55' : '#1e1e2e'}`,
+                        border: `1px solid ${isDragging ? pCfg.text + '55' : '#252535'}`,
+                        borderLeft: `3px solid ${pCfg.text}`,
                         opacity: isDragging ? 0.5 : 1,
-                        boxShadow: isDragging ? `0 0 0 2px ${col.accent}25` : '0 2px 12px rgba(0,0,0,0.25)',
+                        boxShadow: isDragging ? `0 0 0 2px ${pCfg.text}20` : '0 4px 16px rgba(0,0,0,0.3)',
+                        marginTop: '14px',
+                        overflow: 'visible',
                       }}
                     >
-                      {/* Row 1: Priority badge + Status badge + menu */}
-                      <div className="flex items-center justify-between mb-3">
-                        {/* Priority pill */}
-                        <span
-                          className="text-[10px] font-bold px-2 py-0.5 rounded-full tracking-wide"
-                          style={{ background: pCfg.bg, color: pCfg.text }}
-                        >
-                          {pCfg.label}
-                        </span>
+                      {/* ── Priority badge: centered at top edge ── */}
+                      <div
+                        className="absolute left-1/2 -translate-x-1/2 -translate-y-1/2 px-3 py-0.5 rounded-full text-[10px] font-bold tracking-widest whitespace-nowrap z-10"
+                        style={{
+                          top: 0,
+                          background: pCfg.bg,
+                          color: pCfg.text,
+                          border: `1px solid ${pCfg.text}44`,
+                          backdropFilter: 'blur(4px)',
+                        }}
+                      >
+                        {pCfg.label}
+                      </div>
 
-                        <div className="flex items-center gap-1.5">
+                      {/* ── Card body ── */}
+                      <div className="pt-5 px-4 pb-0">
+                        {/* ⋯ context menu — top right */}
+                        {userRole !== 'CLIENT' && (
+                          <div className="absolute top-3 right-3">
+                            <button
+                              onClick={e => { e.stopPropagation(); setOpenMenuId(openMenuId === task.id ? null : task.id); }}
+                              className="h-5 w-5 flex items-center justify-center rounded transition-all opacity-0 group-hover:opacity-100"
+                              style={{ color: '#42424e' }}
+                            >
+                              <MoreHorizontal className="h-3.5 w-3.5" />
+                            </button>
+                            {openMenuId === task.id && (
+                              <>
+                                <div className="fixed inset-0 z-10" onClick={() => setOpenMenuId(null)} />
+                                <div
+                                  className="absolute right-0 top-full mt-1 z-20 rounded-xl overflow-hidden py-1 min-w-[130px]"
+                                  style={{ background: '#0d0d18', border: '1px solid #252535', boxShadow: '0 12px 32px rgba(0,0,0,0.6)' }}
+                                >
+                                  <button
+                                    onClick={() => handleEditTask(task)}
+                                    className="flex items-center gap-2 w-full px-3 py-2 text-xs hover:bg-white/5 transition-colors"
+                                    style={{ color: '#aaa' }}
+                                  >
+                                    <Edit2 className="h-3 w-3" /> Edit task
+                                  </button>
+                                  <div style={{ height: 1, background: '#1e1e2e', margin: '2px 0' }} />
+                                  <button
+                                    onClick={() => { setOpenMenuId(null); handleDeleteTask(task.id); }}
+                                    className="flex items-center gap-2 w-full px-3 py-2 text-xs hover:bg-red-500/10 transition-colors"
+                                    style={{ color: '#f87171' }}
+                                  >
+                                    <Trash2 className="h-3 w-3" /> Delete
+                                  </button>
+                                </div>
+                              </>
+                            )}
+                          </div>
+                        )}
+
+                        {/* Title */}
+                        <p className="text-sm font-bold leading-snug mb-1.5 pr-5" style={{ color: '#eeeef8' }}>
+                          {task.title}
+                        </p>
+
+                        {/* Description */}
+                        <p className="text-xs leading-relaxed line-clamp-2 mb-4" style={{ color: '#52526a' }}>
+                          {task.description || (task.project ? `Part of ${task.project}` : 'No description')}
+                        </p>
+
+                        {/* Avatars row + Status pill */}
+                        <div className="flex items-center justify-between mb-3">
+                          {/* Stacked avatars */}
+                          <div className="flex -space-x-2">
+                            {task.assignee ? (
+                              <div
+                                className="h-7 w-7 rounded-full flex items-center justify-center text-[9px] font-bold text-white ring-2 ring-[#13131f]"
+                                title={task.assignee}
+                                style={{ background: avatarGradient(task.assignee) }}
+                              >
+                                {getInitials(task.assignee)}
+                              </div>
+                            ) : (
+                              <div
+                                className="h-7 w-7 rounded-full flex items-center justify-center text-[10px] font-bold ring-2 ring-[#13131f]"
+                                style={{ background: '#1e1e2e', color: '#3a3a52', border: '1px dashed #2a2a3e' }}
+                              >
+                                ?
+                              </div>
+                            )}
+                          </div>
+
                           {/* Status pill */}
                           <span
-                            className="text-[10px] font-semibold px-2 py-0.5 rounded-full"
-                            style={{ background: sCfg.bg, color: sCfg.text }}
+                            className="text-[10px] font-semibold px-2.5 py-1 rounded-full"
+                            style={{ background: sCfg.bg, color: sCfg.text, border: `1px solid ${sCfg.text}33` }}
                           >
                             {sCfg.label}
                           </span>
-
-                          {/* ⋯ menu */}
-                          {userRole !== 'CLIENT' && (
-                            <div className="relative">
-                              <button
-                                onClick={e => { e.stopPropagation(); setOpenMenuId(openMenuId === task.id ? null : task.id); }}
-                                className="h-5 w-5 flex items-center justify-center rounded transition-all opacity-0 group-hover:opacity-100"
-                                style={{ color: '#42424e' }}
-                              >
-                                <MoreHorizontal className="h-3.5 w-3.5" />
-                              </button>
-                              {openMenuId === task.id && (
-                                <>
-                                  <div className="fixed inset-0 z-10" onClick={() => setOpenMenuId(null)} />
-                                  <div
-                                    className="absolute right-0 top-full mt-1 z-20 rounded-xl overflow-hidden py-1 min-w-[130px]"
-                                    style={{ background: '#0d0d18', border: '1px solid #252535', boxShadow: '0 12px 32px rgba(0,0,0,0.6)' }}
-                                  >
-                                    <button
-                                      onClick={() => handleEditTask(task)}
-                                      className="flex items-center gap-2 w-full px-3 py-2 text-xs hover:bg-white/5 transition-colors"
-                                      style={{ color: '#aaa' }}
-                                    >
-                                      <Edit2 className="h-3 w-3" /> Edit task
-                                    </button>
-                                    <div style={{ height: 1, background: '#1e1e2e', margin: '2px 0' }} />
-                                    <button
-                                      onClick={() => { setOpenMenuId(null); handleDeleteTask(task.id); }}
-                                      className="flex items-center gap-2 w-full px-3 py-2 text-xs hover:bg-red-500/10 transition-colors"
-                                      style={{ color: '#f87171' }}
-                                    >
-                                      <Trash2 className="h-3 w-3" /> Delete
-                                    </button>
-                                  </div>
-                                </>
-                              )}
-                            </div>
-                          )}
                         </div>
                       </div>
 
-                      {/* Row 2: Title */}
-                      <p className="text-sm font-semibold leading-snug mb-1.5" style={{ color: '#eeeef8' }}>
-                        {task.title}
-                      </p>
-
-                      {/* Row 3: Description */}
-                      {task.description && (
-                        <p className="text-xs leading-relaxed mb-3 line-clamp-2" style={{ color: '#42424e' }}>
-                          {task.description}
-                        </p>
-                      )}
-
-                      {/* Row 4: Project tag */}
-                      {task.project && (
-                        <div className="mb-3">
-                          <span
-                            className="inline-flex items-center text-[10px] px-2 py-0.5 rounded-full font-medium"
-                            style={{ background: '#1a1a2a', color: '#555', border: '1px solid #252535' }}
-                          >
-                            {task.project}
-                          </span>
-                        </div>
-                      )}
-
-                      {/* Row 5: Bottom footer */}
-                      <div className="flex items-center justify-between pt-3" style={{ borderTop: '1px solid #1a1a2a' }}>
-                        {/* Assignee avatar */}
-                        <div className="flex -space-x-1.5">
-                          {task.assignee ? (
-                            <div
-                              className="h-6 w-6 rounded-full flex items-center justify-center text-[9px] font-bold text-white ring-2 ring-[#0f0f18]"
-                              title={task.assignee}
-                              style={{ background: avatarGradient(task.assignee) }}
-                            >
-                              {getInitials(task.assignee)}
-                            </div>
-                          ) : (
-                            <div
-                              className="h-6 w-6 rounded-full flex items-center justify-center text-[9px] font-bold"
-                              style={{ background: '#1e1e2e', color: '#42424e', border: '1px dashed #2a2a3a' }}
-                            >
-                              ?
-                            </div>
-                          )}
-                        </div>
-
-                        {/* Stats: subtasks / attachments / comments */}
-                        <div className="flex items-center gap-2.5">
-                          {/* Subtask count (tags as proxy) */}
-                          <div className="flex items-center gap-1 text-[10px]" style={{ color: '#42424e' }}>
-                            <CheckSquare className="h-3 w-3" />
+                      {/* ── Dashed separator + stats row ── */}
+                      <div
+                        className="flex items-center justify-between px-4 py-3"
+                        style={{ borderTop: '1px dashed #252535' }}
+                      >
+                        {/* Left stats */}
+                        <div className="flex items-center gap-3">
+                          <div className="flex items-center gap-1 text-[11px]" style={{ color: '#52526a' }}>
+                            <MessageSquare className="h-3.5 w-3.5" />
                             <span>{tagCount}</span>
                           </div>
-                          {/* Attachments (placeholder) */}
-                          <div className="flex items-center gap-1 text-[10px]" style={{ color: '#42424e' }}>
-                            <Paperclip className="h-3 w-3" />
-                            <span>0</span>
+                          <div className="flex items-center gap-1 text-[11px]" style={{ color: '#52526a' }}>
+                            <Paperclip className="h-3.5 w-3.5" />
+                            <span>{task.estimatedHours > 0 ? task.estimatedHours : 0}</span>
                           </div>
-                          {/* Comments (placeholder) */}
-                          <div className="flex items-center gap-1 text-[10px]" style={{ color: '#42424e' }}>
-                            <MessageSquare className="h-3 w-3" />
-                            <span>0</span>
+                          <div className="flex items-center gap-1 text-[11px]" style={{ color: '#52526a' }}>
+                            <Clock className="h-3.5 w-3.5" />
+                            <span>{task.actualHours > 0 ? task.actualHours : 0}</span>
                           </div>
-
-                          {/* Hours */}
-                          {task.estimatedHours > 0 && (
-                            <div className="flex items-center gap-1 text-[10px]" style={{ color: '#42424e' }}>
-                              <Clock className="h-3 w-3" />
-                              <span>{task.estimatedHours}h</span>
-                            </div>
-                          )}
-
-                          {/* Due date */}
-                          {date && (
-                            <div
-                              className="flex items-center gap-1 text-[10px] font-medium"
-                              style={{ color: isOverdue ? '#f87171' : '#42424e' }}
-                            >
-                              <Calendar className="h-3 w-3" />
-                              <span>{date}</span>
-                            </div>
-                          )}
                         </div>
+
+                        {/* Right: date */}
+                        {date ? (
+                          <span
+                            className="text-[11px] font-medium"
+                            style={{ color: isOverdue ? '#f87171' : '#52526a' }}
+                          >
+                            {date}
+                          </span>
+                        ) : (
+                          <span className="text-[11px]" style={{ color: '#2e2e42' }}>—</span>
+                        )}
                       </div>
                     </div>
                   );
                 })}
+                </div>
 
                 {/* Empty state */}
                 {colTasks.length === 0 && !isOver && (

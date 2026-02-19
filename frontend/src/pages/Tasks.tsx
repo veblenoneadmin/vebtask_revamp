@@ -5,13 +5,13 @@ import { useOrganization } from '../contexts/OrganizationContext';
 import {
   Plus,
   X,
-  Clock,
   MoreHorizontal,
   Edit2,
   Trash2,
   Search,
-  Paperclip,
   MessageSquare,
+  Link2,
+  Folder,
   Filter,
   SlidersHorizontal,
 } from 'lucide-react';
@@ -441,8 +441,11 @@ export function Tasks() {
               </div>
 
               {/* ── Cards ── */}
-              <div className="flex-1 px-3 pb-3 overflow-y-auto" style={{ maxHeight: 'calc(100vh - 260px)', paddingTop: '14px' }}>
-                <div className="space-y-5">
+              <div
+                className="flex-1 overflow-y-auto pb-3 px-3"
+                style={{ maxHeight: 'calc(100vh - 260px)', paddingTop: '10px' }}
+              >
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '18px' }}>
                 {colTasks.map(task => {
                   const pCfg = PRIORITY_CONFIG[task.priority] || PRIORITY_CONFIG.Medium;
                   const sCfg = STATUS_CONFIG[task.status] || STATUS_CONFIG.not_started;
@@ -452,150 +455,151 @@ export function Tasks() {
                   const tagCount = Array.isArray(task.tags) ? task.tags.length : 0;
 
                   return (
+                    /* Outer wrapper: reserves space above card for the floating badge */
                     <div
                       key={task.id}
                       draggable
                       onDragStart={e => handleDragStart(e, task.id)}
                       onDragEnd={handleDragEnd}
-                      className="rounded-xl cursor-grab active:cursor-grabbing relative group transition-all duration-150"
-                      style={{
-                        background: isDragging ? '#16162a' : '#13131f',
-                        border: `1px solid ${isDragging ? pCfg.text + '55' : '#252535'}`,
-                        borderLeft: `3px solid ${pCfg.text}`,
-                        opacity: isDragging ? 0.5 : 1,
-                        boxShadow: isDragging ? `0 0 0 2px ${pCfg.text}20` : '0 4px 16px rgba(0,0,0,0.3)',
-                        marginTop: '14px',
-                        overflow: 'visible',
-                      }}
+                      className="relative group cursor-grab active:cursor-grabbing"
+                      style={{ paddingTop: '12px', opacity: isDragging ? 0.45 : 1 }}
                     >
-                      {/* ── Priority badge: centered at top edge ── */}
+                      {/* ── Floating priority badge — centered above card top border ── */}
                       <div
-                        className="absolute left-1/2 -translate-x-1/2 -translate-y-1/2 px-3 py-0.5 rounded-full text-[10px] font-bold tracking-widest whitespace-nowrap z-10"
+                        className="absolute top-0 left-1/2 -translate-x-1/2 px-4 py-0.5 rounded-full text-[10px] font-bold tracking-widest whitespace-nowrap z-10"
                         style={{
-                          top: 0,
                           background: pCfg.bg,
                           color: pCfg.text,
-                          border: `1px solid ${pCfg.text}44`,
-                          backdropFilter: 'blur(4px)',
+                          border: `1px solid ${pCfg.text}55`,
                         }}
                       >
                         {pCfg.label}
                       </div>
 
-                      {/* ── Card body ── */}
-                      <div className="pt-5 px-4 pb-0">
-                        {/* ⋯ context menu — top right */}
-                        {userRole !== 'CLIENT' && (
-                          <div className="absolute top-3 right-3">
-                            <button
-                              onClick={e => { e.stopPropagation(); setOpenMenuId(openMenuId === task.id ? null : task.id); }}
-                              className="h-5 w-5 flex items-center justify-center rounded transition-all opacity-0 group-hover:opacity-100"
-                              style={{ color: '#42424e' }}
-                            >
-                              <MoreHorizontal className="h-3.5 w-3.5" />
-                            </button>
-                            {openMenuId === task.id && (
-                              <>
-                                <div className="fixed inset-0 z-10" onClick={() => setOpenMenuId(null)} />
-                                <div
-                                  className="absolute right-0 top-full mt-1 z-20 rounded-xl overflow-hidden py-1 min-w-[130px]"
-                                  style={{ background: '#0d0d18', border: '1px solid #252535', boxShadow: '0 12px 32px rgba(0,0,0,0.6)' }}
-                                >
-                                  <button
-                                    onClick={() => handleEditTask(task)}
-                                    className="flex items-center gap-2 w-full px-3 py-2 text-xs hover:bg-white/5 transition-colors"
-                                    style={{ color: '#aaa' }}
-                                  >
-                                    <Edit2 className="h-3 w-3" /> Edit task
-                                  </button>
-                                  <div style={{ height: 1, background: '#1e1e2e', margin: '2px 0' }} />
-                                  <button
-                                    onClick={() => { setOpenMenuId(null); handleDeleteTask(task.id); }}
-                                    className="flex items-center gap-2 w-full px-3 py-2 text-xs hover:bg-red-500/10 transition-colors"
-                                    style={{ color: '#f87171' }}
-                                  >
-                                    <Trash2 className="h-3 w-3" /> Delete
-                                  </button>
-                                </div>
-                              </>
-                            )}
-                          </div>
-                        )}
-
-                        {/* Title */}
-                        <p className="text-sm font-bold leading-snug mb-1.5 pr-5" style={{ color: '#eeeef8' }}>
-                          {task.title}
-                        </p>
-
-                        {/* Description */}
-                        <p className="text-xs leading-relaxed line-clamp-2 mb-4" style={{ color: '#52526a' }}>
-                          {task.description || (task.project ? `Part of ${task.project}` : 'No description')}
-                        </p>
-
-                        {/* Avatars row + Status pill */}
-                        <div className="flex items-center justify-between mb-3">
-                          {/* Stacked avatars */}
-                          <div className="flex -space-x-2">
-                            {task.assignee ? (
-                              <div
-                                className="h-7 w-7 rounded-full flex items-center justify-center text-[9px] font-bold text-white ring-2 ring-[#13131f]"
-                                title={task.assignee}
-                                style={{ background: avatarGradient(task.assignee) }}
-                              >
-                                {getInitials(task.assignee)}
-                              </div>
-                            ) : (
-                              <div
-                                className="h-7 w-7 rounded-full flex items-center justify-center text-[10px] font-bold ring-2 ring-[#13131f]"
-                                style={{ background: '#1e1e2e', color: '#3a3a52', border: '1px dashed #2a2a3e' }}
-                              >
-                                ?
-                              </div>
-                            )}
-                          </div>
-
-                          {/* Status pill */}
-                          <span
-                            className="text-[10px] font-semibold px-2.5 py-1 rounded-full"
-                            style={{ background: sCfg.bg, color: sCfg.text, border: `1px solid ${sCfg.text}33` }}
-                          >
-                            {sCfg.label}
-                          </span>
-                        </div>
-                      </div>
-
-                      {/* ── Dashed separator + stats row ── */}
+                      {/* ── Card ── */}
                       <div
-                        className="flex items-center justify-between px-4 py-3"
-                        style={{ borderTop: '1px dashed #252535' }}
+                        className="rounded-2xl overflow-hidden transition-all duration-150"
+                        style={{
+                          background: '#13131f',
+                          border: `1px solid ${pCfg.text}30`,
+                          boxShadow: isDragging
+                            ? `0 0 0 2px ${pCfg.text}40`
+                            : '0 4px 20px rgba(0,0,0,0.35)',
+                        }}
                       >
-                        {/* Left stats */}
-                        <div className="flex items-center gap-3">
-                          <div className="flex items-center gap-1 text-[11px]" style={{ color: '#52526a' }}>
-                            <MessageSquare className="h-3.5 w-3.5" />
-                            <span>{tagCount}</span>
-                          </div>
-                          <div className="flex items-center gap-1 text-[11px]" style={{ color: '#52526a' }}>
-                            <Paperclip className="h-3.5 w-3.5" />
-                            <span>{task.estimatedHours > 0 ? task.estimatedHours : 0}</span>
-                          </div>
-                          <div className="flex items-center gap-1 text-[11px]" style={{ color: '#52526a' }}>
-                            <Clock className="h-3.5 w-3.5" />
-                            <span>{task.actualHours > 0 ? task.actualHours : 0}</span>
+                        {/* Card content area */}
+                        <div className="px-4 pt-5 pb-3">
+
+                          {/* ⋯ menu — top right */}
+                          {userRole !== 'CLIENT' && (
+                            <div className="absolute top-4 right-3 z-10">
+                              <button
+                                onClick={e => { e.stopPropagation(); setOpenMenuId(openMenuId === task.id ? null : task.id); }}
+                                className="h-6 w-6 flex items-center justify-center rounded-lg transition-all opacity-0 group-hover:opacity-100"
+                                style={{ color: '#52526a', background: '#1e1e2e' }}
+                              >
+                                <MoreHorizontal className="h-3.5 w-3.5" />
+                              </button>
+                              {openMenuId === task.id && (
+                                <>
+                                  <div className="fixed inset-0 z-10" onClick={() => setOpenMenuId(null)} />
+                                  <div
+                                    className="absolute right-0 top-full mt-1 z-20 rounded-xl overflow-hidden py-1 min-w-[130px]"
+                                    style={{ background: '#0d0d18', border: '1px solid #252535', boxShadow: '0 12px 32px rgba(0,0,0,0.6)' }}
+                                  >
+                                    <button
+                                      onClick={() => handleEditTask(task)}
+                                      className="flex items-center gap-2 w-full px-3 py-2 text-xs hover:bg-white/5 transition-colors"
+                                      style={{ color: '#aaa' }}
+                                    >
+                                      <Edit2 className="h-3 w-3" /> Edit task
+                                    </button>
+                                    <div style={{ height: 1, background: '#1e1e2e', margin: '2px 0' }} />
+                                    <button
+                                      onClick={() => { setOpenMenuId(null); handleDeleteTask(task.id); }}
+                                      className="flex items-center gap-2 w-full px-3 py-2 text-xs hover:bg-red-500/10 transition-colors"
+                                      style={{ color: '#f87171' }}
+                                    >
+                                      <Trash2 className="h-3 w-3" /> Delete
+                                    </button>
+                                  </div>
+                                </>
+                              )}
+                            </div>
+                          )}
+
+                          {/* Title */}
+                          <p className="text-[15px] font-bold leading-snug mb-2 pr-6" style={{ color: '#eeeef8' }}>
+                            {task.title}
+                          </p>
+
+                          {/* Description */}
+                          <p className="text-[13px] leading-relaxed line-clamp-2 mb-4" style={{ color: '#52526a' }}>
+                            {task.description || (task.project ? `Part of ${task.project}` : '\u00a0')}
+                          </p>
+
+                          {/* Avatars (left) + Status badge (right) */}
+                          <div className="flex items-center justify-between">
+                            {/* Stacked avatars */}
+                            <div className="flex -space-x-2">
+                              {task.assignee ? (
+                                <div
+                                  className="h-8 w-8 rounded-full flex items-center justify-center text-[10px] font-bold text-white ring-2 ring-[#13131f]"
+                                  title={task.assignee}
+                                  style={{ background: avatarGradient(task.assignee) }}
+                                >
+                                  {getInitials(task.assignee)}
+                                </div>
+                              ) : (
+                                <div
+                                  className="h-8 w-8 rounded-full flex items-center justify-center text-[10px] font-bold ring-2 ring-[#13131f]"
+                                  style={{ background: '#1e1e2e', color: '#3a3a52', border: '1px dashed #2a2a3e' }}
+                                >
+                                  ?
+                                </div>
+                              )}
+                            </div>
+
+                            {/* Status badge */}
+                            <span
+                              className="text-[11px] font-semibold px-3 py-1 rounded-full"
+                              style={{
+                                background: sCfg.bg,
+                                color: sCfg.text,
+                                border: `1px solid ${sCfg.text}44`,
+                              }}
+                            >
+                              {sCfg.label}
+                            </span>
                           </div>
                         </div>
 
-                        {/* Right: date */}
-                        {date ? (
+                        {/* ── Dashed separator ── */}
+                        <div style={{ borderTop: '1px dashed #252535' }} />
+
+                        {/* ── Stats row ── */}
+                        <div className="flex items-center justify-between px-4 py-2.5">
+                          <div className="flex items-center gap-3">
+                            <span className="flex items-center gap-1.5 text-[12px]" style={{ color: '#52526a' }}>
+                              <MessageSquare className="h-3.5 w-3.5" />
+                              {tagCount}
+                            </span>
+                            <span className="flex items-center gap-1.5 text-[12px]" style={{ color: '#52526a' }}>
+                              <Link2 className="h-3.5 w-3.5" />
+                              {task.estimatedHours || 0}
+                            </span>
+                            <span className="flex items-center gap-1.5 text-[12px]" style={{ color: '#52526a' }}>
+                              <Folder className="h-3.5 w-3.5" />
+                              {task.actualHours || 0}
+                            </span>
+                          </div>
                           <span
-                            className="text-[11px] font-medium"
+                            className="text-[12px] font-medium"
                             style={{ color: isOverdue ? '#f87171' : '#52526a' }}
                           >
-                            {date}
+                            {date || '—'}
                           </span>
-                        ) : (
-                          <span className="text-[11px]" style={{ color: '#2e2e42' }}>—</span>
-                        )}
+                        </div>
                       </div>
                     </div>
                   );

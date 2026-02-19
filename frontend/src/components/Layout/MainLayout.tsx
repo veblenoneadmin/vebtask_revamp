@@ -2,11 +2,10 @@ import React, { useState, useEffect } from 'react';
 import { Outlet, useLocation } from 'react-router-dom';
 import { useSession, signOut } from '../../lib/auth-client';
 import Sidebar from './Sidebar';
-import { LogOut, ChevronDown } from 'lucide-react';
+import { LogOut, ChevronDown, Menu } from 'lucide-react';
 
 const pageTitles: Record<string, string> = {
   '/dashboard':   'Dashboard',
-  '/brain-dump':  'Brain Dump',
   '/tasks':       'Tasks',
   '/timer':       'Timer',
   '/attendance':  'Attendance',
@@ -22,6 +21,7 @@ const MainLayout: React.FC = () => {
   const { data: session } = useSession();
   const location = useLocation();
   const [showDropdown, setShowDropdown] = useState(false);
+  const [sidebarOpen, setSidebarOpen] = useState(false);
   const [userRole, setUserRole] = useState<string>('');
 
   useEffect(() => {
@@ -56,21 +56,32 @@ const MainLayout: React.FC = () => {
 
   return (
     <div className="min-h-screen" style={{ background: '#050505' }}>
-      <Sidebar />
+      <Sidebar isOpen={sidebarOpen} onClose={() => setSidebarOpen(false)} />
 
       {/* Top Navbar */}
       <header
-        className="fixed top-0 right-0 z-40 flex h-14 items-center justify-between px-6"
+        className="fixed top-0 right-0 z-40 flex h-14 items-center justify-between px-4 md:px-6 md:left-60 left-0"
         style={{
-          left: '240px',
           background: '#070707',
           borderBottom: '1px solid #1c1c1c',
         }}
       >
-        {/* Page title */}
-        <h1 className="text-sm font-semibold" style={{ color: '#666' }}>
-          {pageTitle}
-        </h1>
+        <div className="flex items-center gap-3">
+          {/* Hamburger — mobile only */}
+          <button
+            className="md:hidden flex items-center justify-center h-8 w-8 rounded-lg transition-colors"
+            style={{ color: '#666' }}
+            onClick={() => setSidebarOpen(v => !v)}
+            aria-label="Toggle menu"
+          >
+            <Menu className="h-5 w-5" />
+          </button>
+
+          {/* Page title */}
+          <h1 className="text-sm font-semibold" style={{ color: '#666' }}>
+            {pageTitle}
+          </h1>
+        </div>
 
         {/* Account dropdown */}
         <div className="relative">
@@ -135,9 +146,9 @@ const MainLayout: React.FC = () => {
         </div>
       </header>
 
-      {/* Page content — offset sidebar (240px) + top navbar (56px) */}
-      <main style={{ paddingLeft: '240px', paddingTop: '56px' }}>
-        <div className="p-7">
+      {/* Page content */}
+      <main className="md:pl-60 pt-14">
+        <div className="p-4 md:p-7">
           <Outlet />
         </div>
       </main>

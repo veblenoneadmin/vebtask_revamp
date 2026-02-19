@@ -468,9 +468,9 @@ export function Tasks() {
   return (
     <div className="space-y-8">
       {/* Header */}
-      <div className="flex items-center justify-between">
+      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
         <div>
-          <h1 className="text-3xl font-bold gradient-text">
+          <h1 className="text-2xl sm:text-3xl font-bold gradient-text">
             {userRole === 'CLIENT' ? 'My Tasks' : 'Task Management'}
           </h1>
           <p className="text-muted-foreground mt-2">

@@ -627,7 +627,7 @@ export function Projects() {
               </div>
 
               {/* Project Stats */}
-              <div className="grid grid-cols-2 gap-4">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 <div className="text-center p-2 glass-surface rounded-lg">
                   <p className="text-lg font-bold">{project.tasks?.completed || 0}/{project.tasks?.total || 0}</p>
                   <p className="text-xs text-muted-foreground">Tasks</p>

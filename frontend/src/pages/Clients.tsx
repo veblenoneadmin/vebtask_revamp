@@ -378,7 +378,7 @@ export function Clients() {
                   </div>
                 </div>
 
-                <div className="grid grid-cols-3 gap-4 py-4 border-t border-border">
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 py-4 border-t border-border">
                   <div className="text-center">
                     <p className="text-sm font-semibold">{client.totalProjects}</p>
                     <p className="text-xs text-muted-foreground">Projects</p>

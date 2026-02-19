@@ -443,9 +443,9 @@ export function Tasks() {
               {/* ── Cards ── */}
               <div
                 className="flex-1 overflow-y-auto pb-3 px-3"
-                style={{ maxHeight: 'calc(100vh - 260px)', paddingTop: '10px' }}
+                style={{ maxHeight: 'calc(100vh - 260px)', paddingTop: '16px' }}
               >
-                <div style={{ display: 'flex', flexDirection: 'column', gap: '18px' }}>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '22px' }}>
                 {colTasks.map(task => {
                   const pCfg = PRIORITY_CONFIG[task.priority] || PRIORITY_CONFIG.Medium;
                   const sCfg = STATUS_CONFIG[task.status] || STATUS_CONFIG.not_started;
@@ -455,44 +455,51 @@ export function Tasks() {
                   const tagCount = Array.isArray(task.tags) ? task.tags.length : 0;
 
                   return (
-                    /* Outer wrapper: reserves space above card for the floating badge */
+                    /*
+                     * Wrapper: draggable, position:relative (no overflow so badge can bleed above).
+                     * Badge sits at top:0, transform:translateY(-50%) → centered ON the card's top border.
+                     * Card div has overflow:hidden (for rounded corners) but badge is a sibling, not a child,
+                     * so it is NOT clipped by the card's overflow:hidden.
+                     */
                     <div
                       key={task.id}
                       draggable
                       onDragStart={e => handleDragStart(e, task.id)}
                       onDragEnd={handleDragEnd}
                       className="relative group cursor-grab active:cursor-grabbing"
-                      style={{ paddingTop: '12px', opacity: isDragging ? 0.45 : 1 }}
+                      style={{ opacity: isDragging ? 0.45 : 1 }}
                     >
-                      {/* ── Floating priority badge — centered above card top border ── */}
+                      {/* ── Priority badge: centered ON the card's top border ── */}
                       <div
-                        className="absolute top-0 left-1/2 -translate-x-1/2 px-4 py-0.5 rounded-full text-[10px] font-bold tracking-widest whitespace-nowrap z-10"
+                        className="absolute left-1/2 z-10 px-4 py-[3px] rounded-full text-[11px] font-bold tracking-widest whitespace-nowrap"
                         style={{
+                          top: 0,
+                          transform: 'translate(-50%, -50%)',
                           background: pCfg.bg,
                           color: pCfg.text,
-                          border: `1px solid ${pCfg.text}55`,
+                          border: `1px solid ${pCfg.text}66`,
                         }}
                       >
                         {pCfg.label}
                       </div>
 
-                      {/* ── Card ── */}
+                      {/* ── Card (sibling of badge, not its parent) ── */}
                       <div
                         className="rounded-2xl overflow-hidden transition-all duration-150"
                         style={{
                           background: '#13131f',
-                          border: `1px solid ${pCfg.text}30`,
+                          border: `1px solid ${pCfg.text}35`,
                           boxShadow: isDragging
-                            ? `0 0 0 2px ${pCfg.text}40`
-                            : '0 4px 20px rgba(0,0,0,0.35)',
+                            ? `0 0 0 2px ${pCfg.text}50`
+                            : '0 4px 20px rgba(0,0,0,0.4)',
                         }}
                       >
-                        {/* Card content area */}
-                        <div className="px-4 pt-5 pb-3">
+                        {/* Content */}
+                        <div className="px-4 pt-6 pb-3">
 
-                          {/* ⋯ menu — top right */}
+                          {/* ⋯ context menu */}
                           {userRole !== 'CLIENT' && (
-                            <div className="absolute top-4 right-3 z-10">
+                            <div className="absolute top-[18px] right-3 z-10">
                               <button
                                 onClick={e => { e.stopPropagation(); setOpenMenuId(openMenuId === task.id ? null : task.id); }}
                                 className="h-6 w-6 flex items-center justify-center rounded-lg transition-all opacity-0 group-hover:opacity-100"
@@ -540,7 +547,6 @@ export function Tasks() {
 
                           {/* Avatars (left) + Status badge (right) */}
                           <div className="flex items-center justify-between">
-                            {/* Stacked avatars */}
                             <div className="flex -space-x-2">
                               {task.assignee ? (
                                 <div
@@ -560,14 +566,9 @@ export function Tasks() {
                               )}
                             </div>
 
-                            {/* Status badge */}
                             <span
                               className="text-[11px] font-semibold px-3 py-1 rounded-full"
-                              style={{
-                                background: sCfg.bg,
-                                color: sCfg.text,
-                                border: `1px solid ${sCfg.text}44`,
-                              }}
+                              style={{ background: sCfg.bg, color: sCfg.text, border: `1px solid ${sCfg.text}44` }}
                             >
                               {sCfg.label}
                             </span>

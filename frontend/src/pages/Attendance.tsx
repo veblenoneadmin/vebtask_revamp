@@ -1,8 +1,7 @@
 import { useState, useEffect, useCallback } from 'react';
 import { useSession } from '../lib/auth-client';
-import { useOrganizationContext } from '../contexts/OrganizationContext';
+import { useOrganization } from '../contexts/OrganizationContext';
 import { LogIn, LogOut, Clock, Calendar, AlertCircle, Timer, TrendingUp, CheckCircle2 } from 'lucide-react';
-import { cn } from '../lib/utils';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 interface AttendanceLog {
@@ -101,7 +100,7 @@ function StatCard({ label, value, sub, icon, gradient }: StatCardProps) {
 // ─── Main Component ───────────────────────────────────────────────────────────
 export function Attendance() {
   const { data: session } = useSession();
-  const { currentOrg } = useOrganizationContext();
+  const { currentOrg } = useOrganization();
 
   const [active, setActive] = useState<AttendanceLog | null>(null);
   const [todayLogs, setTodayLogs] = useState<AttendanceLog[]>([]);
@@ -197,7 +196,6 @@ export function Attendance() {
 
   const isClockedIn = !!active;
   const todayRunning = todayTotal + (isClockedIn ? elapsed : 0);
-  const todaySessions = todayLogs.length + (isClockedIn && !todayLogs.find(l => !l.timeOut) ? 0 : 0);
 
   if (!session) return (
     <div style={{ padding: 24 }}>
@@ -462,7 +460,7 @@ export function Attendance() {
                   <p style={{ fontSize: 13, margin: 0 }}>No entries today yet</p>
                 </div>
               ) : (
-                todayLogs.map((log, i) => (
+                todayLogs.map((log) => (
                   <div key={log.id} style={{
                     background: 'hsl(240 5% 14%)',
                     borderRadius: 12,

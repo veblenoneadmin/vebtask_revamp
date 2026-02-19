@@ -2509,95 +2509,55 @@ async function getDbPool() {
 // Save brain dump tasks to database with optimal scheduling
 app.post('/api/brain-dump/save-tasks', async (req, res) => {
   try {
-    const { extractedTasks, dailySchedule, userId } = req.body;
+    const { extractedTasks, userId } = req.body;
 
     if (!extractedTasks || !userId) {
       return res.status(400).json({ error: 'extractedTasks and userId are required' });
     }
 
-    const pool = await getDbPool();
+    // Get the user's active org from their membership
+    const membership = await prisma.membership.findFirst({
+      where: { userId },
+      select: { orgId: true }
+    });
+
+    if (!membership?.orgId) {
+      return res.status(400).json({ error: 'User has no organization membership' });
+    }
+
+    const orgId = membership.orgId;
     const savedTasks = [];
 
-    // Begin transaction
-    const connection = await pool.getConnection();
-    await connection.beginTransaction();
-
-    try {
-      // Save tasks to macro_tasks table
-      for (const task of extractedTasks) {
-        const taskId = task.id || `${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
-        
-        // Insert into macro_tasks
-        await connection.execute(
-          `INSERT INTO macro_tasks (
-            id, title, description, userId, createdBy, priority, estimatedHours, 
-            status, category, tags, createdAt
-          ) VALUES (?, ?, ?, ?, ?, ?, ?, 'not_started', ?, ?, NOW())`,
-          [
-            taskId,
-            task.title,
-            task.description,
-            userId,
-            userId,
-            task.priority,
-            task.estimatedHours,
-            task.category,
-            JSON.stringify({
-              tags: task.tags || [],
-              microTasks: task.microTasks || [],
-              energyLevel: task.energyLevel,
-              focusType: task.focusType,
-              optimalTimeSlot: task.optimalTimeSlot,
-              suggestedDay: task.suggestedDay
-            })
-          ]
-        );
-
-        savedTasks.push({
-          id: taskId,
-          ...task
-        });
-
-      }
-
-      // Save brain dump record
-      const brainDumpId = `dump-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
-      await connection.execute(
-        `INSERT INTO brain_dumps (
-          id, userId, rawContent, processedContent, processingStatus, 
-          aiModel, processedAt, createdAt
-        ) VALUES (?, ?, ?, ?, 'completed', 'ai-scheduler', NOW(), NOW())`,
-        [
-          brainDumpId,
-          userId,
-          req.body.originalContent || '',
-          JSON.stringify({
-            extractedTasks,
-            dailySchedule,
-            savedAt: new Date().toISOString()
-          })
-        ]
-      );
-
-      await connection.commit();
-
-      res.json({
-        success: true,
-        message: 'Tasks and schedule saved successfully',
+    for (const task of extractedTasks) {
+      const created = await prisma.macroTask.create({
         data: {
-          brainDumpId,
-          savedTasks,
-          dailySchedule,
-          totalTasksCreated: savedTasks.length
+          title: task.title || 'Untitled Task',
+          description: task.description || '',
+          userId,
+          orgId,
+          createdBy: userId,
+          priority: task.priority || 'Medium',
+          estimatedHours: parseFloat(task.estimatedHours) || 0,
+          status: 'not_started',
+          category: task.category || 'General',
+          tags: {
+            tags: task.tags || [],
+            microTasks: task.microTasks || [],
+            energyLevel: task.energyLevel,
+            focusType: task.focusType,
+            optimalTimeSlot: task.optimalTimeSlot,
+            suggestedDay: task.suggestedDay
+          }
         }
       });
-
-    } catch (error) {
-      await connection.rollback();
-      throw error;
-    } finally {
-      connection.release();
+      savedTasks.push(created);
     }
+
+    res.json({
+      success: true,
+      message: `${savedTasks.length} tasks imported successfully`,
+      data: { savedTasks, totalTasksCreated: savedTasks.length }
+    });
 
   } catch (error) {
     console.error('❌ Brain dump save error:', error);

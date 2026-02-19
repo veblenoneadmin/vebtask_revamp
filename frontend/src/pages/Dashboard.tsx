@@ -10,7 +10,6 @@ import { defaultDashboardLayouts, widgetDataFetchers } from '../lib/widgets/widg
 import {
   Timer,
   Calendar,
-  Brain,
   Zap,
   CheckSquare
 } from 'lucide-react';
@@ -124,7 +123,6 @@ export function Dashboard() {
   
   const quickActions = [
     { name: 'Start Timer', icon: Timer, href: '/timer', color: 'success' },
-    { name: 'Brain Dump', icon: Brain, href: '/brain-dump', color: 'primary' },
     { name: 'Add Task', icon: CheckSquare, href: '/tasks', color: 'warning' },
     { name: 'Calendar', icon: Calendar, href: '/calendar', color: 'info' },
   ];

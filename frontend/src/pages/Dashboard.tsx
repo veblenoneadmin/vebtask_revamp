@@ -7,15 +7,11 @@ import { Badge } from '../components/ui/badge';
 import { ClientDashboard } from './ClientDashboard';
 import { widgetService } from '../lib/widgets/WidgetService';
 import { defaultDashboardLayouts, widgetDataFetchers } from '../lib/widgets/widgetRegistry';
-import { 
+import {
   Timer,
   Calendar,
   Brain,
   Zap,
-  Activity,
-  Plus,
-  Settings,
-  LayoutGrid,
   CheckSquare
 } from 'lucide-react';
 
@@ -25,7 +21,6 @@ export function Dashboard() {
   const [widgets, setWidgets] = useState<any[]>([]);
   const [widgetData, setWidgetData] = useState<Record<string, any>>({});
   const [loading, setLoading] = useState(true);
-  const [isEditMode, setIsEditMode] = useState(false);
   
   // Load data for widgets
   const loadWidgetData = useCallback(async (widgetInstances: any[]) => {
@@ -189,32 +184,10 @@ export function Dashboard() {
 
   return (
     <div className="space-y-8">
-      {/* Welcome Header with Dashboard Controls */}
-      <div className="flex items-center justify-between">
-        <div>
-          <h1 className="text-3xl font-bold gradient-text">Good morning, {displayName}! 👋</h1>
-          <p className="text-muted-foreground mt-2">Here's your personalized dashboard with live data.</p>
-        </div>
-        <div className="flex items-center space-x-3">
-          <Button
-            variant="outline"
-            size="sm"
-            onClick={() => setIsEditMode(!isEditMode)}
-            className="flex items-center space-x-2"
-          >
-            {isEditMode ? <Settings className="h-4 w-4" /> : <LayoutGrid className="h-4 w-4" />}
-            <span>{isEditMode ? 'Save Layout' : 'Edit Layout'}</span>
-          </Button>
-          <Button
-            variant="outline"
-            size="sm"
-            onClick={() => loadWidgetData(widgets)}
-            className="flex items-center space-x-2"
-          >
-            <Activity className="h-4 w-4" />
-            <span>Refresh All</span>
-          </Button>
-        </div>
+      {/* Welcome Header */}
+      <div>
+        <h1 className="text-3xl font-bold gradient-text">Good morning, {displayName}! 👋</h1>
+        <p className="text-muted-foreground mt-2">Here's your personalized dashboard with live data.</p>
       </div>
 
       {/* Quick Actions Bar */}

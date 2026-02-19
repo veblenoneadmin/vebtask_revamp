@@ -555,9 +555,9 @@ export function Tasks() {
                         <div className="flex -space-x-1.5">
                           {task.assignee ? (
                             <div
-                              className="h-6 w-6 rounded-full flex items-center justify-center text-[9px] font-bold text-white ring-2"
+                              className="h-6 w-6 rounded-full flex items-center justify-center text-[9px] font-bold text-white ring-2 ring-[#0f0f18]"
                               title={task.assignee}
-                              style={{ background: avatarGradient(task.assignee), ringColor: '#0f0f18' }}
+                              style={{ background: avatarGradient(task.assignee) }}
                             >
                               {getInitials(task.assignee)}
                             </div>

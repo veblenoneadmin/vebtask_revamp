@@ -6,6 +6,7 @@ import { LogOut, ChevronDown, Menu } from 'lucide-react';
 
 const pageTitles: Record<string, string> = {
   '/dashboard':   'Dashboard',
+  '/brain-dump':  'Brain Dump',
   '/tasks':       'Tasks',
   '/timer':       'Timer',
   '/attendance':  'Attendance',

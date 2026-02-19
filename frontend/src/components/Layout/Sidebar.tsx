@@ -6,6 +6,7 @@ import {
   LayoutDashboard,
   CheckSquare,
   Clock,
+  Brain,
   Settings,
   BarChart3,
   Building2,
@@ -16,6 +17,7 @@ import { cn } from '../../lib/utils';
 
 const getAllNavigationItems = () => [
   { name: 'Dashboard',      href: '/dashboard',  icon: LayoutDashboard, roles: ['OWNER', 'ADMIN', 'STAFF', 'CLIENT'] },
+  { name: 'Brain Dump',     href: '/brain-dump', icon: Brain,           roles: ['OWNER', 'ADMIN', 'STAFF'] },
   { name: 'Tasks',          href: '/tasks',       icon: CheckSquare,     roles: ['OWNER', 'ADMIN', 'STAFF', 'CLIENT'] },
   { name: 'Projects',       href: '/projects',    icon: Building2,       roles: ['OWNER', 'ADMIN', 'STAFF'] },
   { name: 'Time Logs',      href: '/timesheets',  icon: Clock,           roles: ['OWNER', 'ADMIN', 'STAFF', 'CLIENT'] },

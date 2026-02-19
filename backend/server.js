@@ -2018,7 +2018,7 @@ app.post('/api/ai/process-brain-dump', async (req, res) => {
         'Content-Type': 'application/json',
       },
       body: JSON.stringify({
-        model: 'openai/gpt-5-nano',
+        model: 'openai/gpt-4o-mini',
         messages: [{
           role: 'system',
           content: getAISystemPrompt(preferences)
@@ -2032,7 +2032,8 @@ app.post('/api/ai/process-brain-dump', async (req, res) => {
     });
 
     if (!response.ok) {
-      console.error(`OpenRouter API error: ${response.status} ${response.statusText}`);
+      const errBody = await response.text();
+      console.error(`OpenRouter API error: ${response.status} ${response.statusText}`, errBody);
       // Fallback to simulation on API error
       const result = simulateAIProcessing(content, preferences);
       return res.status(200).json(result);
@@ -2046,7 +2047,7 @@ app.post('/api/ai/process-brain-dump', async (req, res) => {
       const result = {
         ...parsed,
         processingTimestamp: new Date().toISOString(),
-        aiModel: 'gpt-5-nano'
+        aiModel: 'gpt-4o-mini'
       };
       
       console.log('✅ Brain dump processed successfully with AI');
@@ -2210,8 +2211,14 @@ CRITICAL: Return ONLY the JSON object. No additional text, explanations, or form
 }
 
 function simulateAIProcessing(content, preferences = {}) {
-  // Split by newlines AND sentence boundaries (., !, ?, bullet points)
-  const rawSegments = content.split(/[\n\r]+|(?<=[.!?])\s+|•|-\s+/);
+  // Split by newlines, sentence endings, bullet points, AND commas before action verbs
+  const rawSegments = content
+    .split(/[\n\r]+|(?<=[.!?])\s+|•|-\s+/)
+    .flatMap(segment => {
+      // Further split comma-separated items if they look like multiple tasks
+      const parts = segment.split(/,\s+(?=\w)/);
+      return parts.length > 1 ? parts : [segment];
+    });
   const segments = rawSegments.map(s => s.trim()).filter(s => s.length >= 5);
   const tasks = [];
 

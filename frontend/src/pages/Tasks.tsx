@@ -50,11 +50,11 @@ const COLUMNS: { id: Task['status']; label: string; accent: string; bg: string }
   { id: 'completed',   label: 'Done',        accent: '#34d399', bg: 'rgba(52,211,153,0.08)'  },
 ];
 
-const PRIORITY_CONFIG: Record<string, { label: string; bg: string; text: string }> = {
-  Low:    { label: 'LOW',      bg: 'rgba(52,211,153,0.18)',   text: '#34d399' },
-  Medium: { label: 'MODERATE', bg: 'rgba(251,191,36,0.18)',   text: '#fbbf24' },
-  High:   { label: 'HIGH',     bg: 'rgba(248,113,113,0.18)',  text: '#f87171' },
-  Urgent: { label: 'URGENT',   bg: 'rgba(192,132,252,0.18)',  text: '#c084fc' },
+const PRIORITY_CONFIG: Record<string, { label: string; bg: string; text: string; border: string }> = {
+  Low:    { label: 'LOW',      bg: 'linear-gradient(135deg,#0d3d22,#155c35)', text: '#4ade80', border: '#22c55e' },
+  Medium: { label: 'MODERATE', bg: 'linear-gradient(135deg,#3d2a00,#5c4000)', text: '#fbbf24', border: '#f59e0b' },
+  High:   { label: 'HIGH',     bg: 'linear-gradient(135deg,#3d0d0d,#5c1515)', text: '#f87171', border: '#ef4444' },
+  Urgent: { label: 'URGENT',   bg: 'linear-gradient(135deg,#200d3d,#30155c)', text: '#c084fc', border: '#a855f7' },
 };
 
 const STATUS_CONFIG: Record<string, { label: string; bg: string; text: string }> = {
@@ -469,28 +469,14 @@ export function Tasks() {
                       className="relative group cursor-grab active:cursor-grabbing"
                       style={{ opacity: isDragging ? 0.45 : 1 }}
                     >
-                      {/* ── Priority badge: centered ON the card's top border ── */}
-                      <div
-                        className="absolute left-1/2 z-10 px-4 py-[3px] rounded-full text-[11px] font-bold tracking-widest whitespace-nowrap"
-                        style={{
-                          top: 0,
-                          transform: 'translate(-50%, -50%)',
-                          background: pCfg.bg,
-                          color: pCfg.text,
-                          border: `1px solid ${pCfg.text}66`,
-                        }}
-                      >
-                        {pCfg.label}
-                      </div>
-
-                      {/* ── Card (sibling of badge, not its parent) ── */}
+                      {/* ── Card ── rendered FIRST so badge paints over it */}
                       <div
                         className="rounded-2xl overflow-hidden transition-all duration-150"
                         style={{
                           background: '#13131f',
-                          border: `1px solid ${pCfg.text}35`,
+                          border: `1.5px solid ${pCfg.border}55`,
                           boxShadow: isDragging
-                            ? `0 0 0 2px ${pCfg.text}50`
+                            ? `0 0 0 2px ${pCfg.border}50`
                             : '0 4px 20px rgba(0,0,0,0.4)',
                         }}
                       >
@@ -499,7 +485,7 @@ export function Tasks() {
 
                           {/* ⋯ context menu */}
                           {userRole !== 'CLIENT' && (
-                            <div className="absolute top-[18px] right-3 z-10">
+                            <div className="absolute top-[18px] right-3 z-20">
                               <button
                                 onClick={e => { e.stopPropagation(); setOpenMenuId(openMenuId === task.id ? null : task.id); }}
                                 className="h-6 w-6 flex items-center justify-center rounded-lg transition-all opacity-0 group-hover:opacity-100"
@@ -601,6 +587,21 @@ export function Tasks() {
                             {date || '—'}
                           </span>
                         </div>
+                      </div>
+
+                      {/* ── Priority badge: rendered AFTER card so it paints on top ── */}
+                      <div
+                        className="absolute left-1/2 z-30 px-4 py-[3px] rounded-full text-[11px] font-bold tracking-widest whitespace-nowrap"
+                        style={{
+                          top: 0,
+                          transform: 'translate(-50%, -50%)',
+                          background: pCfg.bg,
+                          color: pCfg.text,
+                          border: `1px solid ${pCfg.border}99`,
+                          boxShadow: `0 2px 8px ${pCfg.border}40`,
+                        }}
+                      >
+                        {pCfg.label}
                       </div>
                     </div>
                   );

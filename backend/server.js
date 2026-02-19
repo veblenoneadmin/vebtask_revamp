@@ -52,42 +52,30 @@ if (missingEnvVars.length > 0) {
   console.log('✅ All required environment variables are configured');
 }
 
-// Database migration function
+// Database schema sync — uses db push (no migrations folder required)
 async function runDatabaseMigrations() {
   if (!process.env.DATABASE_URL) {
-    console.warn('⚠️  DATABASE_URL not found, skipping migrations');
+    console.warn('⚠️  DATABASE_URL not found, skipping schema sync');
     return;
   }
 
   try {
-    console.log('🔄 Running database migrations...');
+    console.log('🔄 Syncing database schema with prisma db push...');
     const { exec } = await import('child_process');
     const { promisify } = await import('util');
     const execAsync = promisify(exec);
-    
-    const { stdout, stderr } = await execAsync('npx prisma migrate deploy');
-    if (stdout) console.log('📋 Migration output:', stdout);
-    if (stderr && !stderr.includes('INFO')) console.warn('⚠️  Migration warnings:', stderr);
-    
-    console.log('✅ Database migrations completed successfully');
+
+    const { stdout, stderr } = await execAsync(
+      'npx prisma db push --accept-data-loss --skip-generate',
+      { cwd: '/app/backend' }
+    );
+    if (stdout) console.log('📋 Schema sync output:', stdout);
+    if (stderr && !stderr.includes('INFO')) console.warn('⚠️  Schema sync warnings:', stderr);
+
+    console.log('✅ Database schema synced successfully');
   } catch (error) {
-    console.error('❌ Database migration failed:', error.message);
-    
-    // Check if it's a baseline issue (P3005)
-    if (error.message.includes('P3005') || error.message.includes('database schema is not empty')) {
-      console.log('🔄 Database schema exists, checking migration status...');
-      try {
-        // Try to push the current schema state to match Prisma expectations
-        await execAsync('npx prisma db push --accept-data-loss');
-        console.log('✅ Database schema synchronized successfully');
-      } catch (pushError) {
-        console.warn('⚠️  Could not sync schema:', pushError.message);
-        console.log('📋 Database schema exists and server will continue normally');
-        console.log('💡 Manual fix: Run "npx prisma migrate resolve --applied <migration_name>" in Railway console');
-      }
-    }
-    
-    // Don't exit - let the server start anyway, tables might already exist
+    console.warn('⚠️  Schema sync failed (tables may already exist):', error.message);
+    // Non-fatal — server continues, existing tables are still usable
   }
 }
 

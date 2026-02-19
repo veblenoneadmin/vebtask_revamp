@@ -8,7 +8,7 @@
     "build": "cd backend && npx prisma generate && cd ../frontend && tsc -b && vite build",
     "lint": "cd frontend && eslint .",
     "preview": "cd frontend && vite preview",
-    "start": "cd backend && npx prisma migrate deploy && node server.js",
+    "start": "cd backend && node server.js",
     "db:generate": "cd backend && prisma generate",
     "db:migrate": "cd backend && prisma migrate dev",
     "db:deploy": "cd backend && prisma migrate deploy",

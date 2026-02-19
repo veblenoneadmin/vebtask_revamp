@@ -2,17 +2,21 @@ import { PrismaClient } from '@prisma/client';
 
 const globalForPrisma = globalThis;
 
-console.log('🔗 Initializing Prisma client...');
-console.log('📍 Database URL configured:', !!process.env.DATABASE_URL);
+const dbUrl = process.env.DATABASE_URL || process.env.VITE_DATABASE_URL;
 
+console.log('🔗 Initializing Prisma client...');
+console.log('📍 Database URL configured:', !!dbUrl);
+
+if (!dbUrl) {
+  console.warn('⚠️  DATABASE_URL is not set — database features will be unavailable.');
+  console.warn('   Set DATABASE_URL in Railway environment variables to enable the database.');
+}
+
+// Only pass datasources config when URL is available to avoid crash on missing URL
 export const prisma = globalForPrisma.prisma ?? new PrismaClient({
   log: process.env.NODE_ENV === 'development' ? ['query', 'error', 'warn'] : ['error'],
   errorFormat: 'pretty',
-  datasources: {
-    db: {
-      url: process.env.DATABASE_URL || process.env.VITE_DATABASE_URL
-    }
-  }
+  ...(dbUrl ? { datasources: { db: { url: dbUrl } } } : {})
 });
 
 if (process.env.NODE_ENV !== 'production') {

@@ -5,7 +5,6 @@ import { useOrganization } from '../contexts/OrganizationContext';
 import { Card, CardContent, CardHeader } from '../components/ui/card';
 import { Button } from '../components/ui/button';
 import { Badge } from '../components/ui/badge';
-import { BrainDump } from './BrainDump';
 import {
   CheckSquare,
   Plus,
@@ -21,7 +20,6 @@ import {
   AlertCircle,
   X,
   Save,
-  Brain
 } from 'lucide-react';
 import { cn } from '../lib/utils';
 
@@ -65,7 +63,6 @@ export function Tasks() {
   const [filterPriority, setFilterPriority] = useState<string>('all');
   const [searchTerm, setSearchTerm] = useState('');
   const [showNewTaskForm, setShowNewTaskForm] = useState(false);
-  const [showBrainDumpModal, setShowBrainDumpModal] = useState(false);
   const [userRole, setUserRole] = useState<string>('CLIENT');
   const [newTaskForm, setNewTaskForm] = useState({
     description: '',
@@ -479,25 +476,15 @@ export function Tasks() {
               : 'Organize, prioritize, and track your work'}
           </p>
         </div>
-        <div className="flex items-center gap-2">
+        {userRole !== 'CLIENT' && (
           <Button
-            onClick={() => setShowBrainDumpModal(true)}
-            variant="outline"
-            className="border-purple-500/40 text-purple-400 hover:bg-purple-500/10 hover:text-purple-300 transition-all duration-300"
+            onClick={() => setShowNewTaskForm(true)}
+            className="bg-gradient-primary hover:bg-gradient-primary/90 text-white shadow-glow transition-all duration-300"
           >
-            <Brain className="h-4 w-4 mr-2" />
-            Brain Dump
+            <Plus className="h-4 w-4 mr-2" />
+            New Task
           </Button>
-          {userRole !== 'CLIENT' && (
-            <Button
-              onClick={() => setShowNewTaskForm(true)}
-              className="bg-gradient-primary hover:bg-gradient-primary/90 text-white shadow-glow transition-all duration-300"
-            >
-              <Plus className="h-4 w-4 mr-2" />
-              New Task
-            </Button>
-          )}
-        </div>
+        )}
       </div>
 
       {/* Stats Cards */}
@@ -1039,27 +1026,6 @@ export function Tasks() {
         </div>
       )}
 
-      {/* Brain Dump Modal */}
-      {showBrainDumpModal && (
-        <div
-          className="fixed inset-0 z-50 flex items-center justify-center"
-          style={{ background: 'rgba(0,0,0,0.75)' }}
-          onClick={(e) => { if (e.target === e.currentTarget) setShowBrainDumpModal(false); }}
-        >
-          <div
-            className="relative w-full max-w-4xl max-h-[90vh] overflow-y-auto rounded-2xl"
-            style={{ background: '#070707', border: '1px solid #1c1c1c' }}
-          >
-            <button
-              onClick={() => setShowBrainDumpModal(false)}
-              className="absolute top-4 right-4 z-10 flex items-center justify-center h-8 w-8 rounded-lg text-gray-400 hover:text-white hover:bg-white/10 transition-colors"
-            >
-              <X className="h-4 w-4" />
-            </button>
-            <BrainDump />
-          </div>
-        </div>
-      )}
     </div>
   );
 }

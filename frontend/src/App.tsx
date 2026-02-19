@@ -7,6 +7,7 @@ import { ResetPassword } from './pages/ResetPassword';
 import { EmailVerified } from './pages/EmailVerified';
 import { Onboarding } from './pages/Onboarding';
 import { Dashboard } from './pages/Dashboard';
+import { BrainDump } from './pages/BrainDump';
 import { Tasks } from './pages/Tasks';
 import { Timer } from './pages/Timer';
 import { Projects } from './pages/Projects';
@@ -116,6 +117,7 @@ function AppContent() {
             }
           >
             <Route path="dashboard" element={<Dashboard />} />
+            <Route path="brain-dump" element={<BrainDump />} />
             <Route path="tasks" element={<Tasks />} />
             <Route path="timer" element={<Timer />} />
             <Route path="projects" element={<Projects />} />

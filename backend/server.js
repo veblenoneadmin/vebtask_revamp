@@ -2027,7 +2027,7 @@ app.post('/api/ai/process-brain-dump', async (req, res) => {
           content: content
         }],
         temperature: 0.3,
-        max_tokens: 2000
+        max_tokens: 6000
       })
     });
 
@@ -2210,24 +2210,23 @@ CRITICAL: Return ONLY the JSON object. No additional text, explanations, or form
 }
 
 function simulateAIProcessing(content, preferences = {}) {
-  const lines = content.split('\n').filter(line => line.trim());
+  // Split by newlines AND sentence boundaries (., !, ?, bullet points)
+  const rawSegments = content.split(/[\n\r]+|(?<=[.!?])\s+|•|-\s+/);
+  const segments = rawSegments.map(s => s.trim()).filter(s => s.length >= 5);
   const tasks = [];
-  
-  lines.forEach((line) => {
-    const trimmedLine = line.trim();
-    if (trimmedLine.length < 5) return;
-    
-    if (isTaskLike(trimmedLine)) {
-      const priority = determinePriority(trimmedLine);
+
+  segments.forEach((segment) => {
+    if (isTaskLike(segment)) {
+      const priority = determinePriority(segment);
       const estimatedTime = Math.random() * 4 + 1;
-      
+
       tasks.push({
         id: generateSimpleId(),
-        title: extractSimpleTitle(trimmedLine),
-        description: trimmedLine,
+        title: extractSimpleTitle(segment),
+        description: segment,
         priority,
         estimatedHours: Math.round(estimatedTime * 10) / 10,
-        category: 'general',
+        category: 'General',
         tags: [],
         microTasks: []
       });
@@ -2237,11 +2236,11 @@ function simulateAIProcessing(content, preferences = {}) {
   if (tasks.length === 0) {
     tasks.push({
       id: generateSimpleId(),
-      title: extractSimpleTitle(content.substring(0, 50)),
+      title: extractSimpleTitle(content.substring(0, 60)),
       description: content,
-      priority: 'medium',
+      priority: 'Medium',
       estimatedHours: 2,
-      category: 'general',
+      category: 'General',
       tags: [],
       microTasks: []
     });

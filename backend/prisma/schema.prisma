@@ -21,6 +21,7 @@ model User {
   memberships      Membership[]
   macroTasks       MacroTask[]
   reports          Report[]
+  attendanceLogs   AttendanceLog[]
 }
 
 model Organization {
@@ -32,10 +33,11 @@ model Organization {
   updatedAt   DateTime     @updatedAt
 
   // Relations
-  invites     Invite[]
-  memberships Membership[]
-  macroTasks  MacroTask[]
-  reports     Report[]
+  invites         Invite[]
+  memberships     Membership[]
+  macroTasks      MacroTask[]
+  reports         Report[]
+  attendanceLogs  AttendanceLog[]
 
   @@index([createdById])
   @@map("organizations")
@@ -277,4 +279,27 @@ model Report {
   @@index([projectId])
   @@index([createdAt])
   @@map("reports")
+}
+
+model AttendanceLog {
+  id        String    @id @default(cuid()) @db.VarChar(50)
+  userId    String    @db.VarChar(36)
+  orgId     String
+  timeIn    DateTime
+  timeOut   DateTime?
+  duration  Int       @default(0) // seconds
+  notes     String?   @db.Text
+  date      String    @db.VarChar(10) // YYYY-MM-DD
+
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @default(now()) @updatedAt
+
+  // Relations
+  user      User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+  org       Organization @relation(fields: [orgId], references: [id], onDelete: Cascade)
+
+  @@index([userId, date])
+  @@index([orgId])
+  @@index([userId, timeOut])
+  @@map("attendance_logs")
 }

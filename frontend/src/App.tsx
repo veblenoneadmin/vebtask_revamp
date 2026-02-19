@@ -16,6 +16,7 @@ import { Clients } from './pages/Clients';
 import { Reports } from './pages/Reports';
 import { Settings } from './pages/Settings';
 import { Admin } from './pages/Admin';
+import { Attendance } from './pages/Attendance';
 import MainLayout from './components/Layout/MainLayout';
 import { ErrorBoundary } from './components/ErrorBoundary';
 import { OrganizationProvider } from './contexts/OrganizationContext';
@@ -125,6 +126,7 @@ function AppContent() {
             <Route path="reports" element={<Reports />} />
             <Route path="settings" element={<Settings />} />
             <Route path="admin" element={<Admin />} />
+            <Route path="attendance" element={<Attendance />} />
           </Route>
           <Route 
             path="/" 

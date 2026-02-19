@@ -24,6 +24,7 @@ import onboardingRoutes from './api/onboarding.js';
 import adminRoutes from './api/admin.js';
 import passwordResetRoutes from './routes/password-reset.js';
 import invitationRoutes from './api/invitations.js';
+import attendanceRoutes from './api/attendance.js';
 import { 
   blockPublicRegistration, 
   addInternalBranding, 
@@ -353,6 +354,7 @@ app.use('/api/onboarding', onboardingRoutes);
 app.use('/api/admin', adminRoutes);
 app.use('/api/auth', passwordResetRoutes);
 app.use('/api/invitations', invitationRoutes);
+app.use('/api/attendance', attendanceRoutes);
 
 // Test routes for debugging (NO AUTH - REMOVE IN PRODUCTION)
 import testProjectsRoutes from './api/test-projects.js';
@@ -2867,20 +2869,24 @@ app.get('*', (req, res) => {
   res.sendFile(path.join(__dirname, '..', 'frontend', 'dist', 'index.html'));
 });
 
-// Run migrations and start server
+// Start server first, then run migrations in background
 async function startServer() {
-  await runDatabaseMigrations();
-  
-  app.listen(PORT, '0.0.0.0', () => {
-    console.log(`✅ Server running on port ${PORT}`);
-    console.log(`🔐 Auth endpoints available at /api/auth/*`);
-    console.log(`📱 React app available at /`);
-    console.log(`🏥 Health check available at /health-simple`);
-    console.log(`🌐 Environment: ${process.env.NODE_ENV || 'development'}`);
-    console.log(`📊 Database URL configured: ${!!process.env.DATABASE_URL}`);
-  }).on('error', (err) => {
-    console.error('❌ Server startup error:', err);
-    process.exit(1);
+  // Bind to port immediately so health checks pass right away
+  await new Promise((resolve, reject) => {
+    app.listen(PORT, '0.0.0.0', () => {
+      console.log(`✅ Server running on port ${PORT}`);
+      console.log(`🔐 Auth endpoints available at /api/auth/*`);
+      console.log(`📱 React app available at /`);
+      console.log(`🏥 Health check available at /health-simple`);
+      console.log(`🌐 Environment: ${process.env.NODE_ENV || 'development'}`);
+      console.log(`📊 Database URL configured: ${!!process.env.DATABASE_URL}`);
+      resolve();
+    }).on('error', reject);
+  });
+
+  // Run migrations after the server is already accepting connections
+  runDatabaseMigrations().catch(err => {
+    console.warn('⚠️  Background migration error (server still running):', err.message);
   });
 }
 

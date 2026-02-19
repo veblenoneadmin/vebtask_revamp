@@ -25,4 +25,4 @@ RUN npm run build
 EXPOSE 3001
 
 # Generate Prisma client, attempt database sync (non-blocking), and start server
-CMD ["sh", "-c", "cd backend && npx prisma generate && (npx prisma db push --accept-data-loss --skip-generate || echo 'Database sync failed, continuing...') && node server.js"]
+CMD ["sh", "-c", "cd backend && npx prisma generate && node server.js"]

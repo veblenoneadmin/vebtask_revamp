@@ -43,25 +43,46 @@ interface Project {
   color: string;
 }
 
+// ── VS Code Dark+ theme tokens ────────────────────────────────────────────────
+const VS = {
+  bg0:     '#1e1e1e', // editor background
+  bg1:     '#252526', // sidebar / panel
+  bg2:     '#2d2d2d', // elevated surface (cards)
+  bg3:     '#333333', // inputs / buttons
+  border:  '#3c3c3c',
+  border2: '#454545',
+  text0:   '#d4d4d4', // primary text
+  text1:   '#9d9d9d', // secondary text
+  text2:   '#6a6a6a', // muted text
+  blue:    '#569cd6', // keywords
+  teal:    '#4ec9b0', // types
+  yellow:  '#dcdcaa', // functions
+  orange:  '#ce9178', // strings
+  purple:  '#c586c0', // control flow
+  red:     '#f44747', // errors
+  green:   '#6a9955', // comments
+  accent:  '#007acc', // VS Code brand blue
+};
+
 const COLUMNS: { id: Task['status']; label: string; accent: string; bg: string }[] = [
-  { id: 'not_started', label: 'To Do',       accent: '#818cf8', bg: 'rgba(129,140,248,0.08)' },
-  { id: 'in_progress', label: 'In Progress', accent: '#fbbf24', bg: 'rgba(251,191,36,0.08)'  },
-  { id: 'on_hold',     label: 'On Hold',     accent: '#f87171', bg: 'rgba(248,113,113,0.08)' },
-  { id: 'completed',   label: 'Done',        accent: '#34d399', bg: 'rgba(52,211,153,0.08)'  },
+  { id: 'not_started', label: 'To Do',       accent: VS.blue,   bg: 'rgba(86,156,214,0.10)'  },
+  { id: 'in_progress', label: 'In Progress', accent: VS.yellow, bg: 'rgba(220,220,170,0.10)' },
+  { id: 'on_hold',     label: 'On Hold',     accent: VS.red,    bg: 'rgba(244,71,71,0.10)'   },
+  { id: 'completed',   label: 'Done',        accent: VS.teal,   bg: 'rgba(78,201,176,0.10)'  },
 ];
 
 const PRIORITY_CONFIG: Record<string, { label: string; bg: string; text: string; border: string }> = {
-  Low:    { label: 'LOW',      bg: 'linear-gradient(135deg,#0d3d22,#155c35)', text: '#4ade80', border: '#22c55e' },
-  Medium: { label: 'MODERATE', bg: 'linear-gradient(135deg,#3d2a00,#5c4000)', text: '#fbbf24', border: '#f59e0b' },
-  High:   { label: 'HIGH',     bg: 'linear-gradient(135deg,#3d0d0d,#5c1515)', text: '#f87171', border: '#ef4444' },
-  Urgent: { label: 'URGENT',   bg: 'linear-gradient(135deg,#200d3d,#30155c)', text: '#c084fc', border: '#a855f7' },
+  Low:    { label: 'LOW',      bg: 'linear-gradient(135deg,#1a2e24,#223320)', text: VS.teal,   border: VS.teal   },
+  Medium: { label: 'MODERATE', bg: 'linear-gradient(135deg,#2d2a1a,#38341e)', text: VS.yellow, border: VS.yellow },
+  High:   { label: 'HIGH',     bg: 'linear-gradient(135deg,#2d1919,#3a1c1c)', text: VS.red,    border: VS.red    },
+  Urgent: { label: 'URGENT',   bg: 'linear-gradient(135deg,#251828,#301e35)', text: VS.purple, border: VS.purple },
 };
 
 const STATUS_CONFIG: Record<string, { label: string; bg: string; text: string }> = {
-  not_started: { label: 'Pending',     bg: 'rgba(129,140,248,0.18)', text: '#818cf8' },
-  in_progress: { label: 'In Progress', bg: 'rgba(251,191,36,0.18)',  text: '#fbbf24' },
-  on_hold:     { label: 'On Hold',     bg: 'rgba(248,113,113,0.18)', text: '#f87171' },
-  completed:   { label: 'Done',        bg: 'rgba(52,211,153,0.18)',  text: '#34d399' },
+  not_started: { label: 'Pending',     bg: 'rgba(86,156,214,0.15)',  text: VS.blue   },
+  in_progress: { label: 'In Progress', bg: 'rgba(220,220,170,0.15)', text: VS.yellow },
+  on_hold:     { label: 'On Hold',     bg: 'rgba(244,71,71,0.15)',   text: VS.red    },
+  completed:   { label: 'Done',        bg: 'rgba(78,201,176,0.15)',  text: VS.teal   },
 };
 
 // Avatar color palette
@@ -91,8 +112,8 @@ function avatarGradient(name?: string) {
 }
 
 // ── Input style shared ────────────────────────────────────────────────────────
-const inputCls = 'w-full px-3 py-2 rounded-lg text-sm text-white placeholder-gray-600 focus:outline-none focus:ring-1 focus:ring-indigo-500/50 transition-all';
-const inputStyle: React.CSSProperties = { background: '#0d0d12', border: '1px solid #252530', color: '#e2e8f0' };
+const inputCls = 'w-full px-3 py-2 rounded-lg text-sm placeholder-gray-500 focus:outline-none focus:ring-1 focus:ring-[#007acc]/50 transition-all';
+const inputStyle: React.CSSProperties = { background: '#3c3c3c', border: '1px solid #454545', color: '#d4d4d4' };
 
 export function Tasks() {
   const { data: session } = useSession();
@@ -317,7 +338,7 @@ export function Tasks() {
   if (loading) {
     return (
       <div className="flex items-center justify-center h-64">
-        <div className="animate-spin rounded-full h-8 w-8 border-b-2" style={{ borderColor: '#818cf8' }} />
+        <div className="animate-spin rounded-full h-8 w-8 border-b-2" style={{ borderColor: VS.accent }} />
       </div>
     );
   }
@@ -328,18 +349,18 @@ export function Tasks() {
       {/* ── Top header bar ── */}
       <div
         className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 px-6 py-4"
-        style={{ borderBottom: '1px solid #1a1a24' }}
+        style={{ borderBottom: `1px solid ${VS.border}` }}
       >
         {/* Left: title + meta */}
         <div>
-          <h1 className="text-lg font-bold tracking-tight" style={{ color: '#f1f1f8' }}>
+          <h1 className="text-lg font-bold tracking-tight" style={{ color: VS.text0 }}>
             {userRole === 'CLIENT' ? 'My Tasks' : 'Task Board'}
-            <span className="ml-2 text-xs font-normal px-2 py-0.5 rounded-full align-middle"
-              style={{ background: '#1e1e2e', color: '#555', border: '1px solid #252530' }}>
+            <span className="ml-2 text-xs font-normal px-2 py-0.5 rounded align-middle"
+              style={{ background: VS.bg3, color: VS.text2, border: `1px solid ${VS.border}` }}>
               Private
             </span>
           </h1>
-          <p className="text-xs mt-0.5" style={{ color: '#42424e' }}>
+          <p className="text-xs mt-0.5" style={{ color: VS.text2 }}>
             {tasks.length} tasks · {COLUMNS.length} stages
           </p>
         </div>
@@ -348,27 +369,27 @@ export function Tasks() {
         <div className="flex items-center gap-2">
           {/* Search */}
           <div className="relative">
-            <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5" style={{ color: '#42424e' }} />
+            <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5" style={{ color: VS.text2 }} />
             <input
               type="text"
               placeholder="Search..."
               value={searchTerm}
               onChange={e => setSearchTerm(e.target.value)}
-              className="pl-8 pr-3 py-1.5 rounded-lg text-sm focus:outline-none focus:ring-1 focus:ring-indigo-500/40 transition-all"
-              style={{ background: '#0d0d12', border: '1px solid #252530', color: '#ccc', width: 160 }}
+              className="pl-8 pr-3 py-1.5 rounded text-sm focus:outline-none focus:ring-1 transition-all"
+              style={{ background: VS.bg3, border: `1px solid ${VS.border}`, color: VS.text0, width: 160, outline: 'none' }}
             />
           </div>
 
           {/* Filter / Sort buttons */}
           <button
-            className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs transition-colors"
-            style={{ background: '#0d0d12', border: '1px solid #252530', color: '#666' }}
+            className="flex items-center gap-1.5 px-3 py-1.5 rounded text-xs transition-colors"
+            style={{ background: VS.bg3, border: `1px solid ${VS.border}`, color: VS.text1 }}
           >
             <Filter className="h-3.5 w-3.5" /> Filter
           </button>
           <button
-            className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs transition-colors"
-            style={{ background: '#0d0d12', border: '1px solid #252530', color: '#666' }}
+            className="flex items-center gap-1.5 px-3 py-1.5 rounded text-xs transition-colors"
+            style={{ background: VS.bg3, border: `1px solid ${VS.border}`, color: VS.text1 }}
           >
             <SlidersHorizontal className="h-3.5 w-3.5" /> Sort
           </button>
@@ -377,8 +398,8 @@ export function Tasks() {
           {userRole !== 'CLIENT' && (
             <button
               onClick={() => { setNewTaskColumnStatus('not_started'); setShowNewTaskForm(true); }}
-              className="flex items-center gap-1.5 px-4 py-1.5 rounded-lg text-xs font-semibold text-white transition-all hover:opacity-90"
-              style={{ background: 'linear-gradient(135deg,#6366f1,#818cf8)' }}
+              className="flex items-center gap-1.5 px-4 py-1.5 rounded text-xs font-semibold text-white transition-all hover:opacity-90"
+              style={{ background: VS.accent }}
             >
               <Plus className="h-3.5 w-3.5" />
               Add New
@@ -399,8 +420,8 @@ export function Tasks() {
               className="flex-shrink-0 flex flex-col rounded-2xl overflow-hidden transition-all duration-200"
               style={{
                 width: 300,
-                background: isOver ? col.bg : '#0f0f18',
-                border: `1px solid ${isOver ? col.accent + '44' : '#1e1e2e'}`,
+                background: isOver ? col.bg : VS.bg1,
+                border: `1px solid ${isOver ? col.accent + '66' : VS.border}`,
                 borderTop: `3px solid ${col.accent}`,
               }}
               onDragEnter={e => handleColumnDragEnter(e, col.id)}
@@ -412,7 +433,7 @@ export function Tasks() {
               <div className="px-4 pt-4 pb-3">
                 <div className="flex items-center justify-between">
                   <div className="flex items-center gap-2">
-                    <span className="text-sm font-bold tracking-wide" style={{ color: '#e2e2f0' }}>
+                    <span className="text-sm font-bold tracking-wide" style={{ color: VS.text0 }}>
                       {col.label.toUpperCase()}
                     </span>
                     <span
@@ -433,7 +454,7 @@ export function Tasks() {
                     </button>
                   )}
                 </div>
-                <p className="text-[11px] mt-0.5" style={{ color: '#3a3a4e' }}>
+                <p className="text-[11px] mt-0.5" style={{ color: VS.text2 }}>
                   {colTasks.length} {colTasks.length === 1 ? 'task' : 'tasks'}
                   {colTasks.reduce((s, t) => s + (t.estimatedHours || 0), 0) > 0 &&
                     ` · ${colTasks.reduce((s, t) => s + (t.estimatedHours || 0), 0)}h estimated`}
@@ -473,8 +494,8 @@ export function Tasks() {
                       <div
                         className="rounded-2xl overflow-hidden transition-all duration-150"
                         style={{
-                          background: '#13131f',
-                          border: `1.5px solid ${pCfg.border}55`,
+                          background: VS.bg2,
+                          border: `1px solid ${pCfg.border}55`,
                           boxShadow: isDragging
                             ? `0 0 0 2px ${pCfg.border}50`
                             : '0 4px 20px rgba(0,0,0,0.4)',
@@ -489,7 +510,7 @@ export function Tasks() {
                               <button
                                 onClick={e => { e.stopPropagation(); setOpenMenuId(openMenuId === task.id ? null : task.id); }}
                                 className="h-6 w-6 flex items-center justify-center rounded-lg transition-all opacity-0 group-hover:opacity-100"
-                                style={{ color: '#52526a', background: '#1e1e2e' }}
+                                style={{ color: VS.text2, background: VS.bg3 }}
                               >
                                 <MoreHorizontal className="h-3.5 w-3.5" />
                               </button>
@@ -498,20 +519,20 @@ export function Tasks() {
                                   <div className="fixed inset-0 z-10" onClick={() => setOpenMenuId(null)} />
                                   <div
                                     className="absolute right-0 top-full mt-1 z-20 rounded-xl overflow-hidden py-1 min-w-[130px]"
-                                    style={{ background: '#0d0d18', border: '1px solid #252535', boxShadow: '0 12px 32px rgba(0,0,0,0.6)' }}
+                                    style={{ background: VS.bg1, border: `1px solid ${VS.border}`, boxShadow: '0 8px 24px rgba(0,0,0,0.5)' }}
                                   >
                                     <button
                                       onClick={() => handleEditTask(task)}
                                       className="flex items-center gap-2 w-full px-3 py-2 text-xs hover:bg-white/5 transition-colors"
-                                      style={{ color: '#aaa' }}
+                                      style={{ color: VS.text0 }}
                                     >
                                       <Edit2 className="h-3 w-3" /> Edit task
                                     </button>
-                                    <div style={{ height: 1, background: '#1e1e2e', margin: '2px 0' }} />
+                                    <div style={{ height: 1, background: VS.border, margin: '2px 0' }} />
                                     <button
                                       onClick={() => { setOpenMenuId(null); handleDeleteTask(task.id); }}
                                       className="flex items-center gap-2 w-full px-3 py-2 text-xs hover:bg-red-500/10 transition-colors"
-                                      style={{ color: '#f87171' }}
+                                      style={{ color: VS.red }}
                                     >
                                       <Trash2 className="h-3 w-3" /> Delete
                                     </button>
@@ -522,12 +543,12 @@ export function Tasks() {
                           )}
 
                           {/* Title */}
-                          <p className="text-[15px] font-bold leading-snug mb-2 pr-6" style={{ color: '#eeeef8' }}>
+                          <p className="text-[15px] font-bold leading-snug mb-2 pr-6" style={{ color: VS.text0 }}>
                             {task.title}
                           </p>
 
                           {/* Description */}
-                          <p className="text-[13px] leading-relaxed line-clamp-2 mb-4" style={{ color: '#52526a' }}>
+                          <p className="text-[13px] leading-relaxed line-clamp-2 mb-4" style={{ color: VS.text2 }}>
                             {task.description || (task.project ? `Part of ${task.project}` : '\u00a0')}
                           </p>
 
@@ -536,7 +557,7 @@ export function Tasks() {
                             <div className="flex -space-x-2">
                               {task.assignee ? (
                                 <div
-                                  className="h-8 w-8 rounded-full flex items-center justify-center text-[10px] font-bold text-white ring-2 ring-[#13131f]"
+                                  className="h-8 w-8 rounded-full flex items-center justify-center text-[10px] font-bold text-white ring-2 ring-[#2d2d2d]"
                                   title={task.assignee}
                                   style={{ background: avatarGradient(task.assignee) }}
                                 >
@@ -544,8 +565,8 @@ export function Tasks() {
                                 </div>
                               ) : (
                                 <div
-                                  className="h-8 w-8 rounded-full flex items-center justify-center text-[10px] font-bold ring-2 ring-[#13131f]"
-                                  style={{ background: '#1e1e2e', color: '#3a3a52', border: '1px dashed #2a2a3e' }}
+                                  className="h-8 w-8 rounded-full flex items-center justify-center text-[10px] font-bold ring-2 ring-[#2d2d2d]"
+                                  style={{ background: VS.bg3, color: VS.text2, border: `1px dashed ${VS.border2}` }}
                                 >
                                   ?
                                 </div>
@@ -562,27 +583,27 @@ export function Tasks() {
                         </div>
 
                         {/* ── Dashed separator ── */}
-                        <div style={{ borderTop: '1px dashed #252535' }} />
+                        <div style={{ borderTop: `1px dashed ${VS.border}` }} />
 
                         {/* ── Stats row ── */}
                         <div className="flex items-center justify-between px-4 py-2.5">
                           <div className="flex items-center gap-3">
-                            <span className="flex items-center gap-1.5 text-[12px]" style={{ color: '#52526a' }}>
+                            <span className="flex items-center gap-1.5 text-[12px]" style={{ color: VS.text2 }}>
                               <MessageSquare className="h-3.5 w-3.5" />
                               {tagCount}
                             </span>
-                            <span className="flex items-center gap-1.5 text-[12px]" style={{ color: '#52526a' }}>
+                            <span className="flex items-center gap-1.5 text-[12px]" style={{ color: VS.text2 }}>
                               <Link2 className="h-3.5 w-3.5" />
                               {task.estimatedHours || 0}
                             </span>
-                            <span className="flex items-center gap-1.5 text-[12px]" style={{ color: '#52526a' }}>
+                            <span className="flex items-center gap-1.5 text-[12px]" style={{ color: VS.text2 }}>
                               <Folder className="h-3.5 w-3.5" />
                               {task.actualHours || 0}
                             </span>
                           </div>
                           <span
                             className="text-[12px] font-medium"
-                            style={{ color: isOverdue ? '#f87171' : '#52526a' }}
+                            style={{ color: isOverdue ? VS.red : VS.text2 }}
                           >
                             {date || '—'}
                           </span>
@@ -612,15 +633,15 @@ export function Tasks() {
                 {colTasks.length === 0 && !isOver && (
                   <div
                     className="flex flex-col items-center justify-center py-10 rounded-xl"
-                    style={{ border: '1px dashed #1e1e2e' }}
+                    style={{ border: `1px dashed ${VS.border}` }}
                   >
                     <div
                       className="h-8 w-8 rounded-full flex items-center justify-center mb-2"
-                      style={{ background: col.bg }}
+                      style={{ background: VS.bg3 }}
                     >
-                      <Plus className="h-4 w-4" style={{ color: col.accent }} />
+                      <Plus className="h-4 w-4" style={{ color: VS.text2 }} />
                     </div>
-                    <p className="text-xs" style={{ color: '#2e2e3e' }}>No tasks here</p>
+                    <p className="text-xs" style={{ color: VS.text2 }}>No tasks here</p>
                   </div>
                 )}
               </div>
@@ -632,19 +653,19 @@ export function Tasks() {
                     onClick={() => { setNewTaskColumnStatus(col.id); setShowNewTaskForm(true); }}
                     className="w-full flex items-center justify-center gap-2 py-2.5 rounded-xl text-xs font-medium transition-all"
                     style={{
-                      border: `1px dashed #252535`,
-                      color: '#42424e',
+                      border: `1px dashed ${VS.border}`,
+                      color: VS.text2,
                       background: 'transparent',
                     }}
                     onMouseEnter={e => {
                       (e.currentTarget as HTMLElement).style.background = col.bg;
                       (e.currentTarget as HTMLElement).style.color = col.accent;
-                      (e.currentTarget as HTMLElement).style.borderColor = col.accent + '55';
+                      (e.currentTarget as HTMLElement).style.borderColor = col.accent + '88';
                     }}
                     onMouseLeave={e => {
                       (e.currentTarget as HTMLElement).style.background = 'transparent';
-                      (e.currentTarget as HTMLElement).style.color = '#42424e';
-                      (e.currentTarget as HTMLElement).style.borderColor = '#252535';
+                      (e.currentTarget as HTMLElement).style.color = VS.text2;
+                      (e.currentTarget as HTMLElement).style.borderColor = VS.border;
                     }}
                   >
                     <Plus className="h-3.5 w-3.5" />
@@ -666,12 +687,12 @@ export function Tasks() {
         >
           <div
             className="w-full max-w-md rounded-2xl p-6 space-y-4"
-            style={{ background: '#0d0d18', border: '1px solid #252535', boxShadow: '0 24px 64px rgba(0,0,0,0.7)' }}
+            style={{ background: VS.bg1, border: `1px solid ${VS.border}`, boxShadow: '0 24px 64px rgba(0,0,0,0.7)' }}
           >
             <div className="flex items-center justify-between">
               <div>
-                <h3 className="text-sm font-bold" style={{ color: '#eeeef8' }}>New Task</h3>
-                <p className="text-[11px] mt-0.5" style={{ color: '#42424e' }}>
+                <h3 className="text-sm font-bold" style={{ color: VS.text0 }}>New Task</h3>
+                <p className="text-[11px] mt-0.5" style={{ color: VS.text2 }}>
                   Adding to{' '}
                   <span style={{ color: COLUMNS.find(c => c.id === newTaskColumnStatus)?.accent }}>
                     {COLUMNS.find(c => c.id === newTaskColumnStatus)?.label}
@@ -681,7 +702,7 @@ export function Tasks() {
               <button
                 onClick={() => setShowNewTaskForm(false)}
                 className="h-7 w-7 rounded-lg flex items-center justify-center transition-colors hover:bg-white/5"
-                style={{ color: '#555' }}
+                style={{ color: VS.text1 }}
               >
                 <X className="h-4 w-4" />
               </button>
@@ -689,7 +710,7 @@ export function Tasks() {
 
             <form onSubmit={handleCreateTask} className="space-y-3">
               <div>
-                <label className="block text-[11px] font-semibold mb-1.5 uppercase tracking-wide" style={{ color: '#42424e' }}>Title</label>
+                <label className="block text-[11px] font-semibold mb-1.5 uppercase tracking-wide" style={{ color: VS.text2 }}>Title</label>
                 <input
                   type="text"
                   value={newTaskForm.title}
@@ -701,7 +722,7 @@ export function Tasks() {
               </div>
 
               <div>
-                <label className="block text-[11px] font-semibold mb-1.5 uppercase tracking-wide" style={{ color: '#42424e' }}>Description</label>
+                <label className="block text-[11px] font-semibold mb-1.5 uppercase tracking-wide" style={{ color: VS.text2 }}>Description</label>
                 <textarea
                   value={newTaskForm.description}
                   onChange={e => setNewTaskForm(p => ({ ...p, description: e.target.value }))}
@@ -714,12 +735,12 @@ export function Tasks() {
 
               <div className="grid grid-cols-2 gap-3">
                 <div>
-                  <label className="block text-[11px] font-semibold mb-1.5 uppercase tracking-wide" style={{ color: '#42424e' }}>Priority</label>
+                  <label className="block text-[11px] font-semibold mb-1.5 uppercase tracking-wide" style={{ color: VS.text2 }}>Priority</label>
                   <select
                     value={newTaskForm.priority}
                     onChange={e => setNewTaskForm(p => ({ ...p, priority: e.target.value as Task['priority'] }))}
                     className={inputCls}
-                    style={{ ...inputStyle, color: PRIORITY_CONFIG[newTaskForm.priority]?.text || '#ccc' }}
+                    style={{ ...inputStyle, color: PRIORITY_CONFIG[newTaskForm.priority]?.text || VS.text1 }}
                   >
                     <option value="Low">Low</option>
                     <option value="Medium">Medium</option>
@@ -728,7 +749,7 @@ export function Tasks() {
                   </select>
                 </div>
                 <div>
-                  <label className="block text-[11px] font-semibold mb-1.5 uppercase tracking-wide" style={{ color: '#42424e' }}>Est. Hours</label>
+                  <label className="block text-[11px] font-semibold mb-1.5 uppercase tracking-wide" style={{ color: VS.text2 }}>Est. Hours</label>
                   <input
                     type="number"
                     value={newTaskForm.estimatedHours}
@@ -742,32 +763,32 @@ export function Tasks() {
 
               <div className="grid grid-cols-2 gap-3">
                 <div>
-                  <label className="block text-[11px] font-semibold mb-1.5 uppercase tracking-wide" style={{ color: '#42424e' }}>Project</label>
+                  <label className="block text-[11px] font-semibold mb-1.5 uppercase tracking-wide" style={{ color: VS.text2 }}>Project</label>
                   <select
                     value={newTaskForm.projectId}
                     onChange={e => setNewTaskForm(p => ({ ...p, projectId: e.target.value }))}
                     className={inputCls}
-                    style={{ ...inputStyle, color: '#ccc' }}
+                    style={{ ...inputStyle, color: VS.text1 }}
                   >
                     <option value="">No project</option>
                     {projects.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
                   </select>
                 </div>
                 <div>
-                  <label className="block text-[11px] font-semibold mb-1.5 uppercase tracking-wide" style={{ color: '#42424e' }}>Due Date</label>
+                  <label className="block text-[11px] font-semibold mb-1.5 uppercase tracking-wide" style={{ color: VS.text2 }}>Due Date</label>
                   <input
                     type="date"
                     value={newTaskForm.dueDate}
                     onChange={e => setNewTaskForm(p => ({ ...p, dueDate: e.target.value }))}
                     className={inputCls}
-                    style={{ ...inputStyle, color: '#ccc' }}
+                    style={{ ...inputStyle, color: VS.text1 }}
                   />
                 </div>
               </div>
 
               <div>
-                <label className="block text-[11px] font-semibold mb-1.5 uppercase tracking-wide" style={{ color: '#42424e' }}>
-                  Tags <span className="normal-case font-normal" style={{ color: '#2e2e3e' }}>(comma separated)</span>
+                <label className="block text-[11px] font-semibold mb-1.5 uppercase tracking-wide" style={{ color: VS.text2 }}>
+                  Tags <span className="normal-case font-normal" style={{ color: VS.text2 }}>(comma separated)</span>
                 </label>
                 <input
                   type="text"
@@ -784,7 +805,7 @@ export function Tasks() {
                   type="button"
                   onClick={() => setShowNewTaskForm(false)}
                   className="flex-1 py-2.5 rounded-xl text-sm transition-colors"
-                  style={{ background: '#13131f', border: '1px solid #252535', color: '#555' }}
+                  style={{ background: VS.bg3, border: `1px solid ${VS.border}`, color: VS.text1 }}
                 >
                   Cancel
                 </button>
@@ -792,7 +813,7 @@ export function Tasks() {
                   type="submit"
                   disabled={taskFormLoading}
                   className="flex-1 py-2.5 rounded-xl text-sm font-semibold text-white transition-all hover:opacity-90"
-                  style={{ background: 'linear-gradient(135deg,#6366f1,#818cf8)', opacity: taskFormLoading ? 0.6 : 1 }}
+                  style={{ background: VS.accent, opacity: taskFormLoading ? 0.6 : 1 }}
                 >
                   {taskFormLoading ? 'Creating...' : 'Create Task'}
                 </button>
@@ -811,17 +832,17 @@ export function Tasks() {
         >
           <div
             className="w-full max-w-md rounded-2xl p-6 space-y-4"
-            style={{ background: '#0d0d18', border: '1px solid #252535', boxShadow: '0 24px 64px rgba(0,0,0,0.7)' }}
+            style={{ background: VS.bg1, border: `1px solid ${VS.border}`, boxShadow: '0 24px 64px rgba(0,0,0,0.7)' }}
           >
             <div className="flex items-center justify-between">
               <div>
-                <h3 className="text-sm font-bold" style={{ color: '#eeeef8' }}>Edit Task</h3>
-                <p className="text-[11px] mt-0.5" style={{ color: '#42424e' }}>Update task details</p>
+                <h3 className="text-sm font-bold" style={{ color: VS.text0 }}>Edit Task</h3>
+                <p className="text-[11px] mt-0.5" style={{ color: VS.text2 }}>Update task details</p>
               </div>
               <button
                 onClick={() => setEditingTask(null)}
                 className="h-7 w-7 rounded-lg flex items-center justify-center transition-colors hover:bg-white/5"
-                style={{ color: '#555' }}
+                style={{ color: VS.text1 }}
               >
                 <X className="h-4 w-4" />
               </button>
@@ -829,7 +850,7 @@ export function Tasks() {
 
             <form onSubmit={handleUpdateTask} className="space-y-3">
               <div>
-                <label className="block text-[11px] font-semibold mb-1.5 uppercase tracking-wide" style={{ color: '#42424e' }}>Title</label>
+                <label className="block text-[11px] font-semibold mb-1.5 uppercase tracking-wide" style={{ color: VS.text2 }}>Title</label>
                 <input
                   type="text"
                   value={editTaskForm.title}
@@ -840,7 +861,7 @@ export function Tasks() {
               </div>
 
               <div>
-                <label className="block text-[11px] font-semibold mb-1.5 uppercase tracking-wide" style={{ color: '#42424e' }}>Description</label>
+                <label className="block text-[11px] font-semibold mb-1.5 uppercase tracking-wide" style={{ color: VS.text2 }}>Description</label>
                 <textarea
                   value={editTaskForm.description}
                   onChange={e => setEditTaskForm(p => ({ ...p, description: e.target.value }))}
@@ -852,12 +873,12 @@ export function Tasks() {
 
               <div className="grid grid-cols-2 gap-3">
                 <div>
-                  <label className="block text-[11px] font-semibold mb-1.5 uppercase tracking-wide" style={{ color: '#42424e' }}>Priority</label>
+                  <label className="block text-[11px] font-semibold mb-1.5 uppercase tracking-wide" style={{ color: VS.text2 }}>Priority</label>
                   <select
                     value={editTaskForm.priority}
                     onChange={e => setEditTaskForm(p => ({ ...p, priority: e.target.value as Task['priority'] }))}
                     className={inputCls}
-                    style={{ ...inputStyle, color: PRIORITY_CONFIG[editTaskForm.priority]?.text || '#ccc' }}
+                    style={{ ...inputStyle, color: PRIORITY_CONFIG[editTaskForm.priority]?.text || VS.text1 }}
                   >
                     <option value="Low">Low</option>
                     <option value="Medium">Medium</option>
@@ -866,7 +887,7 @@ export function Tasks() {
                   </select>
                 </div>
                 <div>
-                  <label className="block text-[11px] font-semibold mb-1.5 uppercase tracking-wide" style={{ color: '#42424e' }}>Est. Hours</label>
+                  <label className="block text-[11px] font-semibold mb-1.5 uppercase tracking-wide" style={{ color: VS.text2 }}>Est. Hours</label>
                   <input
                     type="number"
                     value={editTaskForm.estimatedHours}
@@ -880,31 +901,31 @@ export function Tasks() {
 
               <div className="grid grid-cols-2 gap-3">
                 <div>
-                  <label className="block text-[11px] font-semibold mb-1.5 uppercase tracking-wide" style={{ color: '#42424e' }}>Project</label>
+                  <label className="block text-[11px] font-semibold mb-1.5 uppercase tracking-wide" style={{ color: VS.text2 }}>Project</label>
                   <select
                     value={editTaskForm.projectId}
                     onChange={e => setEditTaskForm(p => ({ ...p, projectId: e.target.value }))}
                     className={inputCls}
-                    style={{ ...inputStyle, color: '#ccc' }}
+                    style={{ ...inputStyle, color: VS.text1 }}
                   >
                     <option value="">No project</option>
                     {projects.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
                   </select>
                 </div>
                 <div>
-                  <label className="block text-[11px] font-semibold mb-1.5 uppercase tracking-wide" style={{ color: '#42424e' }}>Due Date</label>
+                  <label className="block text-[11px] font-semibold mb-1.5 uppercase tracking-wide" style={{ color: VS.text2 }}>Due Date</label>
                   <input
                     type="date"
                     value={editTaskForm.dueDate}
                     onChange={e => setEditTaskForm(p => ({ ...p, dueDate: e.target.value }))}
                     className={inputCls}
-                    style={{ ...inputStyle, color: '#ccc' }}
+                    style={{ ...inputStyle, color: VS.text1 }}
                   />
                 </div>
               </div>
 
               <div>
-                <label className="block text-[11px] font-semibold mb-1.5 uppercase tracking-wide" style={{ color: '#42424e' }}>Tags</label>
+                <label className="block text-[11px] font-semibold mb-1.5 uppercase tracking-wide" style={{ color: VS.text2 }}>Tags</label>
                 <input
                   type="text"
                   value={editTaskForm.tags}
@@ -919,7 +940,7 @@ export function Tasks() {
                   type="button"
                   onClick={() => setEditingTask(null)}
                   className="flex-1 py-2.5 rounded-xl text-sm transition-colors"
-                  style={{ background: '#13131f', border: '1px solid #252535', color: '#555' }}
+                  style={{ background: VS.bg3, border: `1px solid ${VS.border}`, color: VS.text1 }}
                 >
                   Cancel
                 </button>
@@ -927,7 +948,7 @@ export function Tasks() {
                   type="submit"
                   disabled={taskFormLoading}
                   className="flex-1 py-2.5 rounded-xl text-sm font-semibold text-white transition-all hover:opacity-90"
-                  style={{ background: 'linear-gradient(135deg,#6366f1,#818cf8)', opacity: taskFormLoading ? 0.6 : 1 }}
+                  style={{ background: VS.accent, opacity: taskFormLoading ? 0.6 : 1 }}
                 >
                   {taskFormLoading ? 'Saving...' : 'Save Changes'}
                 </button>

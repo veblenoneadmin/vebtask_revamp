@@ -6,7 +6,6 @@ import { Button } from '../components/ui/button';
 import {
   Plus,
   X,
-  Save,
   Calendar,
   Clock,
   MoreHorizontal,
@@ -14,7 +13,6 @@ import {
   Trash2,
   Search,
 } from 'lucide-react';
-import { cn } from '../lib/utils';
 
 interface Task {
   id: string;

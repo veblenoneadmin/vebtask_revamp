@@ -18,7 +18,7 @@ import { cn } from '../../lib/utils';
 
 const getAllNavigationItems = () => [
   { name: 'Dashboard',      href: '/dashboard',  icon: LayoutDashboard, roles: ['OWNER', 'ADMIN', 'STAFF', 'CLIENT'] },
-  { name: 'Brain Dump',     href: '/brain-dump', icon: Brain,           roles: ['OWNER', 'ADMIN', 'STAFF'] },
+  // { name: 'Brain Dump',     href: '/brain-dump', icon: Brain,           roles: ['OWNER', 'ADMIN', 'STAFF'] },
   { name: 'Tasks',          href: '/tasks',       icon: CheckSquare,     roles: ['OWNER', 'ADMIN', 'STAFF', 'CLIENT'] },
   { name: 'Timer',          href: '/timer',       icon: Clock,           roles: ['OWNER', 'ADMIN', 'STAFF', 'CLIENT'] },
   { name: 'Attendance',     href: '/attendance',  icon: CalendarClock,   roles: ['OWNER', 'ADMIN', 'STAFF', 'CLIENT'] },

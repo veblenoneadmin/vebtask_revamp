@@ -1,25 +1,18 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { useSession } from '../lib/auth-client';
 import { useApiClient } from '../lib/api-client';
 import { useOrganization } from '../contexts/OrganizationContext';
-import { Card, CardContent, CardHeader } from '../components/ui/card';
 import { Button } from '../components/ui/button';
-import { Badge } from '../components/ui/badge';
 import {
-  CheckSquare,
   Plus,
-  Edit2,
-  Trash2,
-  Clock,
-  DollarSign,
-  Search,
-  Calendar,
-  User,
-  CheckCircle2,
-  Circle,
-  AlertCircle,
   X,
   Save,
+  Calendar,
+  Clock,
+  MoreHorizontal,
+  Edit2,
+  Trash2,
+  Search,
 } from 'lucide-react';
 import { cn } from '../lib/utils';
 
@@ -50,982 +43,776 @@ interface Project {
   color: string;
 }
 
+const COLUMNS: { id: Task['status']; label: string; accent: string; dimAccent: string }[] = [
+  { id: 'not_started', label: 'To Do',        accent: '#6366f1', dimAccent: 'rgba(99,102,241,0.12)' },
+  { id: 'in_progress', label: 'In Progress',  accent: '#f59e0b', dimAccent: 'rgba(245,158,11,0.12)' },
+  { id: 'on_hold',     label: 'On Hold',      accent: '#ef4444', dimAccent: 'rgba(239,68,68,0.12)' },
+  { id: 'completed',   label: 'Done',         accent: '#10b981', dimAccent: 'rgba(16,185,129,0.12)' },
+];
+
+const PRIORITY_CONFIG: Record<string, { label: string; bg: string; text: string; dot: string }> = {
+  Low:    { label: 'LOW',      bg: 'rgba(16,185,129,0.15)',  text: '#34d399', dot: '#10b981' },
+  Medium: { label: 'MODERATE', bg: 'rgba(245,158,11,0.15)',  text: '#fbbf24', dot: '#f59e0b' },
+  High:   { label: 'HIGH',     bg: 'rgba(239,68,68,0.15)',   text: '#f87171', dot: '#ef4444' },
+  Urgent: { label: 'URGENT',   bg: 'rgba(139,92,246,0.15)',  text: '#c084fc', dot: '#8b5cf6' },
+};
+
+const STATUS_CONFIG: Record<string, { label: string; bg: string; text: string }> = {
+  not_started: { label: 'Pending',     bg: 'rgba(99,102,241,0.12)',  text: '#818cf8' },
+  in_progress: { label: 'In Progress', bg: 'rgba(245,158,11,0.12)',  text: '#fbbf24' },
+  on_hold:     { label: 'On Hold',     bg: 'rgba(239,68,68,0.12)',   text: '#f87171' },
+  completed:   { label: 'Done',        bg: 'rgba(16,185,129,0.12)',  text: '#34d399' },
+};
+
+function getInitials(name?: string) {
+  if (!name) return '?';
+  return name.split(/[\s@.]+/).filter(Boolean).map(s => s[0]?.toUpperCase()).slice(0, 2).join('');
+}
+
+function formatDate(dateStr?: string) {
+  if (!dateStr) return null;
+  const d = new Date(dateStr);
+  return d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+}
 
 export function Tasks() {
   const { data: session } = useSession();
   const { currentOrg } = useOrganization();
   const apiClient = useApiClient();
+
   const [tasks, setTasks] = useState<Task[]>([]);
   const [projects, setProjects] = useState<Project[]>([]);
   const [loading, setLoading] = useState(true);
-  const [projectsLoading, setProjectsLoading] = useState(false);
-  const [filterStatus, setFilterStatus] = useState<string>('all');
-  const [filterPriority, setFilterPriority] = useState<string>('all');
-  const [searchTerm, setSearchTerm] = useState('');
-  const [showNewTaskForm, setShowNewTaskForm] = useState(false);
   const [userRole, setUserRole] = useState<string>('CLIENT');
+  const [searchTerm, setSearchTerm] = useState('');
+
+  // New task form
+  const [showNewTaskForm, setShowNewTaskForm] = useState(false);
+  const [newTaskColumnStatus, setNewTaskColumnStatus] = useState<Task['status']>('not_started');
   const [newTaskForm, setNewTaskForm] = useState({
+    title: '',
     description: '',
-    priority: 'Medium' as 'Low' | 'Medium' | 'High' | 'Urgent',
+    priority: 'Medium' as Task['priority'],
     projectId: '',
     estimatedHours: 0,
     dueDate: '',
     tags: ''
   });
   const [taskFormLoading, setTaskFormLoading] = useState(false);
+
+  // Edit task
   const [editingTask, setEditingTask] = useState<Task | null>(null);
   const [editTaskForm, setEditTaskForm] = useState({
+    title: '',
     description: '',
-    priority: 'Medium' as 'Low' | 'Medium' | 'High' | 'Urgent',
+    priority: 'Medium' as Task['priority'],
     projectId: '',
     estimatedHours: 0,
     dueDate: '',
     tags: ''
   });
 
-  // Fetch user role
-  useEffect(() => {
-    const fetchUserRole = async () => {
-      if (session?.user?.id) {
-        try {
-          const response = await fetch('/api/organizations');
-          if (response.ok) {
-            const data = await response.json();
-            if (data.organizations && data.organizations.length > 0) {
-              const role = data.organizations[0].role || 'CLIENT';
-              setUserRole(role);
-            } else {
-              setUserRole('CLIENT');
-            }
-          }
-        } catch (error) {
-          console.error('Failed to fetch user role:', error);
-          setUserRole('CLIENT');
-        }
-      }
-    };
+  // Drag and drop
+  const [draggingId, setDraggingId] = useState<string | null>(null);
+  const [dragOverCol, setDragOverCol] = useState<string | null>(null);
+  const dragCounter = useRef<Record<string, number>>({});
 
-    if (session) {
-      fetchUserRole();
-    }
+  // Card menu
+  const [openMenuId, setOpenMenuId] = useState<string | null>(null);
+
+  // ── fetch user role ──────────────────────────────────────────────
+  useEffect(() => {
+    const go = async () => {
+      if (!session?.user?.id) return;
+      try {
+        const res = await fetch('/api/organizations');
+        if (res.ok) {
+          const d = await res.json();
+          if (d.organizations?.length > 0) setUserRole(d.organizations[0].role || 'CLIENT');
+        }
+      } catch { /* ignore */ }
+    };
+    if (session) go();
   }, [session]);
 
-  // Fetch projects from API
-  const fetchProjects = async () => {
-    if (!session?.user?.id || !currentOrg?.id) return;
-
-    try {
-      setProjectsLoading(true);
-      const data = await apiClient.fetch(`/api/projects?limit=100`);
-      if (data.success) {
-        setProjects(data.projects || []);
-      } else {
-        console.error('Failed to fetch projects:', data.error);
-        setProjects([]);
-      }
-    } catch (error) {
-      console.error('Error fetching projects:', error);
-      setProjects([]);
-    } finally {
-      setProjectsLoading(false);
-    }
-  };
-
-  // Fetch tasks from API using the new endpoint
+  // ── fetch tasks ──────────────────────────────────────────────────
   const fetchTasks = async () => {
     if (!session?.user?.id || !currentOrg?.id) return;
-
     try {
       setLoading(true);
       const data = await apiClient.fetch('/api/tasks', { method: 'GET' });
-
-      console.log('📋 Tasks API Response:', data);
-
       if (data.success) {
-        const tasksWithDefaults = (data.tasks || []).map((task: any) => ({
-          ...task,
-          tags: task.tags || []
-          // Project name now comes directly from API via database relations
-        }));
-        setTasks(tasksWithDefaults);
-      } else {
-        console.error('Failed to fetch tasks:', data.error);
-        setTasks([]);
+        setTasks((data.tasks || []).map((t: any) => ({ ...t, tags: t.tags || [] })));
       }
-    } catch (error) {
-      console.error('Error fetching tasks:', error);
-      setTasks([]);
-    } finally {
-      setLoading(false);
-    }
+    } catch { /* ignore */ }
+    finally { setLoading(false); }
   };
 
-  useEffect(() => {
-    fetchTasks();
-  }, [session?.user?.id, currentOrg?.id]);
+  useEffect(() => { fetchTasks(); }, [session?.user?.id, currentOrg?.id]);
 
-  useEffect(() => {
-    if (showNewTaskForm && session?.user?.id && currentOrg?.id) {
-      fetchProjects();
-    }
-  }, [showNewTaskForm, session?.user?.id, currentOrg?.id]);
-
-  // Filter tasks
-  const filteredTasks = tasks.filter(task => {
-    const matchesSearch = task.title.toLowerCase().includes(searchTerm.toLowerCase()) ||
-                         task.description.toLowerCase().includes(searchTerm.toLowerCase()) ||
-                         task.tags.some(tag => tag.toLowerCase().includes(searchTerm.toLowerCase()));
-
-    const matchesStatus = filterStatus === 'all' || task.status === filterStatus;
-    const matchesPriority = filterPriority === 'all' || task.priority === filterPriority;
-
-    // If user is CLIENT, only show tasks assigned to them
-    const matchesAssignment = userRole !== 'CLIENT' ||
-                             task.assignee === 'Current User' ||
-                             task.assignee === session?.user?.email;
-
-    return matchesSearch && matchesStatus && matchesPriority && matchesAssignment;
-  });
-
-  const getPriorityColor = (priority: string) => {
-    switch (priority) {
-      case 'Urgent': return 'text-error bg-error/10 border-error/20';
-      case 'High': return 'text-error bg-error/10 border-error/20';
-      case 'Medium': return 'text-warning bg-warning/10 border-warning/20';
-      case 'Low': return 'text-info bg-info/10 border-info/20';
-      default: return 'text-muted-foreground bg-muted/10 border-border';
-    }
-  };
-
-  const getStatusColor = (status: string) => {
-    switch (status) {
-      case 'completed': return 'text-success bg-success/10 border-success/20';
-      case 'in_progress': return 'text-primary bg-primary/10 border-primary/20';
-      case 'on_hold': return 'text-warning bg-warning/10 border-warning/20';
-      default: return 'text-muted-foreground bg-muted/10 border-border';
-    }
-  };
-
-  const getStatusIcon = (status: string) => {
-    switch (status) {
-      case 'completed': return <CheckCircle2 className="h-4 w-4" />;
-      case 'in_progress': return <Clock className="h-4 w-4" />;
-      case 'on_hold': return <AlertCircle className="h-4 w-4" />;
-      default: return <Circle className="h-4 w-4" />;
-    }
-  };
-
-  // Convert Tailwind color classes to hex colors
-  const tailwindToHex = (tailwindClass: string): string => {
-    const colorMap: { [key: string]: string } = {
-      'bg-primary': '#3b82f6',    // blue-500
-      'bg-secondary': '#6b7280',  // gray-500
-      'bg-success': '#10b981',    // emerald-500
-      'bg-warning': '#f59e0b',    // amber-500
-      'bg-danger': '#ef4444',     // red-500
-      'bg-info': '#06b6d4',       // cyan-500
-      'bg-purple': '#8b5cf6',     // violet-500
-      'bg-pink': '#ec4899',       // pink-500
-      'bg-indigo': '#6366f1',     // indigo-500
-      'bg-green': '#22c55e',      // green-500
-      'bg-red': '#ef4444',        // red-500
-      'bg-blue': '#3b82f6',       // blue-500
-      'bg-yellow': '#eab308',     // yellow-500
-      'bg-orange': '#f97316',     // orange-500
-      'bg-teal': '#14b8a6',       // teal-500
-      'bg-cyan': '#06b6d4',       // cyan-500
-    };
-    return colorMap[tailwindClass] || '#6b7280';
-  };
-
-  // Get project color by projectId
-  const getProjectColor = (projectId?: string): string => {
-    console.log('🎨 getProjectColor called with projectId:', projectId);
-    console.log('🎨 Available projects:', projects.map(p => ({ id: p.id, name: p.name, color: p.color })));
-
-    if (!projectId) {
-      console.log('🎨 No projectId, returning default gray');
-      return '#6b7280'; // Default gray color
-    }
-
-    const project = projects.find(p => p.id === projectId);
-    console.log('🎨 Found project:', project);
-
-    if (!project?.color) {
-      console.log('🎨 No project or color found, returning default gray');
-      return '#6b7280';
-    }
-
-    // If it's already a hex color, return as is
-    if (project.color.startsWith('#')) {
-      console.log('🎨 Color is already hex:', project.color);
-      return project.color;
-    }
-
-    // If it's a Tailwind class, convert to hex
-    const hexColor = tailwindToHex(project.color);
-    console.log('🎨 Converted Tailwind class', project.color, 'to hex:', hexColor);
-    return hexColor;
-  };
-
-
-  const handleStatusUpdate = async (taskId: string, newStatus: Task['status']) => {
+  // ── fetch projects (for forms) ────────────────────────────────────
+  const fetchProjects = async () => {
+    if (!session?.user?.id || !currentOrg?.id) return;
     try {
-      const data = await apiClient.fetch(`/api/tasks/${taskId}/status`, {
+      const data = await apiClient.fetch('/api/projects?limit=100');
+      if (data.success) setProjects(data.projects || []);
+    } catch { /* ignore */ }
+  };
+
+  useEffect(() => {
+    if (showNewTaskForm || editingTask) fetchProjects();
+  }, [showNewTaskForm, editingTask]);
+
+  // ── drag & drop ──────────────────────────────────────────────────
+  const handleDragStart = (e: React.DragEvent, taskId: string) => {
+    setDraggingId(taskId);
+    e.dataTransfer.effectAllowed = 'move';
+    e.dataTransfer.setData('text/plain', taskId);
+  };
+
+  const handleDragEnd = () => {
+    setDraggingId(null);
+    setDragOverCol(null);
+    dragCounter.current = {};
+  };
+
+  const handleColumnDragEnter = (e: React.DragEvent, colId: string) => {
+    e.preventDefault();
+    dragCounter.current[colId] = (dragCounter.current[colId] || 0) + 1;
+    setDragOverCol(colId);
+  };
+
+  const handleColumnDragLeave = (_e: React.DragEvent, colId: string) => {
+    dragCounter.current[colId] = (dragCounter.current[colId] || 1) - 1;
+    if (dragCounter.current[colId] <= 0) {
+      dragCounter.current[colId] = 0;
+      setDragOverCol(prev => (prev === colId ? null : prev));
+    }
+  };
+
+  const handleColumnDragOver = (e: React.DragEvent) => { e.preventDefault(); };
+
+  const handleDrop = async (e: React.DragEvent, colId: Task['status']) => {
+    e.preventDefault();
+    const taskId = e.dataTransfer.getData('text/plain') || draggingId;
+    setDraggingId(null);
+    setDragOverCol(null);
+    dragCounter.current = {};
+    if (!taskId) return;
+    const task = tasks.find(t => t.id === taskId);
+    if (!task || task.status === colId) return;
+
+    // Optimistic update
+    setTasks(prev => prev.map(t => t.id === taskId ? { ...t, status: colId } : t));
+    try {
+      await apiClient.fetch(`/api/tasks/${taskId}/status`, {
         method: 'PATCH',
-        body: JSON.stringify({ status: newStatus })
+        body: JSON.stringify({ status: colId })
       });
-
-      if (data.message) {
-        setTasks(prevTasks =>
-          prevTasks.map(task =>
-            task.id === taskId
-              ? { ...task, status: newStatus, updatedAt: new Date().toISOString().split('T')[0] }
-              : task
-          )
-        );
-      }
-    } catch (error) {
-      console.error('Error updating task status:', error);
-      alert('Failed to update task status. Please try again.');
+    } catch {
+      // Revert on failure
+      setTasks(prev => prev.map(t => t.id === taskId ? { ...t, status: task.status } : t));
     }
   };
 
-  const handleDeleteTask = async (taskId: string) => {
-    if (!confirm('Are you sure you want to delete this task? This action cannot be undone.')) {
-      return;
-    }
-
-    try {
-      const data = await apiClient.fetch(`/api/tasks/${taskId}`, {
-        method: 'DELETE'
-      });
-
-      if (data.message) {
-        setTasks(prevTasks => prevTasks.filter(task => task.id !== taskId));
-      }
-    } catch (error) {
-      console.error('Error deleting task:', error);
-      alert('Failed to delete task. Please try again.');
-    }
-  };
-
+  // ── create task ──────────────────────────────────────────────────
   const handleCreateTask = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!session?.user?.id || !currentOrg?.id) return;
-
     try {
       setTaskFormLoading(true);
-
-      // Generate title based on selected project
       const selectedProject = projects.find(p => p.id === newTaskForm.projectId);
-      const title = selectedProject ? `${selectedProject.name} Task` : 'General Task';
-
-      const taskData = {
-        title: title,
-        description: newTaskForm.description,
-        userId: session.user.id,
-        orgId: currentOrg.id,
-        priority: newTaskForm.priority,
-        projectId: newTaskForm.projectId || undefined,
-        estimatedHours: newTaskForm.estimatedHours,
-        dueDate: newTaskForm.dueDate ? new Date(newTaskForm.dueDate + 'T00:00:00.000Z').toISOString() : undefined,
-        tags: newTaskForm.tags ? newTaskForm.tags.split(',').map(t => t.trim()).filter(Boolean) : undefined
-      };
-
+      const title = newTaskForm.title.trim() || (selectedProject ? `${selectedProject.name} Task` : 'New Task');
       const data = await apiClient.fetch('/api/tasks', {
         method: 'POST',
-        body: JSON.stringify(taskData)
+        body: JSON.stringify({
+          title,
+          description: newTaskForm.description,
+          userId: session.user.id,
+          orgId: currentOrg.id,
+          priority: newTaskForm.priority,
+          status: newTaskColumnStatus,
+          projectId: newTaskForm.projectId || undefined,
+          estimatedHours: newTaskForm.estimatedHours,
+          dueDate: newTaskForm.dueDate ? new Date(newTaskForm.dueDate + 'T00:00:00.000Z').toISOString() : undefined,
+          tags: newTaskForm.tags ? newTaskForm.tags.split(',').map(t => t.trim()).filter(Boolean) : undefined,
+        })
       });
-
       if (data.task) {
-        await fetchTasks(); // Refresh the task list
-        setNewTaskForm({
-          description: '',
-          priority: 'Medium',
-          projectId: '',
-          estimatedHours: 0,
-          dueDate: '',
-          tags: ''
-        });
+        await fetchTasks();
+        setNewTaskForm({ title: '', description: '', priority: 'Medium', projectId: '', estimatedHours: 0, dueDate: '', tags: '' });
         setShowNewTaskForm(false);
       }
-    } catch (error) {
-      console.error('Error creating task:', error);
-      alert('Failed to create task. Please try again.');
-    } finally {
-      setTaskFormLoading(false);
-    }
+    } catch { alert('Failed to create task.'); }
+    finally { setTaskFormLoading(false); }
   };
 
+  // ── update task ──────────────────────────────────────────────────
+  const handleUpdateTask = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!editingTask) return;
+    try {
+      setTaskFormLoading(true);
+      const selectedProject = projects.find(p => p.id === editTaskForm.projectId);
+      const title = editTaskForm.title.trim() || (selectedProject ? `${selectedProject.name} Task` : 'General Task');
+      const data = await apiClient.fetch(`/api/tasks/${editingTask.id}`, {
+        method: 'PATCH',
+        body: JSON.stringify({
+          title,
+          description: editTaskForm.description || '',
+          priority: editTaskForm.priority,
+          estimatedHours: editTaskForm.estimatedHours || 0,
+          projectId: editTaskForm.projectId || null,
+          dueDate: editTaskForm.dueDate ? new Date(editTaskForm.dueDate + 'T00:00:00.000Z').toISOString() : null,
+          tags: editTaskForm.tags ? editTaskForm.tags.split(',').map(t => t.trim()).filter(Boolean) : null,
+        })
+      });
+      if (data.task) {
+        await fetchTasks();
+        setEditingTask(null);
+      }
+    } catch { alert('Failed to update task.'); }
+    finally { setTaskFormLoading(false); }
+  };
+
+  // ── delete task ──────────────────────────────────────────────────
+  const handleDeleteTask = async (taskId: string) => {
+    if (!confirm('Delete this task?')) return;
+    try {
+      const data = await apiClient.fetch(`/api/tasks/${taskId}`, { method: 'DELETE' });
+      if (data.message) setTasks(prev => prev.filter(t => t.id !== taskId));
+    } catch { alert('Failed to delete task.'); }
+  };
+
+  // ── open edit form ───────────────────────────────────────────────
   const handleEditTask = (task: Task) => {
+    setOpenMenuId(null);
     setEditingTask(task);
     setEditTaskForm({
+      title: task.title,
       description: task.description,
       priority: task.priority,
       projectId: task.projectId || '',
       estimatedHours: task.estimatedHours,
       dueDate: task.dueDate ? new Date(task.dueDate).toISOString().split('T')[0] : '',
-      tags: Array.isArray(task.tags) ? task.tags.join(', ') : (task.tags || '')
+      tags: Array.isArray(task.tags) ? task.tags.join(', ') : '',
     });
-
-    // Fetch projects when editing task if not already loaded
-    if (projects.length === 0 && session?.user?.id && currentOrg?.id) {
-      fetchProjects();
-    }
   };
 
-  const handleUpdateTask = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!editingTask || !session?.user?.id) return;
+  // ── filtered tasks ───────────────────────────────────────────────
+  const filtered = tasks.filter(t =>
+    !searchTerm ||
+    t.title.toLowerCase().includes(searchTerm.toLowerCase()) ||
+    t.description.toLowerCase().includes(searchTerm.toLowerCase())
+  );
 
-    try {
-      setTaskFormLoading(true);
+  const tasksForCol = (colId: string) => filtered.filter(t => t.status === colId);
 
-      // Clean the form data and prepare valid request body
-      const taskData: any = {};
+  // ── estimated hours total per column ─────────────────────────────
+  const colHours = (colId: string) =>
+    tasksForCol(colId).reduce((s, t) => s + (t.estimatedHours || 0), 0);
 
-      // Generate title based on selected project
-      const selectedProject = projects.find(p => p.id === editTaskForm.projectId);
-      const title = selectedProject ? `${selectedProject.name} Task` : 'General Task';
-      taskData.title = title;
+  // ── input style shared ───────────────────────────────────────────
+  const inputCls = 'w-full px-3 py-2 rounded-lg text-sm text-white placeholder-gray-600 focus:outline-none focus:ring-1 focus:ring-violet-500/50 transition-all';
+  const inputStyle = { background: '#111', border: '1px solid #222' };
 
-      // Description can be empty string
-      taskData.description = editTaskForm.description || '';
-
-      // Always include priority
-      if (editTaskForm.priority) {
-        taskData.priority = editTaskForm.priority;
-      }
-
-      // Always include estimatedHours (can be 0)
-      taskData.estimatedHours = editTaskForm.estimatedHours || 0;
-
-      // Include projectId if provided
-      if (editTaskForm.projectId && editTaskForm.projectId.trim()) {
-        taskData.projectId = editTaskForm.projectId.trim();
-      } else {
-        taskData.projectId = null;
-      }
-
-      // Handle dueDate - convert date to ISO datetime string or send null
-      if (editTaskForm.dueDate && editTaskForm.dueDate.trim()) {
-        taskData.dueDate = new Date(editTaskForm.dueDate + 'T00:00:00.000Z').toISOString();
-      } else {
-        taskData.dueDate = null;
-      }
-
-      // Handle tags - convert to array or null
-      if (editTaskForm.tags && editTaskForm.tags.trim()) {
-        taskData.tags = editTaskForm.tags.split(',').map(t => t.trim()).filter(Boolean);
-      } else {
-        taskData.tags = null;
-      }
-
-      console.log('📤 Sending task data:', taskData);
-
-      const data = await apiClient.fetch(`/api/tasks/${editingTask.id}`, {
-        method: 'PATCH',
-        body: JSON.stringify(taskData)
-      });
-
-      if (data.task) {
-        await fetchTasks(); // Refresh the task list
-        setEditingTask(null);
-        setEditTaskForm({
-          description: '',
-          priority: 'Medium',
-          projectId: '',
-          estimatedHours: 0,
-          dueDate: '',
-          tags: ''
-        });
-      }
-    } catch (error: any) {
-      console.error('Error updating task:', error);
-
-      // Try to get more detailed error info
-      if (error.message === 'Invalid request body') {
-        alert(`Validation error: Please check the console for details`);
-      } else {
-        alert('Failed to update task. Please try again.');
-      }
-    } finally {
-      setTaskFormLoading(false);
-    }
-  };
-
-  const taskStats = {
-    total: tasks.length,
-    completed: tasks.filter(t => t.status === 'completed').length,
-    inProgress: tasks.filter(t => t.status === 'in_progress').length,
-    overdue: tasks.filter(t => t.dueDate && new Date(t.dueDate) < new Date() && t.status !== 'completed').length
-  };
+  if (loading) {
+    return (
+      <div className="flex items-center justify-center h-64">
+        <div className="animate-spin rounded-full h-8 w-8 border-b-2" style={{ borderColor: '#6366f1' }} />
+      </div>
+    );
+  }
 
   return (
-    <div className="space-y-8">
-      {/* Header */}
-      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+    <div className="space-y-5">
+      {/* ── Header ── */}
+      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
         <div>
-          <h1 className="text-2xl sm:text-3xl font-bold gradient-text">
-            {userRole === 'CLIENT' ? 'My Tasks' : 'Task Management'}
+          <h1 className="text-2xl font-bold" style={{ color: '#e2e8f0' }}>
+            {userRole === 'CLIENT' ? 'My Tasks' : 'Task Board'}
           </h1>
-          <p className="text-muted-foreground mt-2">
-            {userRole === 'CLIENT'
-              ? 'View and track tasks assigned to you'
-              : 'Organize, prioritize, and track your work'}
+          <p className="text-sm mt-0.5" style={{ color: '#555' }}>
+            {tasks.length} tasks across {COLUMNS.length} stages
           </p>
         </div>
-        {userRole !== 'CLIENT' && (
-          <Button
-            onClick={() => setShowNewTaskForm(true)}
-            className="bg-gradient-primary hover:bg-gradient-primary/90 text-white shadow-glow transition-all duration-300"
-          >
-            <Plus className="h-4 w-4 mr-2" />
-            New Task
-          </Button>
-        )}
+        <div className="flex items-center gap-2">
+          {/* Search */}
+          <div className="relative">
+            <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-3.5 w-3.5" style={{ color: '#444' }} />
+            <input
+              type="text"
+              placeholder="Search tasks..."
+              value={searchTerm}
+              onChange={e => setSearchTerm(e.target.value)}
+              className="pl-8 pr-3 py-2 rounded-lg text-sm placeholder-gray-600 focus:outline-none focus:ring-1 focus:ring-violet-500/50 transition-all"
+              style={{ background: '#0d0d0d', border: '1px solid #1e1e1e', color: '#ccc', width: 180 }}
+            />
+          </div>
+          {userRole !== 'CLIENT' && (
+            <Button
+              onClick={() => { setNewTaskColumnStatus('not_started'); setShowNewTaskForm(true); }}
+              className="bg-gradient-primary text-white text-sm h-9"
+            >
+              <Plus className="h-4 w-4 mr-1.5" />
+              New Task
+            </Button>
+          )}
+        </div>
       </div>
 
-      {/* Stats Cards */}
-      <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
-        <Card className="glass shadow-elevation">
-          <CardContent className="p-6">
-            <div className="flex items-center">
-              <div className="h-12 w-12 rounded-xl bg-gradient-primary flex items-center justify-center shadow-glow mr-4">
-                <CheckSquare className="h-6 w-6 text-white" />
-              </div>
-              <div>
-                <p className="text-2xl font-bold">{taskStats.total}</p>
-                <p className="text-sm text-muted-foreground">Total Tasks</p>
-              </div>
-            </div>
-          </CardContent>
-        </Card>
+      {/* ── Kanban Board ── */}
+      <div className="flex gap-4 overflow-x-auto pb-4" style={{ minHeight: 'calc(100vh - 220px)' }}>
+        {COLUMNS.map(col => {
+          const colTasks = tasksForCol(col.id);
+          const isOver = dragOverCol === col.id;
 
-        <Card className="glass shadow-elevation">
-          <CardContent className="p-6">
-            <div className="flex items-center">
-              <div className="h-12 w-12 rounded-xl bg-gradient-success flex items-center justify-center shadow-glow mr-4">
-                <CheckCircle2 className="h-6 w-6 text-white" />
-              </div>
-              <div>
-                <p className="text-2xl font-bold">{taskStats.completed}</p>
-                <p className="text-sm text-muted-foreground">Completed</p>
-              </div>
-            </div>
-          </CardContent>
-        </Card>
-
-        <Card className="glass shadow-elevation">
-          <CardContent className="p-6">
-            <div className="flex items-center">
-              <div className="h-12 w-12 rounded-xl bg-gradient-info flex items-center justify-center shadow-glow mr-4">
-                <Clock className="h-6 w-6 text-white" />
-              </div>
-              <div>
-                <p className="text-2xl font-bold">{taskStats.inProgress}</p>
-                <p className="text-sm text-muted-foreground">In Progress</p>
-              </div>
-            </div>
-          </CardContent>
-        </Card>
-
-        <Card className="glass shadow-elevation">
-          <CardContent className="p-6">
-            <div className="flex items-center">
-              <div className="h-12 w-12 rounded-xl bg-gradient-error flex items-center justify-center shadow-glow mr-4">
-                <AlertCircle className="h-6 w-6 text-white" />
-              </div>
-              <div>
-                <p className="text-2xl font-bold">{taskStats.overdue}</p>
-                <p className="text-sm text-muted-foreground">Overdue</p>
-              </div>
-            </div>
-          </CardContent>
-        </Card>
-      </div>
-
-      {/* Filters and Search */}
-      <Card className="glass shadow-elevation">
-        <CardContent className="p-6">
-          <div className="flex flex-col md:flex-row gap-4 items-center">
-            {/* Search */}
-            <div className="relative flex-1">
-              <Search className="absolute left-3 top-3 h-4 w-4 text-muted-foreground" />
-              <input
-                type="text"
-                placeholder="Search tasks..."
-                value={searchTerm}
-                onChange={(e) => setSearchTerm(e.target.value)}
-                className="w-full pl-10 pr-4 py-2 glass-surface border border-border rounded-lg focus:outline-none focus:ring-2 focus:ring-primary"
-              />
-            </div>
-
-            {/* Status Filter */}
-            <select
-              value={filterStatus}
-              onChange={(e) => setFilterStatus(e.target.value)}
-              className="px-4 py-2 glass-surface border border-border rounded-lg focus:outline-none focus:ring-2 focus:ring-primary"
+          return (
+            <div
+              key={col.id}
+              className="flex-shrink-0 flex flex-col rounded-xl transition-all duration-200"
+              style={{
+                width: 280,
+                background: isOver ? col.dimAccent : '#0a0a0a',
+                border: `1px solid ${isOver ? col.accent + '55' : '#181818'}`,
+              }}
+              onDragEnter={e => handleColumnDragEnter(e, col.id)}
+              onDragLeave={e => handleColumnDragLeave(e, col.id)}
+              onDragOver={handleColumnDragOver}
+              onDrop={e => handleDrop(e, col.id)}
             >
-              <option value="all">All Status</option>
-              <option value="not_started">Not Started</option>
-              <option value="in_progress">In Progress</option>
-              <option value="completed">Completed</option>
-              <option value="on_hold">On Hold</option>
-            </select>
-
-            {/* Priority Filter */}
-            <select
-              value={filterPriority}
-              onChange={(e) => setFilterPriority(e.target.value)}
-              className="px-4 py-2 glass-surface border border-border rounded-lg focus:outline-none focus:ring-2 focus:ring-primary"
-            >
-              <option value="all">All Priority</option>
-              <option value="Urgent">Urgent Priority</option>
-              <option value="High">High Priority</option>
-              <option value="Medium">Medium Priority</option>
-              <option value="Low">Low Priority</option>
-            </select>
-          </div>
-        </CardContent>
-      </Card>
-
-      {/* Tasks List */}
-      <Card className="glass shadow-elevation">
-        <CardHeader>
-          <div className="flex items-center justify-between">
-            <h2 className="text-xl font-semibold">Tasks ({filteredTasks.length})</h2>
-          </div>
-        </CardHeader>
-        <CardContent className="p-0">
-          <div className="space-y-1">
-            {loading ? (
-              <div className="p-8 text-center">
-                <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary mx-auto mb-4"></div>
-                <p className="text-muted-foreground">Loading tasks...</p>
+              {/* Column header */}
+              <div className="flex items-center justify-between px-4 py-3" style={{ borderBottom: '1px solid #141414' }}>
+                <div className="flex items-center gap-2">
+                  <div className="h-2.5 w-2.5 rounded-full" style={{ background: col.accent }} />
+                  <span className="text-xs font-semibold uppercase tracking-widest" style={{ color: '#aaa' }}>
+                    {col.label}
+                  </span>
+                </div>
+                <div className="flex items-center gap-2">
+                  {colHours(col.id) > 0 && (
+                    <span className="text-[10px] px-1.5 py-0.5 rounded" style={{ background: '#1a1a1a', color: '#555' }}>
+                      {colHours(col.id)}h
+                    </span>
+                  )}
+                  <span
+                    className="text-[11px] font-semibold h-5 w-5 flex items-center justify-center rounded"
+                    style={{ background: col.dimAccent, color: col.accent }}
+                  >
+                    {colTasks.length}
+                  </span>
+                </div>
               </div>
-            ) : filteredTasks.length === 0 ? (
-              <div className="p-8 text-center">
-                <p className="text-muted-foreground">No tasks found. Create your first task!</p>
-              </div>
-            ) : (
-              filteredTasks.map((task) => {
-                console.log('🎯 Rendering task:', { id: task.id, title: task.title, projectId: task.projectId, project: task.project });
-                const taskColor = getProjectColor(task.projectId);
-                console.log('🎯 Task color for', task.title, ':', taskColor);
 
-                return (
-                <div
-                  key={task.id}
-                  className="relative flex items-center p-4 border-b border-border last:border-b-0 hover:bg-surface-elevated/50 transition-colors"
-                >
-                  {/* Project Color Border */}
-                  <div
-                    className="absolute left-0 top-0 bottom-0 w-1 z-10"
-                    style={{ backgroundColor: taskColor }}
-                  />
+              {/* Cards */}
+              <div className="flex-1 overflow-y-auto px-3 py-3 space-y-3">
+                {colTasks.map(task => {
+                  const pCfg = PRIORITY_CONFIG[task.priority] || PRIORITY_CONFIG.Medium;
+                  const sCfg = STATUS_CONFIG[task.status] || STATUS_CONFIG.not_started;
+                  const isDragging = draggingId === task.id;
+                  const date = formatDate(task.dueDate);
+                  const isOverdue = task.dueDate && new Date(task.dueDate) < new Date() && task.status !== 'completed';
 
-                {/* Task Content */}
-                <div className="flex-1 min-w-0">
-                  <div className="flex items-start justify-between">
-                    <div className="flex-1">
-                      <div className="flex items-center gap-2 mb-1">
-                        <h3 className="font-semibold text-foreground truncate">{task.title}</h3>
-                        <Badge className={cn("text-xs", getPriorityColor(task.priority))}>
-                          {task.priority}
-                        </Badge>
-                        <Badge className={cn("text-xs", getStatusColor(task.status))}>
-                          {getStatusIcon(task.status)}
-                          <span className="ml-1 capitalize">{task.status.replace('_', ' ')}</span>
-                        </Badge>
+                  return (
+                    <div
+                      key={task.id}
+                      draggable
+                      onDragStart={e => handleDragStart(e, task.id)}
+                      onDragEnd={handleDragEnd}
+                      className="rounded-xl p-3.5 cursor-grab active:cursor-grabbing relative group transition-all duration-150"
+                      style={{
+                        background: isDragging ? '#161616' : '#111',
+                        border: `1px solid ${isDragging ? col.accent + '40' : '#1e1e1e'}`,
+                        opacity: isDragging ? 0.5 : 1,
+                        boxShadow: isDragging ? `0 0 0 2px ${col.accent}30` : 'none',
+                      }}
+                    >
+                      {/* Priority badge + menu */}
+                      <div className="flex items-center justify-between mb-2.5">
+                        <div
+                          className="flex items-center gap-1.5 px-2 py-0.5 rounded-full text-[10px] font-semibold tracking-wide"
+                          style={{ background: pCfg.bg, color: pCfg.text }}
+                        >
+                          <div className="h-1.5 w-1.5 rounded-full" style={{ background: pCfg.dot }} />
+                          {pCfg.label}
+                        </div>
+                        {userRole !== 'CLIENT' && (
+                          <div className="relative">
+                            <button
+                              onClick={e => { e.stopPropagation(); setOpenMenuId(openMenuId === task.id ? null : task.id); }}
+                              className="h-6 w-6 flex items-center justify-center rounded opacity-0 group-hover:opacity-100 transition-opacity"
+                              style={{ color: '#555' }}
+                            >
+                              <MoreHorizontal className="h-3.5 w-3.5" />
+                            </button>
+                            {openMenuId === task.id && (
+                              <>
+                                <div className="fixed inset-0 z-10" onClick={() => setOpenMenuId(null)} />
+                                <div
+                                  className="absolute right-0 top-full mt-1 z-20 rounded-lg overflow-hidden py-1 min-w-[120px]"
+                                  style={{ background: '#141414', border: '1px solid #222', boxShadow: '0 8px 24px rgba(0,0,0,0.5)' }}
+                                >
+                                  <button
+                                    onClick={() => handleEditTask(task)}
+                                    className="flex items-center gap-2 w-full px-3 py-1.5 text-xs hover:bg-white/5 transition-colors"
+                                    style={{ color: '#aaa' }}
+                                  >
+                                    <Edit2 className="h-3 w-3" /> Edit
+                                  </button>
+                                  <button
+                                    onClick={() => { setOpenMenuId(null); handleDeleteTask(task.id); }}
+                                    className="flex items-center gap-2 w-full px-3 py-1.5 text-xs hover:bg-red-500/10 transition-colors"
+                                    style={{ color: '#f87171' }}
+                                  >
+                                    <Trash2 className="h-3 w-3" /> Delete
+                                  </button>
+                                </div>
+                              </>
+                            )}
+                          </div>
+                        )}
                       </div>
 
-                      <p className="text-sm text-muted-foreground mb-2 line-clamp-2">
-                        {task.description}
+                      {/* Title */}
+                      <p className="text-sm font-semibold leading-snug mb-1" style={{ color: '#e2e8f0' }}>
+                        {task.title}
                       </p>
 
-                      <div className="flex items-center gap-4 text-xs text-muted-foreground">
-                        {task.dueDate && (
-                          <span className="flex items-center gap-1">
-                            <Calendar className="h-3 w-3" />
-                            {new Date(task.dueDate).toLocaleDateString()}
+                      {/* Description */}
+                      {task.description && (
+                        <p className="text-xs leading-relaxed mb-3 line-clamp-2" style={{ color: '#555' }}>
+                          {task.description}
+                        </p>
+                      )}
+
+                      {/* Project tag */}
+                      {task.project && (
+                        <div className="mb-2.5">
+                          <span className="text-[10px] px-2 py-0.5 rounded-full" style={{ background: '#1a1a1a', color: '#666' }}>
+                            {task.project}
                           </span>
-                        )}
-
-                        <span className="flex items-center gap-1">
-                          <Clock className="h-3 w-3" />
-                          {task.actualHours}h / {task.estimatedHours}h
-                        </span>
-
-                        {task.assignee && (
-                          <span className="flex items-center gap-1">
-                            <User className="h-3 w-3" />
-                            {task.assignee}
-                          </span>
-                        )}
-
-                        {task.isBillable && task.hourlyRate && (
-                          <span className="flex items-center gap-1">
-                            <DollarSign className="h-3 w-3" />
-                            ${task.hourlyRate}/hr
-                          </span>
-                        )}
-                      </div>
-
-                      {/* Tags */}
-                      {task.tags && task.tags.length > 0 && (
-                        <div className="flex gap-1 mt-2">
-                          {task.tags.map((tag) => (
-                            <span
-                              key={tag}
-                              className="px-2 py-1 bg-muted/20 text-muted-foreground text-xs rounded"
-                            >
-                              #{tag}
-                            </span>
-                          ))}
                         </div>
                       )}
-                    </div>
 
-                    {/* Progress Bar */}
-                    <div className="ml-4 w-20">
-                      <div className="w-full h-2 bg-surface-elevated rounded-full">
-                        <div
-                          className="h-full bg-gradient-primary rounded-full transition-all duration-300"
-                          style={{ width: `${Math.min((task.actualHours / task.estimatedHours) * 100, 100)}%` }}
-                        />
+                      {/* Footer */}
+                      <div className="flex items-center justify-between mt-2.5 pt-2.5" style={{ borderTop: '1px solid #1a1a1a' }}>
+                        {/* Assignee avatar */}
+                        <div className="flex items-center gap-1.5">
+                          {task.assignee && (
+                            <div
+                              className="h-6 w-6 rounded-full flex items-center justify-center text-[9px] font-bold text-white"
+                              title={task.assignee}
+                              style={{ background: 'linear-gradient(135deg, #6366f1, #8b5cf6)' }}
+                            >
+                              {getInitials(task.assignee)}
+                            </div>
+                          )}
+                          {task.estimatedHours > 0 && (
+                            <div className="flex items-center gap-1 text-[10px]" style={{ color: '#555' }}>
+                              <Clock className="h-3 w-3" />
+                              {task.estimatedHours}h
+                            </div>
+                          )}
+                        </div>
+
+                        <div className="flex items-center gap-2">
+                          {/* Status badge */}
+                          <span
+                            className="text-[9px] font-semibold px-1.5 py-0.5 rounded uppercase tracking-wide"
+                            style={{ background: sCfg.bg, color: sCfg.text }}
+                          >
+                            {sCfg.label}
+                          </span>
+                          {/* Due date */}
+                          {date && (
+                            <div
+                              className="flex items-center gap-1 text-[10px]"
+                              style={{ color: isOverdue ? '#f87171' : '#555' }}
+                            >
+                              <Calendar className="h-3 w-3" />
+                              {date}
+                            </div>
+                          )}
+                        </div>
                       </div>
-                      <p className="text-xs text-muted-foreground text-center mt-1">
-                        {Math.round((task.actualHours / task.estimatedHours) * 100)}%
-                      </p>
                     </div>
+                  );
+                })}
+
+                {/* Empty column state */}
+                {colTasks.length === 0 && (
+                  <div
+                    className="flex flex-col items-center justify-center py-8 rounded-xl border border-dashed"
+                    style={{ borderColor: '#1e1e1e', color: '#333' }}
+                  >
+                    <div className="h-6 w-6 rounded-full mb-2" style={{ background: col.dimAccent }} />
+                    <p className="text-xs">No tasks</p>
                   </div>
-                </div>
-
-                {/* Actions */}
-                <div className="flex items-center gap-2 ml-4">
-                  <select
-                    value={task.status}
-                    onChange={(e) => handleStatusUpdate(task.id, e.target.value as Task['status'])}
-                    className="px-2 py-1 text-xs glass-surface border border-border rounded focus:outline-none focus:ring-1 focus:ring-primary"
-                  >
-                    <option value="not_started">Not Started</option>
-                    <option value="in_progress">In Progress</option>
-                    <option value="completed">Completed</option>
-                    <option value="on_hold">On Hold</option>
-                  </select>
-
-                  <Button
-                    size="sm"
-                    variant="ghost"
-                    className="h-8 w-8 p-0"
-                    onClick={() => handleEditTask(task)}
-                  >
-                    <Edit2 className="h-3 w-3" />
-                  </Button>
-
-                  {userRole !== 'CLIENT' && (
-                    <Button
-                      size="sm"
-                      variant="ghost"
-                      className="h-8 w-8 p-0 text-error hover:text-error"
-                      onClick={() => handleDeleteTask(task.id)}
-                    >
-                      <Trash2 className="h-3 w-3" />
-                    </Button>
-                  )}
-                </div>
+                )}
               </div>
-              );
-              })
-            )}
-          </div>
-        </CardContent>
-      </Card>
 
-      {/* New Task Form Modal */}
+              {/* + Add New */}
+              {userRole !== 'CLIENT' && (
+                <div className="px-3 pb-3 pt-1">
+                  <button
+                    onClick={() => { setNewTaskColumnStatus(col.id); setShowNewTaskForm(true); }}
+                    className="w-full flex items-center gap-2 px-3 py-2 rounded-lg text-xs transition-colors duration-150"
+                    style={{ color: '#444', background: 'transparent' }}
+                    onMouseEnter={e => {
+                      (e.currentTarget as HTMLElement).style.background = '#141414';
+                      (e.currentTarget as HTMLElement).style.color = '#888';
+                    }}
+                    onMouseLeave={e => {
+                      (e.currentTarget as HTMLElement).style.background = 'transparent';
+                      (e.currentTarget as HTMLElement).style.color = '#444';
+                    }}
+                  >
+                    <Plus className="h-3.5 w-3.5" />
+                    Add New
+                  </button>
+                </div>
+              )}
+            </div>
+          );
+        })}
+      </div>
+
+      {/* ── New Task Modal ── */}
       {showNewTaskForm && (
-        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
-          <Card className="w-full max-w-md max-h-[90vh] overflow-y-auto">
-            <CardHeader>
-              <div className="flex items-center justify-between">
-                <h3 className="text-lg font-semibold">Create New Task</h3>
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  onClick={() => setShowNewTaskForm(false)}
-                  className="h-8 w-8 p-0"
-                >
-                  <X className="h-4 w-4" />
-                </Button>
-              </div>
-            </CardHeader>
-            <CardContent>
-              <form onSubmit={handleCreateTask} className="space-y-4">
-                <div>
-                  <label className="block text-sm font-medium mb-1">Project *</label>
-                  <select
-                    value={newTaskForm.projectId}
-                    onChange={(e) => setNewTaskForm(prev => ({ ...prev, projectId: e.target.value }))}
-                    className="w-full p-3 bg-surface-elevated border border-border rounded-lg text-white focus:border-primary focus:ring-2 focus:ring-primary/20 transition-all"
-                    disabled={taskFormLoading || projectsLoading}
-                    required
-                  >
-                    <option value="" className="bg-surface-elevated">Select a project...</option>
-                    {projects.map((project) => (
-                      <option key={project.id} value={project.id} className="bg-surface-elevated">
-                        {project.name}
-                      </option>
-                    ))}
-                  </select>
-                  {projectsLoading && (
-                    <p className="text-xs text-muted-foreground mt-1">Loading projects...</p>
-                  )}
-                </div>
+        <div className="fixed inset-0 z-50 flex items-center justify-center" style={{ background: 'rgba(0,0,0,0.7)' }}
+          onClick={e => { if (e.target === e.currentTarget) setShowNewTaskForm(false); }}>
+          <div className="w-full max-w-md rounded-2xl p-6 space-y-4" style={{ background: '#0d0d0d', border: '1px solid #1e1e1e' }}>
+            <div className="flex items-center justify-between">
+              <h3 className="text-base font-semibold" style={{ color: '#e2e8f0' }}>
+                New Task — <span style={{ color: COLUMNS.find(c => c.id === newTaskColumnStatus)?.accent }}>{COLUMNS.find(c => c.id === newTaskColumnStatus)?.label}</span>
+              </h3>
+              <button onClick={() => setShowNewTaskForm(false)} className="text-gray-600 hover:text-gray-400 transition-colors">
+                <X className="h-4 w-4" />
+              </button>
+            </div>
 
+            <form onSubmit={handleCreateTask} className="space-y-3">
+              <div>
+                <label className="block text-xs font-medium mb-1" style={{ color: '#555' }}>Title</label>
+                <input
+                  type="text"
+                  value={newTaskForm.title}
+                  onChange={e => setNewTaskForm(p => ({ ...p, title: e.target.value }))}
+                  placeholder="Task title"
+                  className={inputCls}
+                  style={inputStyle}
+                />
+              </div>
+
+              <div>
+                <label className="block text-xs font-medium mb-1" style={{ color: '#555' }}>Description</label>
+                <textarea
+                  value={newTaskForm.description}
+                  onChange={e => setNewTaskForm(p => ({ ...p, description: e.target.value }))}
+                  placeholder="What needs to be done?"
+                  rows={3}
+                  className={inputCls + ' resize-none'}
+                  style={inputStyle}
+                />
+              </div>
+
+              <div className="grid grid-cols-2 gap-3">
                 <div>
-                  <label className="block text-sm font-medium mb-1">Description</label>
-                  <textarea
-                    value={newTaskForm.description}
-                    onChange={(e) => setNewTaskForm(prev => ({ ...prev, description: e.target.value }))}
-                    className="w-full p-3 bg-surface-elevated border border-border rounded-lg text-white placeholder-muted-foreground focus:border-primary focus:ring-2 focus:ring-primary/20 transition-all resize-none"
-                    placeholder="Describe the task goals and requirements..."
-                    rows={3}
-                    disabled={taskFormLoading}
+                  <label className="block text-xs font-medium mb-1" style={{ color: '#555' }}>Priority</label>
+                  <select
+                    value={newTaskForm.priority}
+                    onChange={e => setNewTaskForm(p => ({ ...p, priority: e.target.value as Task['priority'] }))}
+                    className={inputCls}
+                    style={{ ...inputStyle, color: PRIORITY_CONFIG[newTaskForm.priority]?.text || '#ccc' }}
+                  >
+                    <option value="Low">Low</option>
+                    <option value="Medium">Medium</option>
+                    <option value="High">High</option>
+                    <option value="Urgent">Urgent</option>
+                  </select>
+                </div>
+                <div>
+                  <label className="block text-xs font-medium mb-1" style={{ color: '#555' }}>Est. Hours</label>
+                  <input
+                    type="number"
+                    value={newTaskForm.estimatedHours}
+                    onChange={e => setNewTaskForm(p => ({ ...p, estimatedHours: parseFloat(e.target.value) || 0 }))}
+                    className={inputCls}
+                    style={inputStyle}
+                    min="0" step="0.5"
                   />
                 </div>
+              </div>
 
-
-                <div className="grid grid-cols-2 gap-4">
-                  <div>
-                    <label className="block text-sm font-medium mb-1">Priority</label>
-                    <select
-                      value={newTaskForm.priority}
-                      onChange={(e) => setNewTaskForm(prev => ({ ...prev, priority: e.target.value as any }))}
-                      className="w-full p-3 bg-surface-elevated border border-border rounded-lg text-white focus:border-primary focus:ring-2 focus:ring-primary/20 transition-all"
-                      disabled={taskFormLoading}
-                    >
-                      <option value="Low" className="bg-surface-elevated">Low Priority</option>
-                      <option value="Medium" className="bg-surface-elevated">Medium Priority</option>
-                      <option value="High" className="bg-surface-elevated">High Priority</option>
-                      <option value="Urgent" className="bg-surface-elevated">Urgent Priority</option>
-                    </select>
-                  </div>
-
-                  <div>
-                    <label className="block text-sm font-medium mb-1">Estimated Hours</label>
-                    <input
-                      type="number"
-                      value={newTaskForm.estimatedHours}
-                      onChange={(e) => setNewTaskForm(prev => ({ ...prev, estimatedHours: parseFloat(e.target.value) || 0 }))}
-                      className="w-full p-3 bg-surface-elevated border border-border rounded-lg text-white placeholder-muted-foreground focus:border-primary focus:ring-2 focus:ring-primary/20 transition-all"
-                      placeholder="0"
-                      min="0"
-                      step="0.5"
-                      disabled={taskFormLoading}
-                    />
-                  </div>
-                </div>
-
+              <div className="grid grid-cols-2 gap-3">
                 <div>
-                  <label className="block text-sm font-medium mb-1">Due Date</label>
+                  <label className="block text-xs font-medium mb-1" style={{ color: '#555' }}>Project</label>
+                  <select
+                    value={newTaskForm.projectId}
+                    onChange={e => setNewTaskForm(p => ({ ...p, projectId: e.target.value }))}
+                    className={inputCls}
+                    style={{ ...inputStyle, color: '#ccc' }}
+                  >
+                    <option value="">No project</option>
+                    {projects.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
+                  </select>
+                </div>
+                <div>
+                  <label className="block text-xs font-medium mb-1" style={{ color: '#555' }}>Due Date</label>
                   <input
                     type="date"
                     value={newTaskForm.dueDate}
-                    onChange={(e) => setNewTaskForm(prev => ({ ...prev, dueDate: e.target.value }))}
-                    className="w-full p-3 bg-surface-elevated border border-border rounded-lg text-white focus:border-primary focus:ring-2 focus:ring-primary/20 transition-all"
-                    disabled={taskFormLoading}
+                    onChange={e => setNewTaskForm(p => ({ ...p, dueDate: e.target.value }))}
+                    className={inputCls}
+                    style={{ ...inputStyle, color: '#ccc' }}
                   />
                 </div>
+              </div>
 
-                <div>
-                  <label className="block text-sm font-medium mb-1">Tags (comma separated)</label>
-                  <input
-                    type="text"
-                    value={newTaskForm.tags}
-                    onChange={(e) => setNewTaskForm(prev => ({ ...prev, tags: e.target.value }))}
-                    className="w-full p-3 bg-surface-elevated border border-border rounded-lg text-white placeholder-muted-foreground focus:border-primary focus:ring-2 focus:ring-primary/20 transition-all"
-                    placeholder="urgent, frontend, client"
-                    disabled={taskFormLoading}
-                  />
-                </div>
+              <div>
+                <label className="block text-xs font-medium mb-1" style={{ color: '#555' }}>Tags <span style={{ color: '#333' }}>(comma separated)</span></label>
+                <input
+                  type="text"
+                  value={newTaskForm.tags}
+                  onChange={e => setNewTaskForm(p => ({ ...p, tags: e.target.value }))}
+                  placeholder="frontend, urgent, client"
+                  className={inputCls}
+                  style={inputStyle}
+                />
+              </div>
 
-                <div className="flex gap-2 pt-4">
-                  <Button
-                    type="button"
-                    variant="outline"
-                    onClick={() => setShowNewTaskForm(false)}
-                    disabled={taskFormLoading}
-                    className="flex-1"
-                  >
-                    Cancel
-                  </Button>
-                  <Button
-                    type="submit"
-                    disabled={taskFormLoading || !newTaskForm.projectId}
-                    className="flex-1"
-                  >
-                    {taskFormLoading ? (
-                      <>
-                        <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white mr-2"></div>
-                        Creating...
-                      </>
-                    ) : (
-                      <>
-                        <Save className="h-4 w-4 mr-2" />
-                        Create Task
-                      </>
-                    )}
-                  </Button>
-                </div>
-              </form>
-            </CardContent>
-          </Card>
+              <div className="flex gap-2 pt-1">
+                <button type="button" onClick={() => setShowNewTaskForm(false)}
+                  className="flex-1 py-2 rounded-lg text-sm transition-colors"
+                  style={{ background: '#141414', border: '1px solid #222', color: '#666' }}>
+                  Cancel
+                </button>
+                <button type="submit" disabled={taskFormLoading}
+                  className="flex-1 py-2 rounded-lg text-sm font-medium text-white transition-all"
+                  style={{ background: 'linear-gradient(135deg, #6366f1, #8b5cf6)', opacity: taskFormLoading ? 0.6 : 1 }}>
+                  {taskFormLoading ? 'Creating...' : 'Create Task'}
+                </button>
+              </div>
+            </form>
+          </div>
         </div>
       )}
 
-      {/* Edit Task Form Modal */}
+      {/* ── Edit Task Modal ── */}
       {editingTask && (
-        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
-          <Card className="w-full max-w-md max-h-[90vh] overflow-y-auto">
-            <CardHeader>
-              <div className="flex items-center justify-between">
-                <h3 className="text-lg font-semibold">Edit Task</h3>
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  onClick={() => setEditingTask(null)}
-                  className="h-8 w-8 p-0"
-                >
-                  <X className="h-4 w-4" />
-                </Button>
-              </div>
-            </CardHeader>
-            <CardContent>
-              <form onSubmit={handleUpdateTask} className="space-y-4">
-                <div>
-                  <label className="block text-sm font-medium mb-1">Project *</label>
-                  <select
-                    value={editTaskForm.projectId}
-                    onChange={(e) => setEditTaskForm(prev => ({ ...prev, projectId: e.target.value }))}
-                    className="w-full p-3 bg-surface-elevated border border-border rounded-lg text-white focus:border-primary focus:ring-2 focus:ring-primary/20 transition-all"
-                    disabled={taskFormLoading || projectsLoading}
-                    required
-                  >
-                    <option value="" className="bg-surface-elevated">Select a project...</option>
-                    {projects.map((project) => (
-                      <option key={project.id} value={project.id} className="bg-surface-elevated">
-                        {project.name}
-                      </option>
-                    ))}
-                  </select>
-                  {projectsLoading && (
-                    <p className="text-xs text-muted-foreground mt-1">Loading projects...</p>
-                  )}
-                </div>
+        <div className="fixed inset-0 z-50 flex items-center justify-center" style={{ background: 'rgba(0,0,0,0.7)' }}
+          onClick={e => { if (e.target === e.currentTarget) setEditingTask(null); }}>
+          <div className="w-full max-w-md rounded-2xl p-6 space-y-4" style={{ background: '#0d0d0d', border: '1px solid #1e1e1e' }}>
+            <div className="flex items-center justify-between">
+              <h3 className="text-base font-semibold" style={{ color: '#e2e8f0' }}>Edit Task</h3>
+              <button onClick={() => setEditingTask(null)} className="text-gray-600 hover:text-gray-400 transition-colors">
+                <X className="h-4 w-4" />
+              </button>
+            </div>
 
+            <form onSubmit={handleUpdateTask} className="space-y-3">
+              <div>
+                <label className="block text-xs font-medium mb-1" style={{ color: '#555' }}>Title</label>
+                <input
+                  type="text"
+                  value={editTaskForm.title}
+                  onChange={e => setEditTaskForm(p => ({ ...p, title: e.target.value }))}
+                  className={inputCls}
+                  style={inputStyle}
+                />
+              </div>
+
+              <div>
+                <label className="block text-xs font-medium mb-1" style={{ color: '#555' }}>Description</label>
+                <textarea
+                  value={editTaskForm.description}
+                  onChange={e => setEditTaskForm(p => ({ ...p, description: e.target.value }))}
+                  rows={3}
+                  className={inputCls + ' resize-none'}
+                  style={inputStyle}
+                />
+              </div>
+
+              <div className="grid grid-cols-2 gap-3">
                 <div>
-                  <label className="block text-sm font-medium mb-1">Description</label>
-                  <textarea
-                    value={editTaskForm.description}
-                    onChange={(e) => setEditTaskForm(prev => ({ ...prev, description: e.target.value }))}
-                    className="w-full p-3 bg-surface-elevated border border-border rounded-lg text-white placeholder-muted-foreground focus:border-primary focus:ring-2 focus:ring-primary/20 transition-all resize-none"
-                    placeholder="Describe the task goals and requirements..."
-                    rows={3}
-                    disabled={taskFormLoading}
+                  <label className="block text-xs font-medium mb-1" style={{ color: '#555' }}>Priority</label>
+                  <select
+                    value={editTaskForm.priority}
+                    onChange={e => setEditTaskForm(p => ({ ...p, priority: e.target.value as Task['priority'] }))}
+                    className={inputCls}
+                    style={{ ...inputStyle, color: PRIORITY_CONFIG[editTaskForm.priority]?.text || '#ccc' }}
+                  >
+                    <option value="Low">Low</option>
+                    <option value="Medium">Medium</option>
+                    <option value="High">High</option>
+                    <option value="Urgent">Urgent</option>
+                  </select>
+                </div>
+                <div>
+                  <label className="block text-xs font-medium mb-1" style={{ color: '#555' }}>Est. Hours</label>
+                  <input
+                    type="number"
+                    value={editTaskForm.estimatedHours}
+                    onChange={e => setEditTaskForm(p => ({ ...p, estimatedHours: parseFloat(e.target.value) || 0 }))}
+                    className={inputCls}
+                    style={inputStyle}
+                    min="0" step="0.5"
                   />
                 </div>
+              </div>
 
-
-                <div className="grid grid-cols-2 gap-4">
-                  <div>
-                    <label className="block text-sm font-medium mb-1">Priority</label>
-                    <select
-                      value={editTaskForm.priority}
-                      onChange={(e) => setEditTaskForm(prev => ({ ...prev, priority: e.target.value as 'Low' | 'Medium' | 'High' | 'Urgent' }))}
-                      className="w-full p-3 bg-surface-elevated border border-border rounded-lg text-white focus:border-primary focus:ring-2 focus:ring-primary/20 transition-all"
-                      disabled={taskFormLoading}
-                    >
-                      <option value="Low" className="bg-surface-elevated">Low Priority</option>
-                      <option value="Medium" className="bg-surface-elevated">Medium Priority</option>
-                      <option value="High" className="bg-surface-elevated">High Priority</option>
-                      <option value="Urgent" className="bg-surface-elevated">Urgent Priority</option>
-                    </select>
-                  </div>
-
-                  <div>
-                    <label className="block text-sm font-medium mb-1">Estimated Hours</label>
-                    <input
-                      type="number"
-                      value={editTaskForm.estimatedHours}
-                      onChange={(e) => setEditTaskForm(prev => ({ ...prev, estimatedHours: parseFloat(e.target.value) || 0 }))}
-                      className="w-full p-3 bg-surface-elevated border border-border rounded-lg text-white placeholder-muted-foreground focus:border-primary focus:ring-2 focus:ring-primary/20 transition-all"
-                      placeholder="0"
-                      min="0"
-                      step="0.5"
-                      disabled={taskFormLoading}
-                    />
-                  </div>
-                </div>
-
+              <div className="grid grid-cols-2 gap-3">
                 <div>
-                  <label className="block text-sm font-medium mb-1">Due Date</label>
+                  <label className="block text-xs font-medium mb-1" style={{ color: '#555' }}>Project</label>
+                  <select
+                    value={editTaskForm.projectId}
+                    onChange={e => setEditTaskForm(p => ({ ...p, projectId: e.target.value }))}
+                    className={inputCls}
+                    style={{ ...inputStyle, color: '#ccc' }}
+                  >
+                    <option value="">No project</option>
+                    {projects.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
+                  </select>
+                </div>
+                <div>
+                  <label className="block text-xs font-medium mb-1" style={{ color: '#555' }}>Due Date</label>
                   <input
                     type="date"
                     value={editTaskForm.dueDate}
-                    onChange={(e) => setEditTaskForm(prev => ({ ...prev, dueDate: e.target.value }))}
-                    className="w-full p-3 bg-surface-elevated border border-border rounded-lg text-white focus:border-primary focus:ring-2 focus:ring-primary/20 transition-all"
-                    disabled={taskFormLoading}
+                    onChange={e => setEditTaskForm(p => ({ ...p, dueDate: e.target.value }))}
+                    className={inputCls}
+                    style={{ ...inputStyle, color: '#ccc' }}
                   />
                 </div>
+              </div>
 
-                <div>
-                  <label className="block text-sm font-medium mb-1">Tags (comma separated)</label>
-                  <input
-                    type="text"
-                    value={editTaskForm.tags}
-                    onChange={(e) => setEditTaskForm(prev => ({ ...prev, tags: e.target.value }))}
-                    className="w-full p-3 bg-surface-elevated border border-border rounded-lg text-white placeholder-muted-foreground focus:border-primary focus:ring-2 focus:ring-primary/20 transition-all"
-                    placeholder="urgent, frontend, client"
-                    disabled={taskFormLoading}
-                  />
-                </div>
+              <div>
+                <label className="block text-xs font-medium mb-1" style={{ color: '#555' }}>Tags</label>
+                <input
+                  type="text"
+                  value={editTaskForm.tags}
+                  onChange={e => setEditTaskForm(p => ({ ...p, tags: e.target.value }))}
+                  className={inputCls}
+                  style={inputStyle}
+                />
+              </div>
 
-                <div className="flex gap-2 pt-4">
-                  <Button
-                    type="button"
-                    variant="outline"
-                    onClick={() => setEditingTask(null)}
-                    disabled={taskFormLoading}
-                    className="flex-1"
-                  >
-                    Cancel
-                  </Button>
-                  <Button
-                    type="submit"
-                    disabled={taskFormLoading || !editTaskForm.projectId}
-                    className="flex-1"
-                  >
-                    {taskFormLoading ? (
-                      <>
-                        <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white mr-2"></div>
-                        Updating...
-                      </>
-                    ) : (
-                      <>
-                        <Save className="h-4 w-4 mr-2" />
-                        Update Task
-                      </>
-                    )}
-                  </Button>
-                </div>
-              </form>
-            </CardContent>
-          </Card>
+              <div className="flex gap-2 pt-1">
+                <button type="button" onClick={() => setEditingTask(null)}
+                  className="flex-1 py-2 rounded-lg text-sm transition-colors"
+                  style={{ background: '#141414', border: '1px solid #222', color: '#666' }}>
+                  Cancel
+                </button>
+                <button type="submit" disabled={taskFormLoading}
+                  className="flex-1 py-2 rounded-lg text-sm font-medium text-white transition-all"
+                  style={{ background: 'linear-gradient(135deg, #6366f1, #8b5cf6)', opacity: taskFormLoading ? 0.6 : 1 }}>
+                  {taskFormLoading ? 'Saving...' : 'Save Changes'}
+                </button>
+              </div>
+            </form>
+          </div>
         </div>
       )}
-
     </div>
   );
 }

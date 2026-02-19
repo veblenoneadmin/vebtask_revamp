@@ -224,28 +224,7 @@ export function Dashboard() {
       {/* Dynamic Widget Grid */}
       <div className="grid grid-cols-4 gap-6 auto-rows-min">
         {widgets.map(renderWidget)}
-        
-        {isEditMode && (
-          <Card className="glass border-2 border-dashed border-primary/50 flex items-center justify-center p-8 col-span-1 row-span-1">
-            <Button variant="ghost" className="flex flex-col items-center space-y-2 text-muted-foreground">
-              <Plus className="h-8 w-8" />
-              <span className="text-sm">Add Widget</span>
-            </Button>
-          </Card>
-        )}
       </div>
-
-      {widgets.length === 0 && !loading && (
-        <Card className="glass text-center p-12">
-          <LayoutGrid className="h-12 w-12 mx-auto text-muted-foreground mb-4" />
-          <h3 className="text-lg font-semibold mb-2">No widgets configured</h3>
-          <p className="text-muted-foreground mb-4">Add your first widget to get started with your personalized dashboard.</p>
-          <Button onClick={() => setIsEditMode(true)}>
-            <Plus className="h-4 w-4 mr-2" />
-            Add Widget
-          </Button>
-        </Card>
-      )}
     </div>
   );
 }

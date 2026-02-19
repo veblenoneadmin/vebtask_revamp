@@ -100,7 +100,9 @@ export const auth = betterAuth({
       secure: process.env.NODE_ENV === 'production',
       sameSite: "lax",
       httpOnly: true,
-      domain: process.env.NODE_ENV === 'production' ? '.vebtask.com' : undefined
+      // Only set domain if COOKIE_DOMAIN env var is explicitly configured.
+      // Omitting domain defaults to the current host, which works on Railway.
+      domain: process.env.COOKIE_DOMAIN || undefined
     }
   },
   

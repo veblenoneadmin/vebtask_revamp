@@ -79,6 +79,62 @@ async function runDatabaseMigrations() {
   }
 }
 
+// Auto-seed initial test account if database is empty
+async function seedInitialData() {
+  if (!process.env.DATABASE_URL) return;
+
+  try {
+    const userCount = await prisma.user.count();
+    if (userCount > 0) {
+      console.log('ℹ️  Database has existing users, skipping initial seed');
+      return;
+    }
+
+    console.log('🌱 Empty database detected — seeding initial test account...');
+    const { default: bcrypt } = await import('bcryptjs');
+    const hashedPassword = await bcrypt.hash('Test@1234', 10);
+
+    const user = await prisma.user.create({
+      data: {
+        email: 'admin@vebtask.com',
+        name: 'VebTask Admin',
+        emailVerified: true,
+      }
+    });
+
+    await prisma.account.create({
+      data: {
+        accountId: user.email,
+        userId: user.id,
+        providerId: 'credential',
+        password: hashedPassword,
+      }
+    });
+
+    const org = await prisma.organization.create({
+      data: {
+        name: 'VebTask Demo',
+        slug: 'vebtask-demo',
+        createdById: user.id,
+      }
+    });
+
+    await prisma.membership.create({
+      data: {
+        userId: user.id,
+        orgId: org.id,
+        role: 'OWNER',
+      }
+    });
+
+    console.log('✅ Test account seeded:');
+    console.log('   Email: admin@vebtask.com');
+    console.log('   Password: Test@1234');
+  } catch (error) {
+    console.warn('⚠️  Initial seed failed (non-fatal):', error.message);
+  }
+}
+
 // CORS headers with environment-aware configuration
 app.use((req, res, next) => {
   const allowedOrigins = [
@@ -2872,10 +2928,12 @@ async function startServer() {
     }).on('error', reject);
   });
 
-  // Run migrations after the server is already accepting connections
-  runDatabaseMigrations().catch(err => {
-    console.warn('⚠️  Background migration error (server still running):', err.message);
-  });
+  // Run migrations then seed initial data, both in background after server starts
+  runDatabaseMigrations()
+    .then(() => seedInitialData())
+    .catch(err => {
+      console.warn('⚠️  Background setup error (server still running):', err.message);
+    });
 }
 
 // Start the server

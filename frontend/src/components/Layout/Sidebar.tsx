@@ -6,13 +6,11 @@ import {
   LayoutDashboard,
   CheckSquare,
   Clock,
-  Brain,
   Settings,
   BarChart3,
   Building2,
   Users,
   Shield,
-  CalendarClock
 } from 'lucide-react';
 import { cn } from '../../lib/utils';
 

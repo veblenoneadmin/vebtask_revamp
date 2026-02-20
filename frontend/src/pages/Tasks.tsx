@@ -637,6 +637,30 @@ export function Tasks() {
                           </div>
                         </div>
 
+                        {/* ── Live timer strip (only when running) ── */}
+                        {timerTaskId === task.id && (
+                          <div
+                            className="mx-4 mb-2 rounded-lg flex items-center justify-between px-3 py-1.5"
+                            style={{ background: `${VS.teal}18`, border: `1px solid ${VS.teal}44` }}
+                          >
+                            <div className="flex items-center gap-1.5">
+                              <span
+                                className="h-1.5 w-1.5 rounded-full animate-pulse"
+                                style={{ background: VS.teal }}
+                              />
+                              <span className="text-[10px] uppercase tracking-wider" style={{ color: VS.teal }}>
+                                Recording
+                              </span>
+                            </div>
+                            <span
+                              className="text-[13px] font-mono font-bold tabular-nums"
+                              style={{ color: VS.teal }}
+                            >
+                              {formatTimer(getTimerSeconds(task.id))}
+                            </span>
+                          </div>
+                        )}
+
                         {/* ── Dashed separator ── */}
                         <div style={{ borderTop: `1px dashed ${VS.border}` }} />
 

@@ -10,7 +10,7 @@ function fmtElapsed(s: number) {
 }
 
 function nowClock() {
-  return new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+  return new Date().toLocaleTimeString('en-AU', { hour: '2-digit', minute: '2-digit', second: '2-digit', timeZone: 'Australia/Sydney' });
 }
 
 const pageTitles: Record<string, string> = {

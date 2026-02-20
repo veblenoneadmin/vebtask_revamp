@@ -9,6 +9,10 @@ function fmtElapsed(s: number) {
   return `${String(h).padStart(2,'0')}:${String(m).padStart(2,'0')}:${String(sec).padStart(2,'0')}`;
 }
 
+function nowClock() {
+  return new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+}
+
 const pageTitles: Record<string, string> = {
   '/dashboard':   'Dashboard',
   '/brain-dump':  'Brain Dump',
@@ -30,6 +34,9 @@ const MainLayout: React.FC = () => {
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [userRole, setUserRole] = useState<string>('');
   const [orgId, setOrgId] = useState<string>('');
+
+  // Wall clock
+  const [currentTime, setCurrentTime] = useState(nowClock());
 
   // Attendance timer
   const [attendanceActive, setAttendanceActive] = useState<{ timeIn: string } | null>(null);
@@ -54,6 +61,12 @@ const MainLayout: React.FC = () => {
     };
     if (session) fetchRole();
   }, [session]);
+
+  // Wall clock tick
+  useEffect(() => {
+    const id = setInterval(() => setCurrentTime(nowClock()), 1000);
+    return () => clearInterval(id);
+  }, []);
 
   // Fetch attendance status once orgId is known, then poll every 30s
   useEffect(() => {
@@ -99,13 +112,10 @@ const MainLayout: React.FC = () => {
       {/* Top Navbar */}
       <header
         className="fixed top-0 right-0 z-40 flex h-14 items-center justify-between px-4 md:px-6 md:left-60 left-0"
-        style={{
-          background: '#070707',
-          borderBottom: '1px solid #1c1c1c',
-        }}
+        style={{ background: '#070707', borderBottom: '1px solid #1c1c1c' }}
       >
+        {/* Left — hamburger + page title */}
         <div className="flex items-center gap-3">
-          {/* Hamburger — mobile only */}
           <button
             className="md:hidden flex items-center justify-center h-8 w-8 rounded-lg transition-colors"
             style={{ color: '#666' }}
@@ -114,26 +124,32 @@ const MainLayout: React.FC = () => {
           >
             <Menu className="h-5 w-5" />
           </button>
-
-          {/* Page title */}
-          <h1 className="text-sm font-semibold" style={{ color: '#666' }}>
-            {pageTitle}
-          </h1>
+          <h1 className="text-sm font-semibold" style={{ color: '#666' }}>{pageTitle}</h1>
         </div>
 
-        {/* Attendance running timer pill */}
-        <div className="flex items-center gap-2">
+        {/* Center — wall clock + attendance elapsed (absolutely centered) */}
+        <div className="absolute left-1/2 -translate-x-1/2 flex items-center gap-3">
+          {/* Actual time */}
+          <span className="text-[13px] font-mono font-semibold tabular-nums" style={{ color: '#555' }}>
+            {currentTime}
+          </span>
+
+          {/* Attendance elapsed — only when clocked in */}
           {attendanceActive && (
-            <div
-              className="flex items-center gap-1.5 px-2.5 py-1 rounded-lg"
-              style={{ background: 'rgba(74,222,128,0.08)', border: '1px solid rgba(74,222,128,0.2)' }}
-            >
-              <span className="h-1.5 w-1.5 rounded-full animate-pulse" style={{ background: '#4ade80' }} />
-              <span className="text-[12px] font-mono font-semibold tabular-nums" style={{ color: '#4ade80' }}>
-                {fmtElapsed(navElapsed)}
-              </span>
-            </div>
+            <>
+              <span style={{ color: '#2a2a2a' }}>|</span>
+              <div className="flex items-center gap-1.5">
+                <span className="h-1.5 w-1.5 rounded-full animate-pulse" style={{ background: '#4ade80' }} />
+                <span className="text-[13px] font-mono font-semibold tabular-nums" style={{ color: '#4ade80' }}>
+                  {fmtElapsed(navElapsed)}
+                </span>
+              </div>
+            </>
           )}
+        </div>
+
+        {/* Right — user dropdown */}
+        <div className="flex items-center gap-2">
 
           {/* Account dropdown */}
           <div className="relative">

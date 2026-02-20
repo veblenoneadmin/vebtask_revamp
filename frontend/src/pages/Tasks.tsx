@@ -1030,41 +1030,55 @@ export function Tasks() {
               </div>
 
               {/* ── Timer ── */}
-              <div
-                className="rounded-xl p-3 flex items-center justify-between"
-                style={{ background: VS.bg3, border: `1px solid ${VS.border2}` }}
-              >
-                <div>
-                  <div className="text-[10px] uppercase tracking-wider mb-1" style={{ color: VS.text2 }}>
-                    Time Tracked
-                  </div>
+              {(() => {
+                const isRunning = timerTaskId === editingTask?.id;
+                const canStart = editingTask?.status === 'in_progress';
+                return (
                   <div
-                    className="text-xl font-mono font-bold tabular-nums"
-                    style={{ color: timerTaskId === editingTask?.id ? VS.teal : VS.text0 }}
+                    className="rounded-xl p-3 flex items-center justify-between"
+                    style={{ background: VS.bg3, border: `1px solid ${VS.border2}` }}
                   >
-                    {formatTimer(getTimerSeconds(editingTask?.id ?? ''))}
+                    <div>
+                      <div className="text-[10px] uppercase tracking-wider mb-1" style={{ color: VS.text2 }}>
+                        Time Tracked
+                      </div>
+                      <div
+                        className="text-xl font-mono font-bold tabular-nums"
+                        style={{ color: isRunning ? VS.teal : VS.text0 }}
+                      >
+                        {formatTimer(getTimerSeconds(editingTask?.id ?? ''))}
+                      </div>
+                      {!canStart && !isRunning && (
+                        <div className="text-[10px] mt-1" style={{ color: VS.yellow }}>
+                          Move to In Progress to start timer
+                        </div>
+                      )}
+                    </div>
+                    <button
+                      type="button"
+                      disabled={!isRunning && !canStart}
+                      onClick={() =>
+                        isRunning
+                          ? handleStopTimer(editingTask!.id)
+                          : handleStartTimer(editingTask!.id)
+                      }
+                      className="flex items-center gap-1.5 px-4 py-2 rounded-lg text-sm font-semibold transition-all"
+                      style={
+                        isRunning
+                          ? { background: `${VS.red}22`,  color: VS.red,  border: `1px solid ${VS.red}55`  }
+                          : canStart
+                          ? { background: `${VS.teal}22`, color: VS.teal, border: `1px solid ${VS.teal}55` }
+                          : { background: VS.bg2, color: VS.text2, border: `1px solid ${VS.border}`, cursor: 'not-allowed', opacity: 0.5 }
+                      }
+                    >
+                      {isRunning
+                        ? <><Square className="h-3.5 w-3.5 fill-current" /> Stop</>
+                        : <><Play  className="h-3.5 w-3.5 fill-current" /> Start</>
+                      }
+                    </button>
                   </div>
-                </div>
-                <button
-                  type="button"
-                  onClick={() =>
-                    timerTaskId === editingTask?.id
-                      ? handleStopTimer(editingTask!.id)
-                      : handleStartTimer(editingTask!.id)
-                  }
-                  className="flex items-center gap-1.5 px-4 py-2 rounded-lg text-sm font-semibold transition-all"
-                  style={
-                    timerTaskId === editingTask?.id
-                      ? { background: `${VS.red}22`, color: VS.red,  border: `1px solid ${VS.red}55`  }
-                      : { background: `${VS.teal}22`, color: VS.teal, border: `1px solid ${VS.teal}55` }
-                  }
-                >
-                  {timerTaskId === editingTask?.id
-                    ? <><Square className="h-3.5 w-3.5 fill-current" /> Stop</>
-                    : <><Play  className="h-3.5 w-3.5 fill-current" /> Start</>
-                  }
-                </button>
-              </div>
+                );
+              })()}
 
               <div className="flex gap-2 pt-2">
                 <button

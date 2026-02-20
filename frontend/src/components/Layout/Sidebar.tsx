@@ -1,7 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { NavLink, useLocation } from 'react-router-dom';
 import { useSession } from '../../lib/auth-client';
-import { hasAdminAccess } from '../../config/internal';
 import {
   LayoutDashboard,
   CheckSquare,
@@ -10,7 +9,6 @@ import {
   BarChart3,
   Building2,
   Users,
-  Shield,
 } from 'lucide-react';
 import { cn } from '../../lib/utils';
 
@@ -31,7 +29,7 @@ const getAllNavigationItems = () => [
   { name: 'Time Logs',      href: '/timesheets',  icon: Clock,           roles: ['OWNER', 'ADMIN', 'STAFF', 'CLIENT'] },
   { name: 'Clients',        href: '/clients',     icon: Users,           roles: ['OWNER', 'ADMIN', 'STAFF'] },
   { name: 'Reports',        href: '/reports',     icon: BarChart3,       roles: ['OWNER', 'ADMIN', 'STAFF'] },
-  { name: 'Administration', href: '/admin',       icon: Shield,          roles: ['OWNER', 'ADMIN'] },
+  { name: 'User Management', href: '/admin',       icon: Users,           roles: ['OWNER', 'ADMIN'] },
   { name: 'Settings',       href: '/settings',    icon: Settings,        roles: ['OWNER', 'ADMIN', 'STAFF', 'CLIENT'] },
 ];
 
@@ -67,7 +65,7 @@ const Sidebar: React.FC<SidebarProps> = ({ isOpen, onClose }) => {
   }, [location.pathname]);
 
   const navItems = getAllNavigationItems().filter(item => {
-    if (item.name === 'Administration') return hasAdminAccess(userRole);
+    if (item.name === 'User Management') return userRole === 'OWNER' || userRole === 'ADMIN';
     return item.roles.includes(userRole);
   });
 

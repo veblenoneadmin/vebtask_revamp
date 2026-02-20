@@ -1,21 +1,32 @@
 import { useState, useEffect } from 'react';
-import { Card, CardContent, CardHeader, CardTitle } from '../components/ui/card';
-import { 
-  Users, 
-  UserPlus, 
-  Settings, 
-  Shield, 
-  Mail, 
-  Trash2,
-  Edit3,
-  Crown,
-  UserCog,
-  Building2,
-  Clock,
-  BarChart3
+import {
+  Users, UserPlus, Mail, Trash2, Edit3, Crown,
+  UserCog, Shield, Clock, CheckSquare, X, Check,
 } from 'lucide-react';
 
-interface User {
+// ── VS Code Dark+ tokens ───────────────────────────────────────────────────────
+const VS = {
+  bg0:    '#1e1e1e',
+  bg1:    '#252526',
+  bg2:    '#2d2d2d',
+  bg3:    '#333333',
+  border: '#3c3c3c',
+  border2:'#454545',
+  text0:  '#f0f0f0',
+  text1:  '#c0c0c0',
+  text2:  '#909090',
+  blue:   '#569cd6',
+  teal:   '#4ec9b0',
+  yellow: '#dcdcaa',
+  orange: '#ce9178',
+  purple: '#c586c0',
+  red:    '#f44747',
+  green:  '#6a9955',
+  accent: '#007acc',
+};
+
+// ── Types ──────────────────────────────────────────────────────────────────────
+interface OrgUser {
   id: string;
   email: string;
   name: string;
@@ -24,15 +35,9 @@ interface User {
   memberships: Array<{
     id: string;
     role: 'OWNER' | 'ADMIN' | 'STAFF' | 'CLIENT';
-    org: {
-      name: string;
-      slug: string;
-    };
+    org: { name: string; slug: string };
   }>;
-  _count: {
-    timeLogs: number;
-    createdTasks: number;
-  };
+  _count: { timeLogs: number; createdTasks: number };
 }
 
 interface Invite {
@@ -42,533 +47,470 @@ interface Invite {
   status: 'PENDING' | 'ACCEPTED' | 'EXPIRED' | 'REVOKED';
   createdAt: string;
   expiresAt: string;
-  invitedBy: {
-    name: string;
-    email: string;
-  };
+  invitedBy: { name: string; email: string };
 }
 
-export function Admin() {
-  const [activeTab, setActiveTab] = useState('users');
-  const [users, setUsers] = useState<User[]>([]);
-  const [invites, setInvites] = useState<Invite[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
-  
-  // New user invite form
-  const [showInviteForm, setShowInviteForm] = useState(false);
-  const [inviteEmail, setInviteEmail] = useState('');
-  const [inviteRole, setInviteRole] = useState<'ADMIN' | 'STAFF' | 'CLIENT'>('STAFF');
-  const [inviting, setInviting] = useState(false);
-  
-  // User editing
-  const [editingUser, setEditingUser] = useState<User | null>(null);
-  const [editingRole, setEditingRole] = useState<'ADMIN' | 'STAFF' | 'CLIENT'>('STAFF');
+// ── Role config ────────────────────────────────────────────────────────────────
+const ROLE_CFG: Record<string, { color: string; bg: string; icon: React.ElementType; label: string }> = {
+  OWNER: { color: VS.yellow,  bg: 'rgba(220,220,170,0.12)', icon: Crown,   label: 'Owner'  },
+  ADMIN: { color: VS.blue,    bg: 'rgba(86,156,214,0.12)',  icon: Shield,  label: 'Admin'  },
+  STAFF: { color: VS.teal,    bg: 'rgba(78,201,176,0.12)',  icon: UserCog, label: 'Staff'  },
+  CLIENT:{ color: VS.text2,   bg: 'rgba(144,144,144,0.12)', icon: Users,   label: 'Client' },
+};
 
-  useEffect(() => {
-    fetchData();
-  }, []);
+const inputCls = 'w-full px-3 py-2 rounded-lg text-[13px] focus:outline-none focus:ring-1 focus:ring-[#007acc]/50 transition-all';
+const inputStyle: React.CSSProperties = { background: VS.bg3, border: `1px solid ${VS.border2}`, color: VS.text0 };
+
+// ── Component ──────────────────────────────────────────────────────────────────
+export function Admin() {
+  const [activeTab, setActiveTab]   = useState<'users' | 'invites'>('users');
+  const [users, setUsers]           = useState<OrgUser[]>([]);
+  const [invites, setInvites]       = useState<Invite[]>([]);
+  const [loading, setLoading]       = useState(true);
+  const [toast, setToast]           = useState<{ msg: string; ok: boolean } | null>(null);
+
+  // Invite form
+  const [showInvite, setShowInvite] = useState(false);
+  const [inviteEmail, setInviteEmail] = useState('');
+  const [inviteRole, setInviteRole]   = useState<'ADMIN' | 'STAFF' | 'CLIENT'>('STAFF');
+  const [inviting, setInviting]       = useState(false);
+
+  // Edit role
+  const [editingUser, setEditingUser] = useState<OrgUser | null>(null);
+  const [editingRole, setEditingRole] = useState<'ADMIN' | 'STAFF' | 'CLIENT'>('STAFF');
+  const [saving, setSaving]           = useState(false);
+
+  // Remove member
+  const [removingId, setRemovingId] = useState<string | null>(null);
+
+  function showToast(msg: string, ok = true) {
+    setToast({ msg, ok });
+    setTimeout(() => setToast(null), 3500);
+  }
 
   const fetchData = async () => {
     try {
       setLoading(true);
-      
-      // Fetch all users in the organization
-      const usersResponse = await fetch('/api/admin/users');
-      if (usersResponse.ok) {
-        const usersData = await usersResponse.json();
-        setUsers(usersData.users || []);
-      }
-      
-      // Fetch pending invites
-      const invitesResponse = await fetch('/api/admin/invites');
-      if (invitesResponse.ok) {
-        const invitesData = await invitesResponse.json();
-        setInvites(invitesData.invites || []);
-      }
-      
-    } catch (err) {
-      setError('Failed to load admin data');
-      console.error('Admin data fetch error:', err);
-    } finally {
-      setLoading(false);
-    }
+      const [uRes, iRes] = await Promise.all([
+        fetch('/api/admin/users'),
+        fetch('/api/admin/invites'),
+      ]);
+      if (uRes.ok) setUsers((await uRes.json()).users ?? []);
+      if (iRes.ok) setInvites((await iRes.json()).invites ?? []);
+    } catch { /* ignore */ }
+    finally { setLoading(false); }
   };
 
-  const handleInviteUser = async (e: React.FormEvent) => {
+  useEffect(() => { fetchData(); }, []);
+
+  const handleInvite = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!inviteEmail.trim()) return;
-    
+    setInviting(true);
     try {
-      setInviting(true);
-      const response = await fetch('/api/admin/invite', {
+      const res = await fetch('/api/admin/invite', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          email: inviteEmail,
-          role: inviteRole
-        })
+        body: JSON.stringify({ email: inviteEmail, role: inviteRole }),
       });
-      
-      if (response.ok) {
+      if (res.ok) {
         setInviteEmail('');
-        setShowInviteForm(false);
-        fetchData(); // Refresh data
-        alert('Invitation sent successfully!');
+        setShowInvite(false);
+        fetchData();
+        showToast('Invitation sent successfully!');
       } else {
-        const error = await response.json();
-        alert(`Failed to send invitation: ${error.error}`);
+        const err = await res.json();
+        showToast(err.error || 'Failed to send invitation', false);
       }
-    } catch (err) {
-      alert('Failed to send invitation');
-    } finally {
-      setInviting(false);
-    }
+    } catch { showToast('Failed to send invitation', false); }
+    finally { setInviting(false); }
   };
 
-  const handleUpdateUserRole = async (userId: string, newRole: 'ADMIN' | 'STAFF' | 'CLIENT') => {
+  const handleUpdateRole = async () => {
+    if (!editingUser) return;
+    setSaving(true);
     try {
-      const response = await fetch(`/api/admin/users/${userId}/role`, {
+      const res = await fetch(`/api/admin/users/${editingUser.id}/role`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ role: newRole })
+        body: JSON.stringify({ role: editingRole }),
       });
-      
-      if (response.ok) {
-        fetchData(); // Refresh data
+      if (res.ok) {
         setEditingUser(null);
-        alert('User role updated successfully!');
+        fetchData();
+        showToast('Role updated successfully!');
       } else {
-        const error = await response.json();
-        alert(`Failed to update role: ${error.error}`);
+        const err = await res.json();
+        showToast(err.error || 'Failed to update role', false);
       }
-    } catch (err) {
-      alert('Failed to update user role');
-    }
+    } catch { showToast('Failed to update role', false); }
+    finally { setSaving(false); }
+  };
+
+  const handleRemoveMember = async (userId: string) => {
+    setRemovingId(userId);
+    try {
+      const res = await fetch(`/api/admin/users/${userId}`, { method: 'DELETE' });
+      if (res.ok) {
+        fetchData();
+        showToast('Member removed from organization.');
+      } else {
+        showToast('Failed to remove member.', false);
+      }
+    } catch { showToast('Failed to remove member.', false); }
+    finally { setRemovingId(null); }
   };
 
   const handleRevokeInvite = async (inviteId: string) => {
-    if (!confirm('Are you sure you want to revoke this invitation?')) return;
-    
     try {
-      const response = await fetch(`/api/admin/invites/${inviteId}/revoke`, {
-        method: 'POST'
-      });
-      
-      if (response.ok) {
-        fetchData(); // Refresh data
-      } else {
-        alert('Failed to revoke invitation');
-      }
-    } catch (err) {
-      alert('Failed to revoke invitation');
-    }
+      const res = await fetch(`/api/admin/invites/${inviteId}/revoke`, { method: 'POST' });
+      if (res.ok) { fetchData(); showToast('Invitation revoked.'); }
+      else showToast('Failed to revoke invitation.', false);
+    } catch { showToast('Failed to revoke invitation.', false); }
   };
 
-  const getRoleIcon = (role: string) => {
-    switch (role) {
-      case 'OWNER': return <Crown className="w-4 h-4 text-yellow-600" />;
-      case 'ADMIN': return <Shield className="w-4 h-4 text-blue-600" />;
-      case 'STAFF': return <UserCog className="w-4 h-4 text-green-600" />;
-      case 'CLIENT': return <Users className="w-4 h-4 text-gray-600" />;
-      default: return <Users className="w-4 h-4" />;
-    }
-  };
+  // ── KPI stats ───────────────────────────────────────────────────────────────
+  const pendingInvites = invites.filter(i => i.status === 'PENDING').length;
+  const totalTasks     = users.reduce((a, u) => a + u._count.createdTasks, 0);
+  const totalTimeLogs  = users.reduce((a, u) => a + u._count.timeLogs, 0);
 
-  const getRoleBadgeColor = (role: string) => {
-    switch (role) {
-      case 'OWNER': return 'bg-yellow-100 text-yellow-800';
-      case 'ADMIN': return 'bg-blue-100 text-blue-800';
-      case 'STAFF': return 'bg-green-100 text-green-800';
-      case 'CLIENT': return 'bg-gray-100 text-gray-800';
-      default: return 'bg-gray-100 text-gray-800';
-    }
-  };
-
+  // ── Loading ──────────────────────────────────────────────────────────────────
   if (loading) {
     return (
-      <div className="space-y-8">
-        <div className="animate-pulse">
-          <div className="h-8 bg-gray-200 rounded w-1/3 mb-6"></div>
-          <div className="space-y-4">
-            {[1, 2, 3].map(i => (
-              <div key={i} className="h-16 bg-gray-200 rounded"></div>
-            ))}
-          </div>
+      <div className="space-y-6 animate-pulse">
+        <div className="h-8 w-64 rounded-lg" style={{ background: VS.bg2 }} />
+        <div className="grid grid-cols-4 gap-4">
+          {[...Array(4)].map((_, i) => <div key={i} className="h-24 rounded-xl" style={{ background: VS.bg1 }} />)}
         </div>
+        <div className="h-96 rounded-xl" style={{ background: VS.bg1 }} />
       </div>
     );
   }
 
   return (
-    <div className="space-y-8">
-      {/* Header */}
-      <div className="flex justify-between items-center">
-        <div>
-          <h1 className="text-3xl font-bold gradient-text">Administration</h1>
-          <p className="text-muted-foreground">Manage users, permissions, and system settings</p>
-        </div>
-        <div className="flex items-center space-x-2">
-          <Building2 className="w-5 h-5 text-primary" />
-          <span className="font-medium text-foreground">Veblen Organization</span>
-        </div>
-      </div>
+    <div className="space-y-6">
 
-      {/* Stats Cards */}
-      <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
-        <div className="glass p-6 shadow-elevation">
-          <div className="flex items-center">
-            <div className="h-12 w-12 rounded-xl bg-gradient-primary flex items-center justify-center shadow-glow mr-4">
-              <Users className="w-6 h-6 text-white" />
-            </div>
-            <div>
-              <p className="text-sm font-medium text-muted-foreground">Total Users</p>
-              <p className="text-2xl font-bold text-foreground">{users.length}</p>
-            </div>
-          </div>
-        </div>
-        
-        <div className="glass p-6 shadow-elevation">
-          <div className="flex items-center">
-            <div className="h-12 w-12 rounded-xl bg-gradient-success flex items-center justify-center shadow-glow mr-4">
-              <Mail className="w-6 h-6 text-white" />
-            </div>
-            <div>
-              <p className="text-sm font-medium text-muted-foreground">Pending Invites</p>
-              <p className="text-2xl font-bold text-foreground">{invites.filter(i => i.status === 'PENDING').length}</p>
-            </div>
-          </div>
-        </div>
-        
-        <div className="glass p-6 shadow-elevation">
-          <div className="flex items-center">
-            <div className="h-12 w-12 rounded-xl bg-gradient-info flex items-center justify-center shadow-glow mr-4">
-              <Clock className="w-6 h-6 text-white" />
-            </div>
-            <div>
-              <p className="text-sm font-medium text-muted-foreground">Active Sessions</p>
-              <p className="text-2xl font-bold text-foreground">{users.filter(u => u.memberships.length > 0).length}</p>
-            </div>
-          </div>
-        </div>
-        
-        <div className="glass p-6 shadow-elevation">
-          <div className="flex items-center">
-            <div className="h-12 w-12 rounded-xl bg-gradient-warning flex items-center justify-center shadow-glow mr-4">
-              <BarChart3 className="w-6 h-6 text-white" />
-            </div>
-            <div>
-              <p className="text-sm font-medium text-muted-foreground">Total Tasks</p>
-              <p className="text-2xl font-bold text-foreground">{users.reduce((acc, u) => acc + u._count.createdTasks, 0)}</p>
-            </div>
-          </div>
-        </div>
-      </div>
-
-      {/* Tab Navigation */}
-      <div className="flex space-x-1 glass p-1 rounded-lg w-fit">
-        <button
-          onClick={() => setActiveTab('users')}
-          className={`px-4 py-2 text-sm font-medium rounded-md transition-colors flex items-center ${
-            activeTab === 'users'
-              ? 'bg-background text-foreground shadow-sm'
-              : 'text-muted-foreground hover:text-foreground hover:bg-surface-elevated'
-          }`}
+      {/* ── Toast ── */}
+      {toast && (
+        <div
+          className="fixed top-4 right-4 z-[300] flex items-center gap-2 px-4 py-3 rounded-xl text-[13px] font-medium shadow-2xl"
+          style={{
+            background: toast.ok ? 'rgba(78,201,176,0.15)' : 'rgba(244,71,71,0.15)',
+            border: `1px solid ${toast.ok ? VS.teal : VS.red}55`,
+            color: toast.ok ? VS.teal : VS.red,
+          }}
         >
-          <Users className="w-4 h-4 mr-2" />
-          Users ({users.length})
-        </button>
-        <button
-          onClick={() => setActiveTab('invites')}
-          className={`px-4 py-2 text-sm font-medium rounded-md transition-colors flex items-center ${
-            activeTab === 'invites'
-              ? 'bg-background text-foreground shadow-sm'
-              : 'text-muted-foreground hover:text-foreground hover:bg-surface-elevated'
-          }`}
-        >
-          <Mail className="w-4 h-4 mr-2" />
-          Invitations ({invites.length})
-        </button>
-        <button
-          onClick={() => setActiveTab('settings')}
-          className={`px-4 py-2 text-sm font-medium rounded-md transition-colors flex items-center ${
-            activeTab === 'settings'
-              ? 'bg-background text-foreground shadow-sm'
-              : 'text-muted-foreground hover:text-foreground hover:bg-surface-elevated'
-          }`}
-        >
-          <Settings className="w-4 h-4 mr-2" />
-          System Settings
-        </button>
-      </div>
-
-      {/* Tab Content */}
-      {activeTab === 'users' && (
-        <div className="space-y-6">
-          <div className="flex justify-between items-center">
-            <h2 className="text-xl font-semibold">User Management</h2>
-            <button
-              onClick={() => setShowInviteForm(true)}
-              className="bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700 flex items-center space-x-2"
-            >
-              <UserPlus className="w-4 h-4" />
-              <span>Invite User</span>
-            </button>
-          </div>
-
-          {/* Users Table */}
-          <Card className="glass shadow-elevation">
-            <CardHeader>
-              <CardTitle className="flex items-center">
-                <Users className="mr-2 h-5 w-5" />
-                Organization Users
-              </CardTitle>
-            </CardHeader>
-            <CardContent>
-              <div className="overflow-x-auto">
-                <table className="min-w-full divide-y divide-border">
-                  <thead className="bg-surface-elevated/50">
-                    <tr>
-                      <th className="px-6 py-3 text-left text-xs font-medium text-muted-foreground uppercase tracking-wider">
-                        User
-                      </th>
-                      <th className="px-6 py-3 text-left text-xs font-medium text-muted-foreground uppercase tracking-wider">
-                        Role
-                      </th>
-                      <th className="px-6 py-3 text-left text-xs font-medium text-muted-foreground uppercase tracking-wider">
-                        Status
-                      </th>
-                      <th className="px-6 py-3 text-left text-xs font-medium text-muted-foreground uppercase tracking-wider">
-                        Activity
-                      </th>
-                      <th className="px-6 py-3 text-left text-xs font-medium text-muted-foreground uppercase tracking-wider">
-                        Actions
-                      </th>
-                    </tr>
-                  </thead>
-                  <tbody className="glass divide-y divide-border">
-                  {users.map((user) => (
-                    <tr key={user.id}>
-                      <td className="px-6 py-4 whitespace-nowrap">
-                        <div className="flex items-center">
-                          <div className="w-10 h-10 rounded-full bg-gray-200 flex items-center justify-center">
-                            <span className="text-sm font-medium text-gray-700">
-                              {user.name?.charAt(0).toUpperCase() || user.email.charAt(0).toUpperCase()}
-                            </span>
-                          </div>
-                          <div className="ml-4">
-                            <div className="text-sm font-medium text-gray-900">{user.name || 'No name'}</div>
-                            <div className="text-sm text-gray-500">{user.email}</div>
-                          </div>
-                        </div>
-                      </td>
-                      <td className="px-6 py-4 whitespace-nowrap">
-                        <div className="flex items-center space-x-2">
-                          {getRoleIcon(user.memberships[0]?.role || 'CLIENT')}
-                          <span className={`inline-flex px-2 py-1 text-xs font-semibold rounded-full ${getRoleBadgeColor(user.memberships[0]?.role || 'CLIENT')}`}>
-                            {user.memberships[0]?.role || 'CLIENT'}
-                          </span>
-                        </div>
-                      </td>
-                      <td className="px-6 py-4 whitespace-nowrap">
-                        <span className={`inline-flex px-2 py-1 text-xs font-semibold rounded-full ${
-                          user.emailVerified ? 'bg-green-100 text-green-800' : 'bg-yellow-100 text-yellow-800'
-                        }`}>
-                          {user.emailVerified ? 'Active' : 'Pending'}
-                        </span>
-                      </td>
-                      <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-                        <div>{user._count.timeLogs} time logs</div>
-                        <div>{user._count.createdTasks} tasks</div>
-                      </td>
-                      <td className="px-6 py-4 whitespace-nowrap text-sm font-medium">
-                        {user.memberships[0]?.role !== 'OWNER' && (
-                          <div className="flex items-center space-x-2">
-                            <button
-                              onClick={() => {
-                                setEditingUser(user);
-                                setEditingRole(user.memberships[0]?.role as any || 'CLIENT');
-                              }}
-                              className="text-blue-600 hover:text-blue-900 flex items-center space-x-1"
-                            >
-                              <Edit3 className="w-4 h-4" />
-                              <span>Edit</span>
-                            </button>
-                          </div>
-                        )}
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-            </CardContent>
-          </Card>
+          {toast.ok ? <Check className="h-4 w-4" /> : <X className="h-4 w-4" />}
+          {toast.msg}
         </div>
       )}
 
-      {activeTab === 'invites' && (
-        <div className="space-y-6">
-          <h2 className="text-xl font-semibold">Pending Invitations</h2>
-          
-          {invites.length > 0 ? (
-            <div className="bg-white shadow-sm rounded-lg border border-gray-200">
-              <div className="overflow-x-auto">
-                <table className="min-w-full divide-y divide-gray-200">
-                  <thead className="bg-gray-50">
-                    <tr>
-                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                        Email
-                      </th>
-                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                        Role
-                      </th>
-                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                        Status
-                      </th>
-                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                        Invited By
-                      </th>
-                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                        Actions
-                      </th>
-                    </tr>
-                  </thead>
-                  <tbody className="bg-white divide-y divide-gray-200">
-                    {invites.map((invite) => (
-                      <tr key={invite.id}>
-                        <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">
-                          {invite.email}
-                        </td>
-                        <td className="px-6 py-4 whitespace-nowrap">
-                          <div className="flex items-center space-x-2">
-                            {getRoleIcon(invite.role)}
-                            <span className={`inline-flex px-2 py-1 text-xs font-semibold rounded-full ${getRoleBadgeColor(invite.role)}`}>
-                              {invite.role}
-                            </span>
-                          </div>
-                        </td>
-                        <td className="px-6 py-4 whitespace-nowrap">
-                          <span className={`inline-flex px-2 py-1 text-xs font-semibold rounded-full ${
-                            invite.status === 'PENDING' ? 'bg-yellow-100 text-yellow-800' :
-                            invite.status === 'ACCEPTED' ? 'bg-green-100 text-green-800' :
-                            'bg-red-100 text-red-800'
-                          }`}>
-                            {invite.status}
-                          </span>
-                        </td>
-                        <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-                          {invite.invitedBy.name || invite.invitedBy.email}
-                        </td>
-                        <td className="px-6 py-4 whitespace-nowrap text-sm font-medium">
-                          {invite.status === 'PENDING' && (
-                            <button
-                              onClick={() => handleRevokeInvite(invite.id)}
-                              className="text-red-600 hover:text-red-900 flex items-center space-x-1"
-                            >
-                              <Trash2 className="w-4 h-4" />
-                              <span>Revoke</span>
-                            </button>
-                          )}
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
+      {/* ── Header ── */}
+      <div className="flex items-center justify-between gap-4">
+        <div>
+          <h1 className="text-2xl font-bold" style={{ color: VS.text0 }}>User Management</h1>
+          <p className="text-[13px] mt-1" style={{ color: VS.text2 }}>
+            Manage team members, roles, and invitations
+          </p>
+        </div>
+        <button
+          onClick={() => setShowInvite(true)}
+          className="flex items-center gap-2 px-4 py-2 rounded-lg text-[13px] font-semibold transition-all hover:opacity-90"
+          style={{ background: VS.accent, color: '#fff' }}
+        >
+          <UserPlus className="h-4 w-4" />
+          Invite Member
+        </button>
+      </div>
+
+      {/* ── KPI strip ── */}
+      <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
+        {[
+          { label: 'Total Members',   value: users.length,    icon: Users,       color: VS.blue   },
+          { label: 'Pending Invites', value: pendingInvites,  icon: Mail,        color: VS.yellow },
+          { label: 'Total Tasks',     value: totalTasks,      icon: CheckSquare, color: VS.teal   },
+          { label: 'Time Logs',       value: totalTimeLogs,   icon: Clock,       color: VS.purple },
+        ].map(({ label, value, icon: Icon, color }) => (
+          <div key={label} className="rounded-xl p-4 flex items-center gap-3"
+            style={{ background: VS.bg1, border: `1px solid ${VS.border}` }}>
+            <div className="h-10 w-10 rounded-lg flex items-center justify-center shrink-0"
+              style={{ background: `${color}18`, border: `1px solid ${color}33` }}>
+              <Icon className="h-5 w-5" style={{ color }} />
             </div>
-          ) : (
-            <div className="bg-white rounded-lg border border-gray-200 p-8 text-center">
-              <Mail className="w-12 h-12 text-gray-400 mx-auto mb-4" />
-              <h3 className="text-lg font-medium text-gray-900 mb-2">No pending invitations</h3>
-              <p className="text-gray-500 mb-4">Invite team members to start collaborating</p>
-              <button
-                onClick={() => setShowInviteForm(true)}
-                className="bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700"
+            <div>
+              <div className="text-xl font-bold tabular-nums" style={{ color: VS.text0 }}>{value}</div>
+              <div className="text-[11px]" style={{ color: VS.text2 }}>{label}</div>
+            </div>
+          </div>
+        ))}
+      </div>
+
+      {/* ── Tab bar ── */}
+      <div className="flex gap-1 p-1 rounded-lg w-fit" style={{ background: VS.bg2, border: `1px solid ${VS.border}` }}>
+        {([['users', 'Members', Users], ['invites', 'Invitations', Mail]] as const).map(([key, label, Icon]) => (
+          <button
+            key={key}
+            onClick={() => setActiveTab(key)}
+            className="flex items-center gap-2 px-4 py-2 rounded-md text-[13px] font-medium transition-all"
+            style={activeTab === key
+              ? { background: VS.bg3, color: VS.text0, border: `1px solid ${VS.border2}` }
+              : { color: VS.text2 }
+            }
+          >
+            <Icon className="h-3.5 w-3.5" />
+            {label}
+            <span
+              className="text-[11px] px-1.5 py-0.5 rounded-full"
+              style={{ background: VS.bg2, color: VS.text2 }}
+            >
+              {key === 'users' ? users.length : invites.length}
+            </span>
+          </button>
+        ))}
+      </div>
+
+      {/* ── Members table ── */}
+      {activeTab === 'users' && (
+        <div className="rounded-xl overflow-hidden" style={{ background: VS.bg1, border: `1px solid ${VS.border}` }}>
+          {/* Table header */}
+          <div
+            className="grid gap-4 px-5 py-3 text-[11px] font-semibold uppercase tracking-widest"
+            style={{ gridTemplateColumns: '2fr 1fr 1fr 1fr 1fr', background: VS.bg2, color: VS.text2 }}
+          >
+            <span>Member</span>
+            <span>Role</span>
+            <span>Status</span>
+            <span>Activity</span>
+            <span>Actions</span>
+          </div>
+
+          {users.length === 0 ? (
+            <div className="py-12 text-center text-[13px]" style={{ color: VS.text2 }}>
+              No members found
+            </div>
+          ) : users.map((user, i) => {
+            const role = user.memberships[0]?.role ?? 'CLIENT';
+            const cfg  = ROLE_CFG[role] ?? ROLE_CFG.CLIENT;
+            const Icon = cfg.icon;
+            const initials = (user.name || user.email).charAt(0).toUpperCase();
+            const isOwner = role === 'OWNER';
+            return (
+              <div
+                key={user.id}
+                className="grid gap-4 px-5 py-4 items-center transition-colors hover:bg-white/[0.02]"
+                style={{
+                  gridTemplateColumns: '2fr 1fr 1fr 1fr 1fr',
+                  borderTop: i === 0 ? 'none' : `1px solid ${VS.border}`,
+                }}
               >
-                Send Invitation
+                {/* Member info */}
+                <div className="flex items-center gap-3 min-w-0">
+                  <div
+                    className="h-9 w-9 rounded-full flex items-center justify-center shrink-0 text-[13px] font-bold"
+                    style={{ background: `${cfg.color}22`, color: cfg.color }}
+                  >
+                    {initials}
+                  </div>
+                  <div className="min-w-0">
+                    <div className="text-[13px] font-medium truncate" style={{ color: VS.text0 }}>
+                      {user.name || 'No name'}
+                    </div>
+                    <div className="text-[11px] truncate" style={{ color: VS.text2 }}>{user.email}</div>
+                  </div>
+                </div>
+
+                {/* Role */}
+                <div>
+                  <span
+                    className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[11px] font-semibold"
+                    style={{ background: cfg.bg, color: cfg.color }}
+                  >
+                    <Icon className="h-3 w-3" />
+                    {cfg.label}
+                  </span>
+                </div>
+
+                {/* Status */}
+                <div>
+                  <span
+                    className="inline-flex px-2.5 py-1 rounded-full text-[11px] font-semibold"
+                    style={user.emailVerified
+                      ? { background: 'rgba(78,201,176,0.12)', color: VS.teal }
+                      : { background: 'rgba(220,220,170,0.12)', color: VS.yellow }
+                    }
+                  >
+                    {user.emailVerified ? 'Verified' : 'Pending'}
+                  </span>
+                </div>
+
+                {/* Activity */}
+                <div className="text-[12px]" style={{ color: VS.text2 }}>
+                  <div>{user._count.timeLogs} time logs</div>
+                  <div>{user._count.createdTasks} tasks</div>
+                </div>
+
+                {/* Actions */}
+                <div className="flex items-center gap-2">
+                  {!isOwner && (
+                    <>
+                      <button
+                        onClick={() => { setEditingUser(user); setEditingRole(role as any); }}
+                        className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-[12px] font-medium transition-colors hover:bg-white/5"
+                        style={{ background: VS.bg2, border: `1px solid ${VS.border}`, color: VS.blue }}
+                      >
+                        <Edit3 className="h-3 w-3" />
+                        Edit Role
+                      </button>
+                      <button
+                        onClick={() => handleRemoveMember(user.id)}
+                        disabled={removingId === user.id}
+                        className="h-7 w-7 rounded-lg flex items-center justify-center transition-colors hover:bg-white/5 disabled:opacity-40"
+                        style={{ background: VS.bg2, border: `1px solid ${VS.border}`, color: VS.red }}
+                        title="Remove member"
+                      >
+                        <Trash2 className="h-3.5 w-3.5" />
+                      </button>
+                    </>
+                  )}
+                  {isOwner && (
+                    <span className="text-[11px]" style={{ color: VS.text2 }}>Owner</span>
+                  )}
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      )}
+
+      {/* ── Invitations table ── */}
+      {activeTab === 'invites' && (
+        <div className="rounded-xl overflow-hidden" style={{ background: VS.bg1, border: `1px solid ${VS.border}` }}>
+          <div
+            className="grid gap-4 px-5 py-3 text-[11px] font-semibold uppercase tracking-widest"
+            style={{ gridTemplateColumns: '2fr 1fr 1fr 1fr 1fr', background: VS.bg2, color: VS.text2 }}
+          >
+            <span>Email</span>
+            <span>Role</span>
+            <span>Status</span>
+            <span>Invited By</span>
+            <span>Actions</span>
+          </div>
+
+          {invites.length === 0 ? (
+            <div className="py-12 text-center">
+              <Mail className="h-10 w-10 mx-auto mb-3" style={{ color: VS.text2 }} />
+              <p className="text-[13px] font-medium" style={{ color: VS.text1 }}>No invitations yet</p>
+              <p className="text-[12px] mt-1" style={{ color: VS.text2 }}>Invite team members to get started</p>
+              <button
+                onClick={() => setShowInvite(true)}
+                className="mt-4 inline-flex items-center gap-2 px-4 py-2 rounded-lg text-[13px] font-semibold"
+                style={{ background: VS.accent, color: '#fff' }}
+              >
+                <UserPlus className="h-4 w-4" /> Send Invitation
               </button>
             </div>
-          )}
+          ) : invites.map((inv, i) => {
+            const cfg = ROLE_CFG[inv.role] ?? ROLE_CFG.CLIENT;
+            const statusStyle = {
+              PENDING:  { bg: 'rgba(220,220,170,0.12)', color: VS.yellow },
+              ACCEPTED: { bg: 'rgba(78,201,176,0.12)',  color: VS.teal   },
+              EXPIRED:  { bg: 'rgba(144,144,144,0.12)', color: VS.text2  },
+              REVOKED:  { bg: 'rgba(244,71,71,0.12)',   color: VS.red    },
+            }[inv.status] ?? { bg: VS.bg2, color: VS.text2 };
+            return (
+              <div
+                key={inv.id}
+                className="grid gap-4 px-5 py-4 items-center hover:bg-white/[0.02] transition-colors"
+                style={{ gridTemplateColumns: '2fr 1fr 1fr 1fr 1fr', borderTop: i === 0 ? 'none' : `1px solid ${VS.border}` }}
+              >
+                <div className="text-[13px] truncate" style={{ color: VS.text1 }}>{inv.email}</div>
+                <div>
+                  <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[11px] font-semibold"
+                    style={{ background: cfg.bg, color: cfg.color }}>
+                    {cfg.label}
+                  </span>
+                </div>
+                <div>
+                  <span className="inline-flex px-2.5 py-1 rounded-full text-[11px] font-semibold"
+                    style={{ background: statusStyle.bg, color: statusStyle.color }}>
+                    {inv.status}
+                  </span>
+                </div>
+                <div className="text-[12px] truncate" style={{ color: VS.text2 }}>
+                  {inv.invitedBy.name || inv.invitedBy.email}
+                </div>
+                <div>
+                  {inv.status === 'PENDING' && (
+                    <button
+                      onClick={() => handleRevokeInvite(inv.id)}
+                      className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-[12px] font-medium transition-colors hover:bg-white/5"
+                      style={{ background: VS.bg2, border: `1px solid ${VS.border}`, color: VS.red }}
+                    >
+                      <Trash2 className="h-3 w-3" /> Revoke
+                    </button>
+                  )}
+                </div>
+              </div>
+            );
+          })}
         </div>
       )}
 
-      {activeTab === 'settings' && (
-        <div className="space-y-6">
-          <h2 className="text-xl font-semibold">System Settings</h2>
-          <div className="bg-white p-6 rounded-lg border border-gray-200">
-            <h3 className="text-lg font-medium mb-4">Organization Settings</h3>
-            <div className="space-y-4">
-              <div>
-                <label className="block text-sm font-medium text-gray-700">Organization Name</label>
-                <input
-                  type="text"
-                  value="Veblen"
-                  readOnly
-                  className="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md bg-gray-50"
-                />
+      {/* ── Invite Modal ── */}
+      {showInvite && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4" style={{ background: 'rgba(0,0,0,0.75)' }}
+          onClick={e => { if (e.target === e.currentTarget) setShowInvite(false); }}>
+          <div className="w-full max-w-md rounded-2xl overflow-hidden"
+            style={{ background: VS.bg0, border: `1px solid ${VS.border}`, boxShadow: '0 24px 60px rgba(0,0,0,0.7)' }}>
+            {/* Header */}
+            <div className="flex items-center justify-between px-5 py-4"
+              style={{ background: VS.bg1, borderBottom: `1px solid ${VS.border}` }}>
+              <div className="flex items-center gap-2">
+                <UserPlus className="h-4 w-4" style={{ color: VS.accent }} />
+                <h3 className="text-[14px] font-bold" style={{ color: VS.text0 }}>Invite Team Member</h3>
               </div>
-              <div>
-                <label className="block text-sm font-medium text-gray-700">Organization Slug</label>
-                <input
-                  type="text"
-                  value="veblen"
-                  readOnly
-                  className="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md bg-gray-50"
-                />
-              </div>
+              <button onClick={() => setShowInvite(false)} className="h-7 w-7 rounded-lg flex items-center justify-center hover:bg-white/5" style={{ color: VS.text1 }}>
+                <X className="h-4 w-4" />
+              </button>
             </div>
-          </div>
-        </div>
-      )}
-
-      {/* Invite Form Modal */}
-      {showInviteForm && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
-          <div className="bg-white rounded-lg p-6 w-full max-w-md">
-            <h3 className="text-lg font-semibold mb-4">Invite User</h3>
-            <form onSubmit={handleInviteUser} className="space-y-4">
+            {/* Body */}
+            <form onSubmit={handleInvite} className="p-5 space-y-4">
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">
-                  Email Address
-                </label>
+                <label className="block text-[12px] font-semibold mb-1.5" style={{ color: VS.text2 }}>Email Address</label>
                 <input
                   type="email"
                   value={inviteEmail}
-                  onChange={(e) => setInviteEmail(e.target.value)}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
-                  placeholder="user@example.com"
+                  onChange={e => setInviteEmail(e.target.value)}
+                  className={inputCls}
+                  style={inputStyle}
+                  placeholder="colleague@company.com"
                   required
                 />
               </div>
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">
-                  Role
-                </label>
+                <label className="block text-[12px] font-semibold mb-1.5" style={{ color: VS.text2 }}>Role</label>
                 <select
                   value={inviteRole}
-                  onChange={(e) => setInviteRole(e.target.value as any)}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  onChange={e => setInviteRole(e.target.value as any)}
+                  className={inputCls}
+                  style={inputStyle}
                 >
-                  <option value="CLIENT">Client</option>
-                  <option value="STAFF">Staff</option>
-                  <option value="ADMIN">Admin</option>
+                  <option value="STAFF">Staff — standard member</option>
+                  <option value="ADMIN">Admin — manage members & settings</option>
+                  <option value="CLIENT">Client — limited view access</option>
                 </select>
               </div>
-              <div className="flex justify-end space-x-3">
-                <button
-                  type="button"
-                  onClick={() => setShowInviteForm(false)}
-                  className="px-4 py-2 text-gray-600 border border-gray-300 rounded-md hover:bg-gray-50"
-                >
+              <div className="flex justify-end gap-3 pt-1">
+                <button type="button" onClick={() => setShowInvite(false)}
+                  className="px-4 py-2 rounded-lg text-[13px] font-medium transition-colors hover:bg-white/5"
+                  style={{ background: VS.bg2, border: `1px solid ${VS.border}`, color: VS.text1 }}>
                   Cancel
                 </button>
-                <button
-                  type="submit"
-                  disabled={inviting}
-                  className="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 disabled:opacity-50"
-                >
-                  {inviting ? 'Sending...' : 'Send Invitation'}
+                <button type="submit" disabled={inviting}
+                  className="flex items-center gap-2 px-4 py-2 rounded-lg text-[13px] font-semibold disabled:opacity-50 transition-all hover:opacity-90"
+                  style={{ background: VS.accent, color: '#fff' }}>
+                  <Mail className="h-4 w-4" />
+                  {inviting ? 'Sending…' : 'Send Invite'}
                 </button>
               </div>
             </form>
@@ -576,58 +518,62 @@ export function Admin() {
         </div>
       )}
 
-      {/* Edit User Role Modal */}
+      {/* ── Edit Role Modal ── */}
       {editingUser && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
-          <div className="bg-white rounded-lg p-6 w-full max-w-md">
-            <h3 className="text-lg font-semibold mb-4">Edit User Role</h3>
-            <div className="space-y-4">
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">
-                  User
-                </label>
-                <div className="px-3 py-2 bg-gray-50 rounded-md">
-                  <div className="font-medium">{editingUser.name || 'No name'}</div>
-                  <div className="text-sm text-gray-500">{editingUser.email}</div>
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4" style={{ background: 'rgba(0,0,0,0.75)' }}
+          onClick={e => { if (e.target === e.currentTarget) setEditingUser(null); }}>
+          <div className="w-full max-w-md rounded-2xl overflow-hidden"
+            style={{ background: VS.bg0, border: `1px solid ${VS.border}`, boxShadow: '0 24px 60px rgba(0,0,0,0.7)' }}>
+            <div className="flex items-center justify-between px-5 py-4"
+              style={{ background: VS.bg1, borderBottom: `1px solid ${VS.border}` }}>
+              <div className="flex items-center gap-2">
+                <Edit3 className="h-4 w-4" style={{ color: VS.blue }} />
+                <h3 className="text-[14px] font-bold" style={{ color: VS.text0 }}>Change Role</h3>
+              </div>
+              <button onClick={() => setEditingUser(null)} className="h-7 w-7 rounded-lg flex items-center justify-center hover:bg-white/5" style={{ color: VS.text1 }}>
+                <X className="h-4 w-4" />
+              </button>
+            </div>
+            <div className="p-5 space-y-4">
+              {/* User preview */}
+              <div className="flex items-center gap-3 p-3 rounded-lg" style={{ background: VS.bg2 }}>
+                <div className="h-9 w-9 rounded-full flex items-center justify-center text-[13px] font-bold shrink-0"
+                  style={{ background: `${ROLE_CFG[editingUser.memberships[0]?.role ?? 'CLIENT'].color}22`, color: ROLE_CFG[editingUser.memberships[0]?.role ?? 'CLIENT'].color }}>
+                  {(editingUser.name || editingUser.email).charAt(0).toUpperCase()}
+                </div>
+                <div>
+                  <div className="text-[13px] font-medium" style={{ color: VS.text0 }}>{editingUser.name || 'No name'}</div>
+                  <div className="text-[11px]" style={{ color: VS.text2 }}>{editingUser.email}</div>
                 </div>
               </div>
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">
-                  New Role
-                </label>
+                <label className="block text-[12px] font-semibold mb-1.5" style={{ color: VS.text2 }}>New Role</label>
                 <select
                   value={editingRole}
-                  onChange={(e) => setEditingRole(e.target.value as any)}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  onChange={e => setEditingRole(e.target.value as any)}
+                  className={inputCls}
+                  style={inputStyle}
                 >
-                  <option value="CLIENT">Client</option>
                   <option value="STAFF">Staff</option>
                   <option value="ADMIN">Admin</option>
+                  <option value="CLIENT">Client</option>
                 </select>
               </div>
-              <div className="flex justify-end space-x-3">
-                <button
-                  type="button"
-                  onClick={() => setEditingUser(null)}
-                  className="px-4 py-2 text-gray-600 border border-gray-300 rounded-md hover:bg-gray-50"
-                >
+              <div className="flex justify-end gap-3 pt-1">
+                <button type="button" onClick={() => setEditingUser(null)}
+                  className="px-4 py-2 rounded-lg text-[13px] font-medium hover:bg-white/5"
+                  style={{ background: VS.bg2, border: `1px solid ${VS.border}`, color: VS.text1 }}>
                   Cancel
                 </button>
-                <button
-                  onClick={() => handleUpdateUserRole(editingUser.id, editingRole)}
-                  className="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700"
-                >
-                  Update Role
+                <button onClick={handleUpdateRole} disabled={saving}
+                  className="flex items-center gap-2 px-4 py-2 rounded-lg text-[13px] font-semibold disabled:opacity-50 hover:opacity-90"
+                  style={{ background: VS.blue, color: '#fff' }}>
+                  <Check className="h-4 w-4" />
+                  {saving ? 'Saving…' : 'Save Changes'}
                 </button>
               </div>
             </div>
           </div>
-        </div>
-      )}
-
-      {error && (
-        <div className="bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded">
-          {error}
         </div>
       )}
     </div>

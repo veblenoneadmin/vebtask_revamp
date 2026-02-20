@@ -155,9 +155,10 @@ export function TaskDetailPanel({ task, orgId, onClose, onTaskUpdated: _onTaskUp
   };
 
   useEffect(() => {
+    if (!orgId) return;
     fetchComments();
     fetchAttachments();
-  }, [task.id]);
+  }, [task.id, orgId]);
 
   useEffect(() => {
     if (tab === 'comments') commentsEndRef.current?.scrollIntoView({ behavior: 'smooth' });

@@ -702,7 +702,7 @@ router.get('/:taskId/comments', requireAuth, withOrgScope, async (req, res) => {
       orderBy: { createdAt: 'asc' },
     });
     res.json({ success: true, comments });
-  } catch (e) { res.status(500).json({ error: 'Failed to fetch comments' }); }
+  } catch (e) { console.error('Failed to fetch comments:', e); res.status(500).json({ error: 'Failed to fetch comments' }); }
 });
 
 /** POST /api/tasks/:taskId/comments */
@@ -740,10 +740,11 @@ router.get('/:taskId/attachments', requireAuth, withOrgScope, async (req, res) =
   try {
     const attachments = await prisma.taskAttachment.findMany({
       where: { taskId: req.params.taskId, orgId: req.orgId },
-      include: { user: { select: { id: true, name: true, email: true } } },
       orderBy: { createdAt: 'desc' },
-      select: { id: true, name: true, mimeType: true, size: true, category: true, createdAt: true,
-        user: true, data: false }, // exclude data from list for perf
+      select: {
+        id: true, name: true, mimeType: true, size: true, category: true, createdAt: true,
+        user: { select: { id: true, name: true, email: true } },
+      },
     });
     res.json({ success: true, attachments });
   } catch (e) { res.status(500).json({ error: 'Failed to fetch attachments' }); }

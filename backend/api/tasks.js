@@ -689,4 +689,103 @@ router.get('/team', requireAuth, withOrgScope, validateQuery(commonSchemas.pagin
   }
 });
 
+// ─────────────────────────────────────────────────────────────────────────────
+// COMMENTS
+// ─────────────────────────────────────────────────────────────────────────────
+
+/** GET /api/tasks/:taskId/comments */
+router.get('/:taskId/comments', requireAuth, withOrgScope, async (req, res) => {
+  try {
+    const comments = await prisma.taskComment.findMany({
+      where: { taskId: req.params.taskId, orgId: req.orgId },
+      include: { user: { select: { id: true, name: true, email: true } } },
+      orderBy: { createdAt: 'asc' },
+    });
+    res.json({ success: true, comments });
+  } catch (e) { res.status(500).json({ error: 'Failed to fetch comments' }); }
+});
+
+/** POST /api/tasks/:taskId/comments */
+router.post('/:taskId/comments', requireAuth, withOrgScope, async (req, res) => {
+  try {
+    const { content } = req.body;
+    if (!content?.trim()) return res.status(400).json({ error: 'Content required' });
+    const comment = await prisma.taskComment.create({
+      data: { taskId: req.params.taskId, orgId: req.orgId, userId: req.user.id, content: content.trim() },
+      include: { user: { select: { id: true, name: true, email: true } } },
+    });
+    res.status(201).json({ success: true, comment });
+  } catch (e) { res.status(500).json({ error: 'Failed to post comment' }); }
+});
+
+/** DELETE /api/tasks/:taskId/comments/:commentId */
+router.delete('/:taskId/comments/:commentId', requireAuth, withOrgScope, async (req, res) => {
+  try {
+    const comment = await prisma.taskComment.findFirst({
+      where: { id: req.params.commentId, taskId: req.params.taskId, orgId: req.orgId },
+    });
+    if (!comment) return res.status(404).json({ error: 'Comment not found' });
+    if (comment.userId !== req.user.id) return res.status(403).json({ error: 'Not your comment' });
+    await prisma.taskComment.delete({ where: { id: req.params.commentId } });
+    res.json({ success: true });
+  } catch (e) { res.status(500).json({ error: 'Failed to delete comment' }); }
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// ATTACHMENTS
+// ─────────────────────────────────────────────────────────────────────────────
+
+/** GET /api/tasks/:taskId/attachments */
+router.get('/:taskId/attachments', requireAuth, withOrgScope, async (req, res) => {
+  try {
+    const attachments = await prisma.taskAttachment.findMany({
+      where: { taskId: req.params.taskId, orgId: req.orgId },
+      include: { user: { select: { id: true, name: true, email: true } } },
+      orderBy: { createdAt: 'desc' },
+      select: { id: true, name: true, mimeType: true, size: true, category: true, createdAt: true,
+        user: true, data: false }, // exclude data from list for perf
+    });
+    res.json({ success: true, attachments });
+  } catch (e) { res.status(500).json({ error: 'Failed to fetch attachments' }); }
+});
+
+/** GET /api/tasks/:taskId/attachments/:attachId/download */
+router.get('/:taskId/attachments/:attachId/download', requireAuth, withOrgScope, async (req, res) => {
+  try {
+    const att = await prisma.taskAttachment.findFirst({
+      where: { id: req.params.attachId, taskId: req.params.taskId, orgId: req.orgId },
+    });
+    if (!att) return res.status(404).json({ error: 'Attachment not found' });
+    res.json({ success: true, attachment: att });
+  } catch (e) { res.status(500).json({ error: 'Failed to download attachment' }); }
+});
+
+/** POST /api/tasks/:taskId/attachments  body: { name, mimeType, size, data (base64), category? } */
+router.post('/:taskId/attachments', requireAuth, withOrgScope, async (req, res) => {
+  try {
+    const { name, mimeType, size, data, category = 'attachment' } = req.body;
+    if (!name || !data) return res.status(400).json({ error: 'name and data required' });
+    const att = await prisma.taskAttachment.create({
+      data: { taskId: req.params.taskId, orgId: req.orgId, userId: req.user.id,
+        name, mimeType: mimeType || 'application/octet-stream', size: size || 0, data, category },
+      include: { user: { select: { id: true, name: true, email: true } } },
+    });
+    const { data: _d, ...rest } = att;
+    res.status(201).json({ success: true, attachment: rest });
+  } catch (e) { res.status(500).json({ error: 'Failed to upload attachment' }); }
+});
+
+/** DELETE /api/tasks/:taskId/attachments/:attachId */
+router.delete('/:taskId/attachments/:attachId', requireAuth, withOrgScope, async (req, res) => {
+  try {
+    const att = await prisma.taskAttachment.findFirst({
+      where: { id: req.params.attachId, taskId: req.params.taskId, orgId: req.orgId },
+    });
+    if (!att) return res.status(404).json({ error: 'Attachment not found' });
+    if (att.userId !== req.user.id) return res.status(403).json({ error: 'Not your attachment' });
+    await prisma.taskAttachment.delete({ where: { id: req.params.attachId } });
+    res.json({ success: true });
+  } catch (e) { res.status(500).json({ error: 'Failed to delete attachment' }); }
+});
+
 export default router;

@@ -20,6 +20,7 @@ import {
   Check,
 } from 'lucide-react';
 import BrainDumpModal from '../components/BrainDumpModal';
+import { TaskDetailPanel } from '../components/TaskDetailPanel';
 
 interface Task {
   id: string;
@@ -159,6 +160,9 @@ export function Tasks() {
 
   // Brain Dump modal
   const [showBrainDump, setShowBrainDump] = useState(false);
+
+  // Task detail panel
+  const [detailTask, setDetailTask] = useState<Task | null>(null);
 
   // Filter
   const [showFilter, setShowFilter] = useState(false);
@@ -776,7 +780,7 @@ export function Tasks() {
                       draggable
                       onDragStart={e => handleDragStart(e, task.id)}
                       onDragEnd={handleDragEnd}
-                      onDoubleClick={() => handleEditTask(task)}
+                      onDoubleClick={() => setDetailTask(task)}
                       className="relative group cursor-grab active:cursor-grabbing"
                       style={{ opacity: isDragging ? 0.45 : 1 }}
                     >
@@ -1135,6 +1139,16 @@ export function Tasks() {
             </form>
           </div>
         </div>
+      )}
+
+      {/* ── Task Detail Panel ── */}
+      {detailTask && (
+        <TaskDetailPanel
+          task={detailTask}
+          orgId={currentOrg?.id ?? ''}
+          onClose={() => setDetailTask(null)}
+          onTaskUpdated={fetchTasks}
+        />
       )}
 
       {/* ── Brain Dump Modal ── */}

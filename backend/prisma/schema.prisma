@@ -22,6 +22,8 @@ model User {
   macroTasks       MacroTask[]
   reports          Report[]
   attendanceLogs   AttendanceLog[]
+  taskComments     TaskComment[]
+  taskAttachments  TaskAttachment[]
 }
 
 model Organization {
@@ -154,6 +156,8 @@ model MacroTask {
   org            Organization  @relation(fields: [orgId], references: [id], onDelete: Cascade)
   project        Project?      @relation(fields: [projectId], references: [id], onDelete: SetNull)
   timeLogs       TimeLog[]
+  comments       TaskComment[]
+  attachments    TaskAttachment[]
 
   @@index([userId, status])
   @@index([orgId])
@@ -302,4 +306,41 @@ model AttendanceLog {
   @@index([orgId])
   @@index([userId, timeOut])
   @@map("attendance_logs")
+}
+
+model TaskComment {
+  id        String   @id @default(cuid())
+  taskId    String   @db.VarChar(50)
+  userId    String   @db.VarChar(36)
+  orgId     String
+  content   String   @db.Text
+  createdAt DateTime @default(now())
+  updatedAt DateTime @default(now()) @updatedAt
+
+  task MacroTask @relation(fields: [taskId], references: [id], onDelete: Cascade)
+  user User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([taskId])
+  @@index([orgId])
+  @@map("task_comments")
+}
+
+model TaskAttachment {
+  id        String   @id @default(cuid())
+  taskId    String   @db.VarChar(50)
+  userId    String   @db.VarChar(36)
+  orgId     String
+  name      String   @db.VarChar(255)
+  mimeType  String   @db.VarChar(100)
+  size      Int
+  data      String   @db.LongText
+  category  String   @default("attachment") @db.VarChar(20)
+  createdAt DateTime @default(now())
+
+  task MacroTask @relation(fields: [taskId], references: [id], onDelete: Cascade)
+  user User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([taskId])
+  @@index([orgId])
+  @@map("task_attachments")
 }

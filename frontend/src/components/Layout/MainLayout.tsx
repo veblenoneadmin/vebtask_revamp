@@ -4,6 +4,21 @@ import { useSession, signOut } from '../../lib/auth-client';
 import Sidebar from './Sidebar';
 import { LogOut, ChevronDown, Menu } from 'lucide-react';
 
+// ── VS Code Dark+ tokens ──────────────────────────────────────────────────────
+const VS = {
+  bg0:    '#1e1e1e',
+  bg1:    '#252526',
+  bg2:    '#2d2d2d',
+  bg3:    '#333333',
+  border: '#3c3c3c',
+  text0:  '#f0f0f0',
+  text1:  '#c0c0c0',
+  text2:  '#909090',
+  accent: '#007acc',
+  teal:   '#4ec9b0',
+  red:    '#f44747',
+};
+
 function fmtElapsed(s: number) {
   const h = Math.floor(s / 3600), m = Math.floor((s % 3600) / 60), sec = s % 60;
   return `${String(h).padStart(2,'0')}:${String(m).padStart(2,'0')}:${String(sec).padStart(2,'0')}`;
@@ -55,9 +70,7 @@ const MainLayout: React.FC = () => {
             setOrgId(data.organizations[0].id || '');
           }
         }
-      } catch {
-        // ignore
-      }
+      } catch { /* ignore */ }
     };
     if (session) fetchRole();
   }, [session]);
@@ -106,41 +119,39 @@ const MainLayout: React.FC = () => {
   const displayName = email.split('@')[0] || 'User';
 
   return (
-    <div className="min-h-screen" style={{ background: '#050505' }}>
+    <div className="min-h-screen" style={{ background: VS.bg0 }}>
       <Sidebar isOpen={sidebarOpen} onClose={() => setSidebarOpen(false)} />
 
       {/* Top Navbar */}
       <header
         className="fixed top-0 right-0 z-40 flex h-14 items-center justify-between px-4 md:px-6 md:left-60 left-0"
-        style={{ background: '#070707', borderBottom: '1px solid #1c1c1c' }}
+        style={{ background: VS.bg1, borderBottom: `1px solid ${VS.border}` }}
       >
         {/* Left — hamburger + page title */}
         <div className="flex items-center gap-3">
           <button
             className="md:hidden flex items-center justify-center h-8 w-8 rounded-lg transition-colors"
-            style={{ color: '#666' }}
+            style={{ color: VS.text2 }}
             onClick={() => setSidebarOpen(v => !v)}
             aria-label="Toggle menu"
           >
             <Menu className="h-5 w-5" />
           </button>
-          <h1 className="text-sm font-semibold" style={{ color: '#666' }}>{pageTitle}</h1>
+          <h1 className="text-sm font-semibold" style={{ color: VS.text2 }}>{pageTitle}</h1>
         </div>
 
         {/* Center — wall clock + attendance elapsed (absolutely centered) */}
         <div className="absolute left-1/2 -translate-x-1/2 flex items-center gap-3">
-          {/* Actual time */}
-          <span className="text-[13px] font-mono font-semibold tabular-nums" style={{ color: '#555' }}>
+          <span className="text-[13px] font-mono font-semibold tabular-nums" style={{ color: VS.text1 }}>
             {currentTime}
           </span>
 
-          {/* Attendance elapsed — only when clocked in */}
           {attendanceActive && (
             <>
-              <span style={{ color: '#2a2a2a' }}>|</span>
+              <span style={{ color: VS.border }}>|</span>
               <div className="flex items-center gap-1.5">
-                <span className="h-1.5 w-1.5 rounded-full animate-pulse" style={{ background: '#4ade80' }} />
-                <span className="text-[13px] font-mono font-semibold tabular-nums" style={{ color: '#4ade80' }}>
+                <span className="h-1.5 w-1.5 rounded-full animate-pulse" style={{ background: VS.teal }} />
+                <span className="text-[13px] font-mono font-semibold tabular-nums" style={{ color: VS.teal }}>
                   {fmtElapsed(navElapsed)}
                 </span>
               </div>
@@ -150,67 +161,61 @@ const MainLayout: React.FC = () => {
 
         {/* Right — user dropdown */}
         <div className="flex items-center gap-2">
-
-          {/* Account dropdown */}
           <div className="relative">
-          <button
-            onClick={() => setShowDropdown(v => !v)}
-            className="flex items-center gap-2.5 rounded-lg px-3 py-1.5 transition-colors duration-150"
-            style={{ background: showDropdown ? '#111' : 'transparent' }}
-            onMouseEnter={e => { if (!showDropdown) (e.currentTarget as HTMLElement).style.background = '#0f0f0f'; }}
-            onMouseLeave={e => { if (!showDropdown) (e.currentTarget as HTMLElement).style.background = 'transparent'; }}
-          >
-            {/* Avatar */}
-            <div
-              className="h-7 w-7 rounded-full flex items-center justify-center text-[11px] font-bold text-white shrink-0"
-              style={{ background: 'linear-gradient(135deg, hsl(252 87% 62%), hsl(260 80% 70%))' }}
+            <button
+              onClick={() => setShowDropdown(v => !v)}
+              className="flex items-center gap-2.5 rounded-lg px-3 py-1.5 transition-colors duration-150"
+              style={{ background: showDropdown ? VS.bg3 : 'transparent' }}
+              onMouseEnter={e => { if (!showDropdown) (e.currentTarget as HTMLElement).style.background = VS.bg2; }}
+              onMouseLeave={e => { if (!showDropdown) (e.currentTarget as HTMLElement).style.background = 'transparent'; }}
             >
-              {email ? getInitials(email) : 'U'}
-            </div>
-            <div className="text-left leading-tight hidden sm:block">
-              <p className="text-[12px] font-medium capitalize" style={{ color: '#ccc' }}>{displayName}</p>
-              {userRole && (
-                <p className="text-[10px] capitalize" style={{ color: '#555' }}>{userRole.toLowerCase()}</p>
-              )}
-            </div>
-            <ChevronDown className="h-3.5 w-3.5 shrink-0" style={{ color: '#555' }} />
-          </button>
-
-          {/* Dropdown */}
-          {showDropdown && (
-            <>
-              <div className="fixed inset-0 z-10" onClick={() => setShowDropdown(false)} />
+              {/* Avatar */}
               <div
-                className="absolute right-0 top-full mt-2 w-56 rounded-xl z-20 overflow-hidden"
-                style={{
-                  background: '#0d0d0d',
-                  border: '1px solid #222',
-                  boxShadow: '0 16px 48px rgba(0,0,0,0.7)',
-                }}
+                className="h-7 w-7 rounded-full flex items-center justify-center text-[11px] font-bold text-white shrink-0"
+                style={{ background: 'linear-gradient(135deg, hsl(252 87% 62%), hsl(260 80% 70%))' }}
               >
-                <div className="px-4 py-3" style={{ borderBottom: '1px solid #1a1a1a' }}>
-                  <p className="text-[12px] font-medium capitalize" style={{ color: '#ccc' }}>{displayName}</p>
-                  <p className="text-[11px] truncate mt-0.5" style={{ color: '#555' }}>{email}</p>
-                </div>
-                <button
-                  onClick={handleSignOut}
-                  className="flex w-full items-center gap-3 px-4 py-2.5 text-[13px] transition-colors duration-150"
-                  style={{ color: '#777' }}
-                  onMouseEnter={e => {
-                    (e.currentTarget as HTMLElement).style.background = 'rgba(220,38,38,0.08)';
-                    (e.currentTarget as HTMLElement).style.color = '#f87171';
-                  }}
-                  onMouseLeave={e => {
-                    (e.currentTarget as HTMLElement).style.background = 'transparent';
-                    (e.currentTarget as HTMLElement).style.color = '#777';
-                  }}
-                >
-                  <LogOut className="h-4 w-4" />
-                  Sign out
-                </button>
+                {email ? getInitials(email) : 'U'}
               </div>
-            </>
-          )}
+              <div className="text-left leading-tight hidden sm:block">
+                <p className="text-[12px] font-medium capitalize" style={{ color: VS.text0 }}>{displayName}</p>
+                {userRole && (
+                  <p className="text-[10px] capitalize" style={{ color: VS.text2 }}>{userRole.toLowerCase()}</p>
+                )}
+              </div>
+              <ChevronDown className="h-3.5 w-3.5 shrink-0" style={{ color: VS.text2 }} />
+            </button>
+
+            {/* Dropdown */}
+            {showDropdown && (
+              <>
+                <div className="fixed inset-0 z-10" onClick={() => setShowDropdown(false)} />
+                <div
+                  className="absolute right-0 top-full mt-2 w-56 rounded-xl z-20 overflow-hidden"
+                  style={{ background: VS.bg1, border: `1px solid ${VS.border}`, boxShadow: '0 16px 48px rgba(0,0,0,0.7)' }}
+                >
+                  <div className="px-4 py-3" style={{ borderBottom: `1px solid ${VS.border}` }}>
+                    <p className="text-[12px] font-medium capitalize" style={{ color: VS.text0 }}>{displayName}</p>
+                    <p className="text-[11px] truncate mt-0.5" style={{ color: VS.text2 }}>{email}</p>
+                  </div>
+                  <button
+                    onClick={handleSignOut}
+                    className="flex w-full items-center gap-3 px-4 py-2.5 text-[13px] transition-colors duration-150"
+                    style={{ color: VS.text1 }}
+                    onMouseEnter={e => {
+                      (e.currentTarget as HTMLElement).style.background = `${VS.red}14`;
+                      (e.currentTarget as HTMLElement).style.color = VS.red;
+                    }}
+                    onMouseLeave={e => {
+                      (e.currentTarget as HTMLElement).style.background = 'transparent';
+                      (e.currentTarget as HTMLElement).style.color = VS.text1;
+                    }}
+                  >
+                    <LogOut className="h-4 w-4" />
+                    Sign out
+                  </button>
+                </div>
+              </>
+            )}
           </div>
         </div>
       </header>

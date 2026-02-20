@@ -15,6 +15,16 @@ import {
 } from 'lucide-react';
 import { cn } from '../../lib/utils';
 
+// ── VS Code Dark+ tokens ──────────────────────────────────────────────────────
+const VS = {
+  bg1:    '#252526',
+  bg2:    '#2d2d2d',
+  border: '#3c3c3c',
+  text1:  '#c0c0c0',
+  text2:  '#909090',
+  accent: '#569cd6',
+};
+
 const getAllNavigationItems = () => [
   { name: 'Dashboard',      href: '/dashboard',  icon: LayoutDashboard, roles: ['OWNER', 'ADMIN', 'STAFF', 'CLIENT'] },
   { name: 'Brain Dump',     href: '/brain-dump', icon: Brain,           roles: ['OWNER', 'ADMIN', 'STAFF'] },
@@ -48,9 +58,7 @@ const Sidebar: React.FC<SidebarProps> = ({ isOpen, onClose }) => {
             setUserRole(data.organizations[0].role || 'CLIENT');
           }
         }
-      } catch {
-        // ignore
-      }
+      } catch { /* ignore */ }
     };
     if (session) fetchUserRole();
   }, [session]);
@@ -69,10 +77,7 @@ const Sidebar: React.FC<SidebarProps> = ({ isOpen, onClose }) => {
     <>
       {/* Mobile backdrop */}
       {isOpen && (
-        <div
-          className="fixed inset-0 z-40 bg-black/60 md:hidden"
-          onClick={onClose}
-        />
+        <div className="fixed inset-0 z-40 bg-black/60 md:hidden" onClick={onClose} />
       )}
 
       {/* Sidebar panel */}
@@ -82,25 +87,25 @@ const Sidebar: React.FC<SidebarProps> = ({ isOpen, onClose }) => {
           'md:translate-x-0',
           isOpen ? 'translate-x-0' : '-translate-x-full'
         )}
-        style={{ background: '#070707', borderRight: '1px solid #1c1c1c' }}
+        style={{ background: VS.bg1, borderRight: `1px solid ${VS.border}` }}
       >
         {/* Logo */}
         <div
           className="flex h-14 items-center px-4 shrink-0"
-          style={{ borderBottom: '1px solid #1c1c1c' }}
+          style={{ borderBottom: `1px solid ${VS.border}` }}
         >
           <div className="flex items-center gap-3">
             <img src="/veblen-logo.png" alt="VebTask" className="h-8 w-8 object-contain rounded-lg" />
             <div>
               <p className="text-sm font-bold gradient-text tracking-tight leading-tight">VebTask</p>
-              <p className="text-[10px] leading-none" style={{ color: '#444' }}>Veblen Internal</p>
+              <p className="text-[10px] leading-none" style={{ color: VS.text2 }}>Veblen Internal</p>
             </div>
           </div>
         </div>
 
         {/* Navigation */}
         <nav className="flex-1 overflow-y-auto px-2 py-4">
-          <p className="px-3 mb-2 text-[10px] font-semibold uppercase tracking-widest" style={{ color: '#333' }}>
+          <p className="px-3 mb-2 text-[10px] font-semibold uppercase tracking-widest" style={{ color: VS.border }}>
             Menu
           </p>
           <div className="space-y-0.5">
@@ -115,27 +120,27 @@ const Sidebar: React.FC<SidebarProps> = ({ isOpen, onClose }) => {
                     'flex items-center gap-3 px-3 py-[7px] rounded-lg text-[13px] font-medium transition-colors duration-150'
                   )}
                   style={isActive ? {
-                    background: 'linear-gradient(90deg, hsl(252 87% 62% / 0.15) 0%, transparent 100%)',
-                    borderLeft: '2px solid hsl(252, 87%, 62%)',
-                    color: '#c4b5fd',
+                    background: `${VS.accent}22`,
+                    borderLeft: `2px solid ${VS.accent}`,
+                    color: VS.accent,
                   } : {
-                    color: '#585858',
+                    color: VS.text2,
                     borderLeft: '2px solid transparent',
                   }}
                   onMouseEnter={e => {
                     if (!isActive) {
-                      (e.currentTarget as HTMLElement).style.background = '#111';
-                      (e.currentTarget as HTMLElement).style.color = '#bbb';
+                      (e.currentTarget as HTMLElement).style.background = VS.bg2;
+                      (e.currentTarget as HTMLElement).style.color = VS.text1;
                     }
                   }}
                   onMouseLeave={e => {
                     if (!isActive) {
                       (e.currentTarget as HTMLElement).style.background = 'transparent';
-                      (e.currentTarget as HTMLElement).style.color = '#585858';
+                      (e.currentTarget as HTMLElement).style.color = VS.text2;
                     }
                   }}
                 >
-                  <Icon className="h-4 w-4 shrink-0" style={isActive ? { color: '#a78bfa' } : {}} />
+                  <Icon className="h-4 w-4 shrink-0" style={isActive ? { color: VS.accent } : {}} />
                   {item.name}
                 </NavLink>
               );
@@ -146,7 +151,7 @@ const Sidebar: React.FC<SidebarProps> = ({ isOpen, onClose }) => {
         {/* Version tag */}
         <div
           className="px-4 py-2.5 text-[10px] shrink-0"
-          style={{ color: '#252525', borderTop: '1px solid #141414' }}
+          style={{ color: VS.border, borderTop: `1px solid ${VS.border}` }}
         >
           VebTask v1.0
         </div>

@@ -235,7 +235,11 @@ export function Tasks() {
     return `${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}`;
   };
 
-  const handleStartTimer = (taskId: string) => {
+  const handleStartTimer = async (taskId: string) => {
+    // Stop any currently running timer first, saving its elapsed time
+    if (timerTaskId && timerTaskId !== taskId) {
+      await handleStopTimer(timerTaskId);
+    }
     if (timerInterval.current) clearInterval(timerInterval.current);
     const startTime = Date.now();
     setTimerTaskId(taskId);

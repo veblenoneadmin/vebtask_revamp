@@ -245,16 +245,29 @@ export function Tasks() {
     setTimerTaskId(taskId);
     setTimerStart(startTime);
     localStorage.setItem('task_timer_active', JSON.stringify({ taskId, startTime }));
+    localStorage.setItem('task_timer_start', String(startTime));
     timerInterval.current = setInterval(() => setTick(t => t + 1), 1000);
   };
 
   const handleStopTimer = async (taskId: string) => {
     if (timerInterval.current) { clearInterval(timerInterval.current); timerInterval.current = null; }
     localStorage.removeItem('task_timer_active');
-    const elapsed = timerStart !== null ? Math.floor((Date.now() - timerStart) / 1000) : 0;
-    const newAccum = { ...timerAccum, [taskId]: (timerAccum[taskId] || 0) + elapsed };
-    setTimerAccum(newAccum);
+    localStorage.removeItem('task_timer_start');
+
+    // Read the start time from localStorage to avoid stale closure issues
+    const storedStart = (() => {
+      try { return JSON.parse(localStorage.getItem('task_timer_start') || 'null'); } catch { return null; }
+    })();
+    const effectiveStart = storedStart ?? timerStart;
+    const elapsed = effectiveStart !== null ? Math.floor((Date.now() - effectiveStart) / 1000) : 0;
+
+    // Always read accumulated time from localStorage (source of truth) — avoids stale React closure
+    const stored: Record<string, number> = (() => {
+      try { return JSON.parse(localStorage.getItem('task_timers') || '{}'); } catch { return {}; }
+    })();
+    const newAccum = { ...stored, [taskId]: (stored[taskId] || 0) + elapsed };
     localStorage.setItem('task_timers', JSON.stringify(newAccum));
+    setTimerAccum(newAccum);
     setTimerTaskId(null);
     setTimerStart(null);
     try {

@@ -539,7 +539,7 @@ export function Tasks() {
               <>
                 <div className="fixed inset-0 z-10" onClick={() => setShowFilter(false)} />
                 <div
-                  className="absolute top-full mt-2 right-0 z-20 rounded-xl p-4 space-y-4"
+                  className="absolute top-full mt-2 right-0 z-[200] rounded-xl p-4 space-y-4"
                   style={{ background: VS.bg1, border: `1px solid ${VS.border}`, boxShadow: '0 12px 40px rgba(0,0,0,0.7)', minWidth: 240 }}
                 >
                   {/* Priority */}
@@ -636,7 +636,7 @@ export function Tasks() {
               <>
                 <div className="fixed inset-0 z-10" onClick={() => setShowSort(false)} />
                 <div
-                  className="absolute top-full mt-2 right-0 z-20 rounded-xl py-2"
+                  className="absolute top-full mt-2 right-0 z-[200] rounded-xl py-2"
                   style={{ background: VS.bg1, border: `1px solid ${VS.border}`, boxShadow: '0 12px 40px rgba(0,0,0,0.7)', minWidth: 210 }}
                 >
                   {([

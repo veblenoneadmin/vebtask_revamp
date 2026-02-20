@@ -17,6 +17,7 @@ import {
   Play,
   Square,
   Brain,
+  Check,
 } from 'lucide-react';
 import BrainDumpModal from '../components/BrainDumpModal';
 
@@ -25,7 +26,7 @@ interface Task {
   title: string;
   description: string;
   priority: 'Urgent' | 'High' | 'Medium' | 'Low';
-  status: 'not_started' | 'in_progress' | 'completed' | 'on_hold';
+  status: 'not_started' | 'in_progress' | 'completed' | 'on_hold' | 'cancelled';
   estimatedHours: number;
   actualHours: number;
   dueDate?: string;
@@ -73,6 +74,7 @@ const COLUMNS: { id: Task['status']; label: string; accent: string; bg: string }
   { id: 'in_progress', label: 'In Progress', accent: VS.yellow, bg: 'rgba(220,220,170,0.10)' },
   { id: 'on_hold',     label: 'On Hold',     accent: VS.red,    bg: 'rgba(244,71,71,0.10)'   },
   { id: 'completed',   label: 'Done',        accent: VS.teal,   bg: 'rgba(78,201,176,0.10)'  },
+  { id: 'cancelled',   label: 'Cancelled',   accent: VS.orange, bg: 'rgba(206,145,120,0.10)' },
 ];
 
 const PRIORITY_CONFIG: Record<string, { label: string; bg: string; text: string; border: string }> = {
@@ -87,6 +89,7 @@ const STATUS_CONFIG: Record<string, { label: string; bg: string; text: string }>
   in_progress: { label: 'In Progress', bg: 'rgba(220,220,170,0.15)', text: VS.yellow },
   on_hold:     { label: 'On Hold',     bg: 'rgba(244,71,71,0.15)',   text: VS.red    },
   completed:   { label: 'Done',        bg: 'rgba(78,201,176,0.15)',  text: VS.teal   },
+  cancelled:   { label: 'Cancelled',   bg: 'rgba(206,145,120,0.15)', text: VS.orange },
 };
 
 // Avatar color palette
@@ -157,6 +160,18 @@ export function Tasks() {
   // Brain Dump modal
   const [showBrainDump, setShowBrainDump] = useState(false);
 
+  // Filter
+  const [showFilter, setShowFilter] = useState(false);
+  const [filterPriorities, setFilterPriorities] = useState<string[]>([]);
+  const [filterProject, setFilterProject] = useState('');
+  const [filterOverdueOnly, setFilterOverdueOnly] = useState(false);
+
+  // Sort
+  const [showSort, setShowSort] = useState(false);
+  const [sortBy, setSortBy] = useState<
+    'created_desc' | 'created_asc' | 'priority_desc' | 'priority_asc' | 'due_asc' | 'due_desc' | 'title_asc' | 'title_desc'
+  >('created_desc');
+
   // Timer — state is hydrated from localStorage so it survives refresh/restart
   const [timerTaskId, setTimerTaskId] = useState<string | null>(() => {
     try { return JSON.parse(localStorage.getItem('task_timer_active') || 'null')?.taskId ?? null; } catch { return null; }
@@ -208,6 +223,10 @@ export function Tasks() {
       if (data.success) setProjects(data.projects || []);
     } catch { /* ignore */ }
   };
+
+  useEffect(() => {
+    if (session?.user?.id && currentOrg?.id) fetchProjects();
+  }, [session?.user?.id, currentOrg?.id]);
 
   useEffect(() => {
     if (showNewTaskForm || editingTask) fetchProjects();
@@ -417,12 +436,34 @@ export function Tasks() {
     });
   };
 
-  // ── filtered tasks ─────────────────────────────────────────────────────────
-  const filtered = tasks.filter(t =>
-    !searchTerm ||
-    t.title.toLowerCase().includes(searchTerm.toLowerCase()) ||
-    t.description.toLowerCase().includes(searchTerm.toLowerCase())
-  );
+  // ── filter + sort ──────────────────────────────────────────────────────────
+  const priorityRank: Record<string, number> = { Urgent: 4, High: 3, Medium: 2, Low: 1 };
+
+  const filtered = tasks
+    .filter(t => {
+      if (searchTerm && !t.title.toLowerCase().includes(searchTerm.toLowerCase()) && !t.description.toLowerCase().includes(searchTerm.toLowerCase())) return false;
+      if (filterPriorities.length > 0 && !filterPriorities.includes(t.priority)) return false;
+      if (filterProject && t.projectId !== filterProject) return false;
+      if (filterOverdueOnly) {
+        const over = t.dueDate && new Date(t.dueDate) < new Date() && t.status !== 'completed' && t.status !== 'cancelled';
+        if (!over) return false;
+      }
+      return true;
+    })
+    .sort((a, b) => {
+      switch (sortBy) {
+        case 'created_asc':   return new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime();
+        case 'priority_desc': return (priorityRank[b.priority] || 0) - (priorityRank[a.priority] || 0);
+        case 'priority_asc':  return (priorityRank[a.priority] || 0) - (priorityRank[b.priority] || 0);
+        case 'due_asc':       return (a.dueDate ? new Date(a.dueDate).getTime() : Infinity) - (b.dueDate ? new Date(b.dueDate).getTime() : Infinity);
+        case 'due_desc':      return (b.dueDate ? new Date(b.dueDate).getTime() : -Infinity) - (a.dueDate ? new Date(a.dueDate).getTime() : -Infinity);
+        case 'title_asc':     return a.title.localeCompare(b.title);
+        case 'title_desc':    return b.title.localeCompare(a.title);
+        default:              return new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime(); // created_desc
+      }
+    });
+
+  const activeFilterCount = filterPriorities.length + (filterProject ? 1 : 0) + (filterOverdueOnly ? 1 : 0);
 
   const tasksForCol = (colId: string) => filtered.filter(t => t.status === colId);
 
@@ -452,7 +493,7 @@ export function Tasks() {
             </span>
           </h1>
           <p className="text-xs mt-0.5" style={{ color: VS.text2 }}>
-            {tasks.length} tasks · {COLUMNS.length} stages
+            {filtered.length}{filtered.length !== tasks.length ? ` / ${tasks.length}` : ''} tasks · {COLUMNS.length} stages
           </p>
         </div>
 
@@ -471,19 +512,164 @@ export function Tasks() {
             />
           </div>
 
-          {/* Filter / Sort buttons */}
-          <button
-            className="flex items-center gap-1.5 px-3 py-1.5 rounded text-xs transition-colors"
-            style={{ background: VS.bg3, border: `1px solid ${VS.border}`, color: VS.text1 }}
-          >
-            <Filter className="h-3.5 w-3.5" /> Filter
-          </button>
-          <button
-            className="flex items-center gap-1.5 px-3 py-1.5 rounded text-xs transition-colors"
-            style={{ background: VS.bg3, border: `1px solid ${VS.border}`, color: VS.text1 }}
-          >
-            <SlidersHorizontal className="h-3.5 w-3.5" /> Sort
-          </button>
+          {/* ── Filter dropdown ── */}
+          <div className="relative">
+            <button
+              onClick={() => { setShowFilter(v => !v); setShowSort(false); }}
+              className="flex items-center gap-1.5 px-3 py-1.5 rounded text-xs transition-colors"
+              style={{
+                background: activeFilterCount > 0 ? `${VS.blue}22` : VS.bg3,
+                border: `1px solid ${activeFilterCount > 0 ? VS.blue + '88' : VS.border}`,
+                color: activeFilterCount > 0 ? VS.blue : VS.text1,
+              }}
+            >
+              <Filter className="h-3.5 w-3.5" />
+              Filter
+              {activeFilterCount > 0 && (
+                <span
+                  className="h-4 w-4 rounded-full text-[10px] flex items-center justify-center font-bold"
+                  style={{ background: VS.blue, color: '#fff' }}
+                >
+                  {activeFilterCount}
+                </span>
+              )}
+            </button>
+
+            {showFilter && (
+              <>
+                <div className="fixed inset-0 z-10" onClick={() => setShowFilter(false)} />
+                <div
+                  className="absolute top-full mt-2 right-0 z-20 rounded-xl p-4 space-y-4"
+                  style={{ background: VS.bg1, border: `1px solid ${VS.border}`, boxShadow: '0 12px 40px rgba(0,0,0,0.7)', minWidth: 240 }}
+                >
+                  {/* Priority */}
+                  <div>
+                    <p className="text-[10px] uppercase tracking-widest mb-2" style={{ color: VS.text2 }}>Priority</p>
+                    <div className="grid grid-cols-2 gap-1.5">
+                      {(['Urgent', 'High', 'Medium', 'Low'] as const).map(p => {
+                        const active = filterPriorities.includes(p);
+                        const cfg = PRIORITY_CONFIG[p];
+                        return (
+                          <button
+                            key={p}
+                            onClick={() => setFilterPriorities(prev => active ? prev.filter(x => x !== p) : [...prev, p])}
+                            className="flex items-center gap-1.5 px-2 py-1.5 rounded-lg text-[11px] font-medium transition-all"
+                            style={{
+                              background: active ? `${cfg.border}22` : VS.bg3,
+                              border: `1px solid ${active ? cfg.border + '88' : VS.border}`,
+                              color: active ? cfg.text : VS.text2,
+                            }}
+                          >
+                            <div className="h-2 w-2 rounded-full shrink-0" style={{ background: active ? cfg.text : VS.border }} />
+                            {p}
+                          </button>
+                        );
+                      })}
+                    </div>
+                  </div>
+
+                  {/* Project */}
+                  {projects.length > 0 && (
+                    <div>
+                      <p className="text-[10px] uppercase tracking-widest mb-2" style={{ color: VS.text2 }}>Project</p>
+                      <select
+                        value={filterProject}
+                        onChange={e => setFilterProject(e.target.value)}
+                        className={inputCls}
+                        style={{ ...inputStyle, fontSize: 12 }}
+                      >
+                        <option value="">All projects</option>
+                        {projects.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
+                      </select>
+                    </div>
+                  )}
+
+                  {/* Overdue only */}
+                  <button
+                    onClick={() => setFilterOverdueOnly(v => !v)}
+                    className="flex items-center gap-2 w-full px-2 py-1.5 rounded-lg text-[12px] transition-all"
+                    style={{
+                      background: filterOverdueOnly ? `${VS.red}18` : 'transparent',
+                      border: `1px solid ${filterOverdueOnly ? VS.red + '55' : VS.border}`,
+                      color: filterOverdueOnly ? VS.red : VS.text2,
+                    }}
+                  >
+                    <div
+                      className="h-3.5 w-3.5 rounded flex items-center justify-center shrink-0"
+                      style={{ background: filterOverdueOnly ? VS.red : VS.bg3, border: `1px solid ${filterOverdueOnly ? VS.red : VS.border2}` }}
+                    >
+                      {filterOverdueOnly && <Check className="h-2.5 w-2.5 text-white" style={{ strokeWidth: 3 }} />}
+                    </div>
+                    Overdue only
+                  </button>
+
+                  {/* Clear */}
+                  {activeFilterCount > 0 && (
+                    <button
+                      onClick={() => { setFilterPriorities([]); setFilterProject(''); setFilterOverdueOnly(false); }}
+                      className="w-full text-[11px] py-1.5 rounded-lg text-center transition-colors hover:opacity-80"
+                      style={{ color: VS.text1, background: VS.bg3, border: `1px solid ${VS.border}` }}
+                    >
+                      Clear all filters
+                    </button>
+                  )}
+                </div>
+              </>
+            )}
+          </div>
+
+          {/* ── Sort dropdown ── */}
+          <div className="relative">
+            <button
+              onClick={() => { setShowSort(v => !v); setShowFilter(false); }}
+              className="flex items-center gap-1.5 px-3 py-1.5 rounded text-xs transition-colors"
+              style={{
+                background: sortBy !== 'created_desc' ? `${VS.blue}22` : VS.bg3,
+                border: `1px solid ${sortBy !== 'created_desc' ? VS.blue + '88' : VS.border}`,
+                color: sortBy !== 'created_desc' ? VS.blue : VS.text1,
+              }}
+            >
+              <SlidersHorizontal className="h-3.5 w-3.5" /> Sort
+            </button>
+
+            {showSort && (
+              <>
+                <div className="fixed inset-0 z-10" onClick={() => setShowSort(false)} />
+                <div
+                  className="absolute top-full mt-2 right-0 z-20 rounded-xl py-2"
+                  style={{ background: VS.bg1, border: `1px solid ${VS.border}`, boxShadow: '0 12px 40px rgba(0,0,0,0.7)', minWidth: 210 }}
+                >
+                  {([
+                    { value: 'created_desc',  label: 'Newest first' },
+                    { value: 'created_asc',   label: 'Oldest first' },
+                    { value: 'priority_desc', label: 'Priority (high → low)' },
+                    { value: 'priority_asc',  label: 'Priority (low → high)' },
+                    { value: 'due_asc',       label: 'Due date (soonest)' },
+                    { value: 'due_desc',      label: 'Due date (latest)' },
+                    { value: 'title_asc',     label: 'Title (A → Z)' },
+                    { value: 'title_desc',    label: 'Title (Z → A)' },
+                  ] as { value: typeof sortBy; label: string }[]).map(opt => (
+                    <button
+                      key={opt.value}
+                      onClick={() => { setSortBy(opt.value); setShowSort(false); }}
+                      className="flex items-center gap-2.5 w-full px-4 py-2 text-[12px] text-left transition-colors hover:bg-white/5"
+                      style={{ color: sortBy === opt.value ? VS.blue : VS.text1 }}
+                    >
+                      <div
+                        className="h-3 w-3 rounded-full border flex items-center justify-center shrink-0"
+                        style={{ borderColor: sortBy === opt.value ? VS.blue : VS.border2 }}
+                      >
+                        {sortBy === opt.value && (
+                          <div className="h-1.5 w-1.5 rounded-full" style={{ background: VS.blue }} />
+                        )}
+                      </div>
+                      {opt.label}
+                    </button>
+                  ))}
+                </div>
+              </>
+            )}
+          </div>
 
           {/* Generate with AI */}
           {userRole !== 'CLIENT' && (
@@ -575,7 +761,7 @@ export function Tasks() {
                   const sCfg = STATUS_CONFIG[task.status] || STATUS_CONFIG.not_started;
                   const isDragging = draggingId === task.id;
                   const date = formatDate(task.dueDate);
-                  const isOverdue = task.dueDate && new Date(task.dueDate) < new Date() && task.status !== 'completed';
+                  const isOverdue = task.dueDate && new Date(task.dueDate) < new Date() && task.status !== 'completed' && task.status !== 'cancelled';
                   const tagCount = Array.isArray(task.tags) ? task.tags.length : 0;
 
                   return (

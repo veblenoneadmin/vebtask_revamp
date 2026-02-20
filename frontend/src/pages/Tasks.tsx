@@ -14,6 +14,8 @@ import {
   Folder,
   Filter,
   SlidersHorizontal,
+  Play,
+  Square,
 } from 'lucide-react';
 
 interface Task {
@@ -150,6 +152,15 @@ export function Tasks() {
   // Card menu
   const [openMenuId, setOpenMenuId] = useState<string | null>(null);
 
+  // Timer
+  const [timerTaskId, setTimerTaskId] = useState<string | null>(null);
+  const [timerStart, setTimerStart]   = useState<number | null>(null);
+  const [timerAccum, setTimerAccum]   = useState<Record<string, number>>(() => {
+    try { return JSON.parse(localStorage.getItem('task_timers') || '{}'); } catch { return {}; }
+  });
+  const [, setTick] = useState(0); // drives live display
+  const timerInterval = useRef<ReturnType<typeof setInterval> | null>(null);
+
   // ── fetch user role ────────────────────────────────────────────────────────
   useEffect(() => {
     const go = async () => {
@@ -192,6 +203,49 @@ export function Tasks() {
   useEffect(() => {
     if (showNewTaskForm || editingTask) fetchProjects();
   }, [showNewTaskForm, editingTask]);
+
+  // ── timer cleanup on unmount ────────────────────────────────────────────────
+  useEffect(() => () => { if (timerInterval.current) clearInterval(timerInterval.current); }, []);
+
+  // ── timer helpers ──────────────────────────────────────────────────────────
+  const getTimerSeconds = (taskId: string) => {
+    const accum = timerAccum[taskId] || 0;
+    if (timerTaskId === taskId && timerStart !== null) {
+      return accum + Math.floor((Date.now() - timerStart) / 1000);
+    }
+    return accum;
+  };
+
+  const formatTimer = (secs: number) => {
+    const h = Math.floor(secs / 3600);
+    const m = Math.floor((secs % 3600) / 60);
+    const s = secs % 60;
+    return `${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}`;
+  };
+
+  const handleStartTimer = (taskId: string) => {
+    if (timerInterval.current) clearInterval(timerInterval.current);
+    setTimerTaskId(taskId);
+    setTimerStart(Date.now());
+    timerInterval.current = setInterval(() => setTick(t => t + 1), 1000);
+  };
+
+  const handleStopTimer = async (taskId: string) => {
+    if (timerInterval.current) { clearInterval(timerInterval.current); timerInterval.current = null; }
+    const elapsed = timerStart !== null ? Math.floor((Date.now() - timerStart) / 1000) : 0;
+    const newAccum = { ...timerAccum, [taskId]: (timerAccum[taskId] || 0) + elapsed };
+    setTimerAccum(newAccum);
+    localStorage.setItem('task_timers', JSON.stringify(newAccum));
+    setTimerTaskId(null);
+    setTimerStart(null);
+    try {
+      await apiClient.fetch(`/api/tasks/${taskId}`, {
+        method: 'PATCH',
+        body: JSON.stringify({ actualHours: parseFloat((newAccum[taskId] / 3600).toFixed(2)) }),
+      });
+      await fetchTasks();
+    } catch { /* silent */ }
+  };
 
   // ── drag & drop ────────────────────────────────────────────────────────────
   const handleDragStart = (e: React.DragEvent, taskId: string) => {
@@ -487,7 +541,7 @@ export function Tasks() {
                       draggable
                       onDragStart={e => handleDragStart(e, task.id)}
                       onDragEnd={handleDragEnd}
-                      onDoubleClick={() => setEditingTask(task)}
+                      onDoubleClick={() => handleEditTask(task)}
                       className="relative group cursor-grab active:cursor-grabbing"
                       style={{ opacity: isDragging ? 0.45 : 1 }}
                     >
@@ -934,6 +988,43 @@ export function Tasks() {
                   className={inputCls}
                   style={inputStyle}
                 />
+              </div>
+
+              {/* ── Timer ── */}
+              <div
+                className="rounded-xl p-3 flex items-center justify-between"
+                style={{ background: VS.bg3, border: `1px solid ${VS.border2}` }}
+              >
+                <div>
+                  <div className="text-[10px] uppercase tracking-wider mb-1" style={{ color: VS.text2 }}>
+                    Time Tracked
+                  </div>
+                  <div
+                    className="text-xl font-mono font-bold tabular-nums"
+                    style={{ color: timerTaskId === editingTask?.id ? VS.teal : VS.text0 }}
+                  >
+                    {formatTimer(getTimerSeconds(editingTask?.id ?? ''))}
+                  </div>
+                </div>
+                <button
+                  type="button"
+                  onClick={() =>
+                    timerTaskId === editingTask?.id
+                      ? handleStopTimer(editingTask!.id)
+                      : handleStartTimer(editingTask!.id)
+                  }
+                  className="flex items-center gap-1.5 px-4 py-2 rounded-lg text-sm font-semibold transition-all"
+                  style={
+                    timerTaskId === editingTask?.id
+                      ? { background: `${VS.red}22`, color: VS.red,  border: `1px solid ${VS.red}55`  }
+                      : { background: `${VS.teal}22`, color: VS.teal, border: `1px solid ${VS.teal}55` }
+                  }
+                >
+                  {timerTaskId === editingTask?.id
+                    ? <><Square className="h-3.5 w-3.5 fill-current" /> Stop</>
+                    : <><Play  className="h-3.5 w-3.5 fill-current" /> Start</>
+                  }
+                </button>
               </div>
 
               <div className="flex gap-2 pt-2">

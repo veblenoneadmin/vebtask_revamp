@@ -16,7 +16,9 @@ import {
   SlidersHorizontal,
   Play,
   Square,
+  Brain,
 } from 'lucide-react';
+import BrainDumpModal from '../components/BrainDumpModal';
 
 interface Task {
   id: string;
@@ -151,6 +153,9 @@ export function Tasks() {
 
   // Card menu
   const [openMenuId, setOpenMenuId] = useState<string | null>(null);
+
+  // Brain Dump modal
+  const [showBrainDump, setShowBrainDump] = useState(false);
 
   // Timer — state is hydrated from localStorage so it survives refresh/restart
   const [timerTaskId, setTimerTaskId] = useState<string | null>(() => {
@@ -479,6 +484,18 @@ export function Tasks() {
           >
             <SlidersHorizontal className="h-3.5 w-3.5" /> Sort
           </button>
+
+          {/* Generate with AI */}
+          {userRole !== 'CLIENT' && (
+            <button
+              onClick={() => setShowBrainDump(true)}
+              className="flex items-center gap-1.5 px-4 py-1.5 rounded text-xs font-semibold transition-all hover:opacity-90"
+              style={{ background: `${VS.purple}22`, border: `1px solid ${VS.purple}55`, color: VS.purple }}
+            >
+              <Brain className="h-3.5 w-3.5" />
+              Generate with AI
+            </button>
+          )}
 
           {/* Add New */}
           {userRole !== 'CLIENT' && (
@@ -933,6 +950,13 @@ export function Tasks() {
           </div>
         </div>
       )}
+
+      {/* ── Brain Dump Modal ── */}
+      <BrainDumpModal
+        isOpen={showBrainDump}
+        onClose={() => setShowBrainDump(false)}
+        onTasksImported={fetchTasks}
+      />
 
       {/* ── Edit Task Modal ── */}
       {editingTask && (

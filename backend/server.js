@@ -66,7 +66,7 @@ async function runDatabaseMigrations() {
     const execAsync = promisify(exec);
 
     const { stdout, stderr } = await execAsync(
-      'npx prisma db push --accept-data-loss --skip-generate',
+      'node /app/node_modules/prisma/build/index.js db push --accept-data-loss --skip-generate',
       { cwd: '/app/backend' }
     );
     if (stdout) console.log('📋 Schema sync output:', stdout);
@@ -78,7 +78,7 @@ async function runDatabaseMigrations() {
     // Non-fatal — server continues, existing tables are still usable
   }
 
-  // Ensure new tables exist via raw SQL as a reliable fallback
+  // Ensure new tables exist — each in its own try/catch, no FK constraints to avoid name-case issues
   try {
     await prisma.$executeRawUnsafe(`
       CREATE TABLE IF NOT EXISTS task_comments (
@@ -90,12 +90,15 @@ async function runDatabaseMigrations() {
         createdAt DATETIME(3)  NOT NULL DEFAULT CURRENT_TIMESTAMP(3),
         updatedAt DATETIME(3)  NOT NULL DEFAULT CURRENT_TIMESTAMP(3) ON UPDATE CURRENT_TIMESTAMP(3),
         PRIMARY KEY (id),
-        KEY idx_task_comments_taskId (taskId),
-        KEY idx_task_comments_orgId (orgId),
-        CONSTRAINT fk_task_comments_task FOREIGN KEY (taskId) REFERENCES macro_tasks(id) ON DELETE CASCADE,
-        CONSTRAINT fk_task_comments_user FOREIGN KEY (userId) REFERENCES User(id) ON DELETE CASCADE
-      ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
+        KEY idx_tc_task (taskId),
+        KEY idx_tc_org  (orgId)
+      ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
     `);
+    console.log('✅ task_comments table ensured');
+  } catch (err) {
+    console.warn('⚠️  task_comments table ensure failed:', err.message);
+  }
+  try {
     await prisma.$executeRawUnsafe(`
       CREATE TABLE IF NOT EXISTS task_attachments (
         id        VARCHAR(36)  NOT NULL,
@@ -103,21 +106,19 @@ async function runDatabaseMigrations() {
         userId    VARCHAR(36)  NOT NULL,
         orgId     VARCHAR(36)  NOT NULL,
         name      VARCHAR(255) NOT NULL,
-        mimeType  VARCHAR(100) NOT NULL,
-        size      INT          NOT NULL,
+        mimeType  VARCHAR(100) NOT NULL DEFAULT 'application/octet-stream',
+        size      INT          NOT NULL DEFAULT 0,
         data      LONGTEXT     NOT NULL,
         category  VARCHAR(20)  NOT NULL DEFAULT 'attachment',
         createdAt DATETIME(3)  NOT NULL DEFAULT CURRENT_TIMESTAMP(3),
         PRIMARY KEY (id),
-        KEY idx_task_attachments_taskId (taskId),
-        KEY idx_task_attachments_orgId (orgId),
-        CONSTRAINT fk_task_attachments_task FOREIGN KEY (taskId) REFERENCES macro_tasks(id) ON DELETE CASCADE,
-        CONSTRAINT fk_task_attachments_user FOREIGN KEY (userId) REFERENCES User(id) ON DELETE CASCADE
-      ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
+        KEY idx_ta_task (taskId),
+        KEY idx_ta_org  (orgId)
+      ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
     `);
-    console.log('✅ task_comments and task_attachments tables ensured');
+    console.log('✅ task_attachments table ensured');
   } catch (err) {
-    console.warn('⚠️  Table ensure step:', err.message);
+    console.warn('⚠️  task_attachments table ensure failed:', err.message);
   }
 }
 

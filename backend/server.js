@@ -77,6 +77,48 @@ async function runDatabaseMigrations() {
     console.warn('⚠️  Schema sync failed (tables may already exist):', error.message);
     // Non-fatal — server continues, existing tables are still usable
   }
+
+  // Ensure new tables exist via raw SQL as a reliable fallback
+  try {
+    await prisma.$executeRawUnsafe(`
+      CREATE TABLE IF NOT EXISTS task_comments (
+        id        VARCHAR(36)  NOT NULL,
+        taskId    VARCHAR(50)  NOT NULL,
+        userId    VARCHAR(36)  NOT NULL,
+        orgId     VARCHAR(36)  NOT NULL,
+        content   TEXT         NOT NULL,
+        createdAt DATETIME(3)  NOT NULL DEFAULT CURRENT_TIMESTAMP(3),
+        updatedAt DATETIME(3)  NOT NULL DEFAULT CURRENT_TIMESTAMP(3) ON UPDATE CURRENT_TIMESTAMP(3),
+        PRIMARY KEY (id),
+        KEY idx_task_comments_taskId (taskId),
+        KEY idx_task_comments_orgId (orgId),
+        CONSTRAINT fk_task_comments_task FOREIGN KEY (taskId) REFERENCES macro_tasks(id) ON DELETE CASCADE,
+        CONSTRAINT fk_task_comments_user FOREIGN KEY (userId) REFERENCES User(id) ON DELETE CASCADE
+      ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
+    `);
+    await prisma.$executeRawUnsafe(`
+      CREATE TABLE IF NOT EXISTS task_attachments (
+        id        VARCHAR(36)  NOT NULL,
+        taskId    VARCHAR(50)  NOT NULL,
+        userId    VARCHAR(36)  NOT NULL,
+        orgId     VARCHAR(36)  NOT NULL,
+        name      VARCHAR(255) NOT NULL,
+        mimeType  VARCHAR(100) NOT NULL,
+        size      INT          NOT NULL,
+        data      LONGTEXT     NOT NULL,
+        category  VARCHAR(20)  NOT NULL DEFAULT 'attachment',
+        createdAt DATETIME(3)  NOT NULL DEFAULT CURRENT_TIMESTAMP(3),
+        PRIMARY KEY (id),
+        KEY idx_task_attachments_taskId (taskId),
+        KEY idx_task_attachments_orgId (orgId),
+        CONSTRAINT fk_task_attachments_task FOREIGN KEY (taskId) REFERENCES macro_tasks(id) ON DELETE CASCADE,
+        CONSTRAINT fk_task_attachments_user FOREIGN KEY (userId) REFERENCES User(id) ON DELETE CASCADE
+      ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
+    `);
+    console.log('✅ task_comments and task_attachments tables ensured');
+  } catch (err) {
+    console.warn('⚠️  Table ensure step:', err.message);
+  }
 }
 
 // Auto-seed initial test account if database is empty

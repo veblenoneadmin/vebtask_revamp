@@ -715,7 +715,7 @@ router.post('/:taskId/comments', requireAuth, withOrgScope, async (req, res) => 
       include: { user: { select: { id: true, name: true, email: true } } },
     });
     res.status(201).json({ success: true, comment });
-  } catch (e) { res.status(500).json({ error: 'Failed to post comment' }); }
+  } catch (e) { console.error('Failed to post comment:', e); res.status(500).json({ error: 'Failed to post comment' }); }
 });
 
 /** DELETE /api/tasks/:taskId/comments/:commentId */
@@ -747,7 +747,7 @@ router.get('/:taskId/attachments', requireAuth, withOrgScope, async (req, res) =
       },
     });
     res.json({ success: true, attachments });
-  } catch (e) { res.status(500).json({ error: 'Failed to fetch attachments' }); }
+  } catch (e) { console.error('Failed to fetch attachments:', e); res.status(500).json({ error: 'Failed to fetch attachments' }); }
 });
 
 /** GET /api/tasks/:taskId/attachments/:attachId/download */
@@ -773,7 +773,7 @@ router.post('/:taskId/attachments', requireAuth, withOrgScope, async (req, res) 
     });
     const { data: _d, ...rest } = att;
     res.status(201).json({ success: true, attachment: rest });
-  } catch (e) { res.status(500).json({ error: 'Failed to upload attachment' }); }
+  } catch (e) { console.error('Failed to upload attachment:', e); res.status(500).json({ error: 'Failed to upload attachment' }); }
 });
 
 /** DELETE /api/tasks/:taskId/attachments/:attachId */

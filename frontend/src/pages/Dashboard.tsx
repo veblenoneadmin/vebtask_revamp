@@ -12,8 +12,19 @@ import {
   Calendar,
   Brain,
   Zap,
-  CheckSquare
+  CheckSquare,
+  LogIn,
+  LogOut,
+  Clock,
 } from 'lucide-react';
+
+function fmtDuration(s: number) {
+  const h = Math.floor(s / 3600), m = Math.floor((s % 3600) / 60), sec = s % 60;
+  return `${String(h).padStart(2,'0')}:${String(m).padStart(2,'0')}:${String(sec).padStart(2,'0')}`;
+}
+function fmtTime(iso: string) {
+  return new Date(iso).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+}
 
 export function Dashboard() {
   const { data: session } = useSession();
@@ -21,6 +32,11 @@ export function Dashboard() {
   const [widgets, setWidgets] = useState<any[]>([]);
   const [widgetData, setWidgetData] = useState<Record<string, any>>({});
   const [loading, setLoading] = useState(true);
+
+  // Attendance
+  const [attendanceActive, setAttendanceActive] = useState<{ id: string; timeIn: string } | null>(null);
+  const [attendanceElapsed, setAttendanceElapsed] = useState(0);
+  const [attendanceLoading, setAttendanceLoading] = useState(false);
   
   // Load data for widgets
   const loadWidgetData = useCallback(async (widgetInstances: any[]) => {
@@ -70,6 +86,56 @@ export function Dashboard() {
       initializeDashboard();
     }
   }, [session, currentOrg, loadWidgetData]);
+
+  // Attendance status fetch
+  useEffect(() => {
+    const fetchAttendance = async () => {
+      if (!session?.user?.id || !currentOrg?.id) return;
+      try {
+        const q = new URLSearchParams({ userId: session.user.id, orgId: currentOrg.id }).toString();
+        const res = await fetch(`/api/attendance/status?${q}`);
+        if (res.ok) setAttendanceActive((await res.json()).active);
+      } catch { /* ignore */ }
+    };
+    fetchAttendance();
+  }, [session?.user?.id, currentOrg?.id]);
+
+  // Live elapsed tick while clocked in
+  useEffect(() => {
+    if (!attendanceActive) { setAttendanceElapsed(0); return; }
+    const tick = () => setAttendanceElapsed(Math.floor((Date.now() - new Date(attendanceActive.timeIn).getTime()) / 1000));
+    tick();
+    const id = setInterval(tick, 1000);
+    return () => clearInterval(id);
+  }, [attendanceActive]);
+
+  const handleTimeIn = async () => {
+    if (!session?.user?.id || !currentOrg?.id) return;
+    setAttendanceLoading(true);
+    try {
+      const res = await fetch('/api/attendance/time-in', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ userId: session.user.id, orgId: currentOrg.id }),
+      });
+      if (res.ok) setAttendanceActive((await res.json()).log);
+    } catch { /* ignore */ }
+    finally { setAttendanceLoading(false); }
+  };
+
+  const handleTimeOut = async () => {
+    if (!session?.user?.id || !currentOrg?.id) return;
+    setAttendanceLoading(true);
+    try {
+      const res = await fetch('/api/attendance/time-out', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ userId: session.user.id, orgId: currentOrg.id }),
+      });
+      if (res.ok) setAttendanceActive(null);
+    } catch { /* ignore */ }
+    finally { setAttendanceLoading(false); }
+  };
 
   const handleWidgetRefresh = async (instanceId: string, widgetId: string) => {
     if (!session?.user?.id) return;
@@ -188,6 +254,54 @@ export function Dashboard() {
       <div>
         <h1 className="text-3xl font-bold gradient-text">Good morning, {displayName}! 👋</h1>
         <p className="text-muted-foreground mt-2">Here's your personalized dashboard with live data.</p>
+      </div>
+
+      {/* ── Time In / Time Out ── */}
+      <div
+        className="rounded-2xl p-5 flex items-center justify-between gap-4"
+        style={{ background: '#0e0e0e', border: '1px solid #1c1c1c', boxShadow: '0 4px 24px rgba(0,0,0,0.5)' }}
+      >
+        <div className="flex items-center gap-4">
+          <div
+            className="h-12 w-12 rounded-xl flex items-center justify-center shrink-0"
+            style={{ background: attendanceActive ? 'rgba(74,222,128,0.12)' : 'rgba(255,255,255,0.04)' }}
+          >
+            <Clock className="h-6 w-6" style={{ color: attendanceActive ? '#4ade80' : '#444' }} />
+          </div>
+          <div>
+            <p className="text-[11px] font-semibold uppercase tracking-wider mb-0.5" style={{ color: '#555' }}>
+              {attendanceActive ? 'Session Running' : 'Not Clocked In'}
+            </p>
+            <p className="text-2xl font-mono font-bold tabular-nums leading-none" style={{ color: attendanceActive ? '#4ade80' : '#2a2a2a' }}>
+              {attendanceActive ? fmtDuration(attendanceElapsed) : '--:--:--'}
+            </p>
+          </div>
+        </div>
+
+        <div className="flex items-center gap-4">
+          {attendanceActive && (
+            <div className="text-right hidden sm:block">
+              <p className="text-[11px]" style={{ color: '#444' }}>Clocked in</p>
+              <p className="text-sm font-medium tabular-nums" style={{ color: '#777' }}>
+                {fmtTime(attendanceActive.timeIn)}
+              </p>
+            </div>
+          )}
+          <button
+            onClick={attendanceActive ? handleTimeOut : handleTimeIn}
+            disabled={attendanceLoading}
+            className="flex items-center gap-2 px-5 py-2.5 rounded-xl text-sm font-semibold transition-all shrink-0"
+            style={attendanceActive
+              ? { background: 'rgba(239,68,68,0.12)', color: '#f87171', border: '1px solid rgba(239,68,68,0.25)' }
+              : { background: 'rgba(74,222,128,0.12)', color: '#4ade80', border: '1px solid rgba(74,222,128,0.25)' }
+            }
+          >
+            {attendanceActive
+              ? <><LogOut className="h-4 w-4" />{attendanceLoading ? 'Clocking out...' : 'Clock Out'}</>
+              : <><LogIn  className="h-4 w-4" />{attendanceLoading ? 'Clocking in...'  : 'Clock In'}</>
+            }
+          </button>
+        </div>
       </div>
 
       {/* Quick Actions Bar */}

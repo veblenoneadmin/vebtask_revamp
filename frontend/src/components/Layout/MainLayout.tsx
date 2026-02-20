@@ -1,8 +1,13 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { Outlet, useLocation } from 'react-router-dom';
 import { useSession, signOut } from '../../lib/auth-client';
 import Sidebar from './Sidebar';
 import { LogOut, ChevronDown, Menu } from 'lucide-react';
+
+function fmtElapsed(s: number) {
+  const h = Math.floor(s / 3600), m = Math.floor((s % 3600) / 60), sec = s % 60;
+  return `${String(h).padStart(2,'0')}:${String(m).padStart(2,'0')}:${String(sec).padStart(2,'0')}`;
+}
 
 const pageTitles: Record<string, string> = {
   '/dashboard':   'Dashboard',
@@ -24,6 +29,12 @@ const MainLayout: React.FC = () => {
   const [showDropdown, setShowDropdown] = useState(false);
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [userRole, setUserRole] = useState<string>('');
+  const [orgId, setOrgId] = useState<string>('');
+
+  // Attendance timer
+  const [attendanceActive, setAttendanceActive] = useState<{ timeIn: string } | null>(null);
+  const [navElapsed, setNavElapsed] = useState(0);
+  const navTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
   useEffect(() => {
     const fetchRole = async () => {
@@ -34,6 +45,7 @@ const MainLayout: React.FC = () => {
           const data = await res.json();
           if (data.organizations?.length > 0) {
             setUserRole(data.organizations[0].role || '');
+            setOrgId(data.organizations[0].id || '');
           }
         }
       } catch {
@@ -42,6 +54,31 @@ const MainLayout: React.FC = () => {
     };
     if (session) fetchRole();
   }, [session]);
+
+  // Fetch attendance status once orgId is known, then poll every 30s
+  useEffect(() => {
+    if (!session?.user?.id || !orgId) return;
+    const fetchStatus = async () => {
+      try {
+        const q = new URLSearchParams({ userId: session!.user!.id, orgId }).toString();
+        const res = await fetch(`/api/attendance/status?${q}`);
+        if (res.ok) setAttendanceActive((await res.json()).active);
+      } catch { /* ignore */ }
+    };
+    fetchStatus();
+    const poll = setInterval(fetchStatus, 30_000);
+    return () => clearInterval(poll);
+  }, [session?.user?.id, orgId]);
+
+  // Live elapsed tick
+  useEffect(() => {
+    if (navTimerRef.current) clearInterval(navTimerRef.current);
+    if (!attendanceActive) { setNavElapsed(0); return; }
+    const tick = () => setNavElapsed(Math.floor((Date.now() - new Date(attendanceActive.timeIn).getTime()) / 1000));
+    tick();
+    navTimerRef.current = setInterval(tick, 1000);
+    return () => { if (navTimerRef.current) clearInterval(navTimerRef.current); };
+  }, [attendanceActive]);
 
   const handleSignOut = async () => {
     try { await signOut(); } catch { /* ignore */ }
@@ -84,8 +121,22 @@ const MainLayout: React.FC = () => {
           </h1>
         </div>
 
-        {/* Account dropdown */}
-        <div className="relative">
+        {/* Attendance running timer pill */}
+        <div className="flex items-center gap-2">
+          {attendanceActive && (
+            <div
+              className="flex items-center gap-1.5 px-2.5 py-1 rounded-lg"
+              style={{ background: 'rgba(74,222,128,0.08)', border: '1px solid rgba(74,222,128,0.2)' }}
+            >
+              <span className="h-1.5 w-1.5 rounded-full animate-pulse" style={{ background: '#4ade80' }} />
+              <span className="text-[12px] font-mono font-semibold tabular-nums" style={{ color: '#4ade80' }}>
+                {fmtElapsed(navElapsed)}
+              </span>
+            </div>
+          )}
+
+          {/* Account dropdown */}
+          <div className="relative">
           <button
             onClick={() => setShowDropdown(v => !v)}
             className="flex items-center gap-2.5 rounded-lg px-3 py-1.5 transition-colors duration-150"
@@ -144,6 +195,7 @@ const MainLayout: React.FC = () => {
               </div>
             </>
           )}
+          </div>
         </div>
       </header>
 

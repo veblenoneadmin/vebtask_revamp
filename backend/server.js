@@ -66,7 +66,7 @@ async function runDatabaseMigrations() {
     const execAsync = promisify(exec);
 
     const { stdout, stderr } = await execAsync(
-      'node /app/node_modules/prisma/build/index.js db push --accept-data-loss --skip-generate',
+      'node /app/node_modules/.bin/prisma db push --accept-data-loss --skip-generate',
       { cwd: '/app/backend' }
     );
     if (stdout) console.log('📋 Schema sync output:', stdout);

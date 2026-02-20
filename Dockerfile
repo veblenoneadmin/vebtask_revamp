@@ -24,5 +24,5 @@ RUN npm run build
 # Expose the port (Railway will set PORT env var dynamically)
 EXPOSE 3001
 
-# Generate Prisma client, attempt database sync (non-blocking), and start server
-CMD ["sh", "-c", "cd backend && npx prisma generate && node server.js"]
+# Generate Prisma client, sync DB schema (blocking), then start server
+CMD ["sh", "-c", "cd /app/backend && node /app/node_modules/.bin/prisma generate && node /app/node_modules/.bin/prisma db push --accept-data-loss --skip-generate; node server.js"]

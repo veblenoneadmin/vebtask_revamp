@@ -1,5 +1,6 @@
 import { useState, useEffect, useRef } from 'react';
 import { useSession } from '../lib/auth-client';
+import { useApiClient } from '../lib/api-client';
 import {
   X, MessageSquare, Paperclip, Send, Trash2, Download,
   Calendar, Clock, Tag, Folder, User, AlertTriangle,
@@ -110,7 +111,9 @@ function fileIcon(mime: string) {
 // ── Component ──────────────────────────────────────────────────────────────────
 export function TaskDetailPanel({ task, orgId, onClose, onTaskUpdated: _onTaskUpdated }: Props) {
   const { data: session } = useSession();
+  const api = useApiClient();
   const [tab, setTab] = useState<'overview' | 'comments' | 'attachments'>('overview');
+  const [postError, setPostError] = useState('');
 
   // Comments
   const [comments, setComments]     = useState<Comment[]>([]);
@@ -138,8 +141,8 @@ export function TaskDetailPanel({ task, orgId, onClose, onTaskUpdated: _onTaskUp
   const fetchComments = async () => {
     setCL(true);
     try {
-      const res = await fetch(`/api/tasks/${task.id}/comments?orgId=${orgId}`, { credentials: 'include' });
-      if (res.ok) setComments((await res.json()).comments ?? []);
+      const data = await api.fetch(`/api/tasks/${task.id}/comments`);
+      setComments(data.comments ?? []);
     } catch { /* ignore */ }
     finally { setCL(false); }
   };
@@ -148,17 +151,16 @@ export function TaskDetailPanel({ task, orgId, onClose, onTaskUpdated: _onTaskUp
   const fetchAttachments = async () => {
     setAL(true);
     try {
-      const res = await fetch(`/api/tasks/${task.id}/attachments?orgId=${orgId}`, { credentials: 'include' });
-      if (res.ok) setAttachments((await res.json()).attachments ?? []);
+      const data = await api.fetch(`/api/tasks/${task.id}/attachments`);
+      setAttachments(data.attachments ?? []);
     } catch { /* ignore */ }
     finally { setAL(false); }
   };
 
   useEffect(() => {
-    if (!orgId) return;
     fetchComments();
     fetchAttachments();
-  }, [task.id, orgId]);
+  }, [task.id]);
 
   useEffect(() => {
     if (tab === 'comments') commentsEndRef.current?.scrollIntoView({ behavior: 'smooth' });
@@ -168,24 +170,23 @@ export function TaskDetailPanel({ task, orgId, onClose, onTaskUpdated: _onTaskUp
   const handlePostComment = async () => {
     if (!commentText.trim()) return;
     setPosting(true);
+    setPostError('');
     try {
-      const res = await fetch(`/api/tasks/${task.id}/comments?orgId=${orgId}`, {
-        method: 'POST', credentials: 'include',
-        headers: { 'Content-Type': 'application/json' },
+      await api.fetch(`/api/tasks/${task.id}/comments`, {
+        method: 'POST',
         body: JSON.stringify({ content: commentText.trim() }),
       });
-      if (res.ok) {
-        setCommentText('');
-        await fetchComments();
-      }
-    } catch { /* ignore */ }
-    finally { setPosting(false); }
+      setCommentText('');
+      await fetchComments();
+    } catch (e: any) {
+      setPostError(e?.message || 'Failed to post comment');
+    } finally { setPosting(false); }
   };
 
   // ── Delete comment ────────────────────────────────────────────────────────
   const handleDeleteComment = async (id: string) => {
     try {
-      await fetch(`/api/tasks/${task.id}/comments/${id}?orgId=${orgId}`, { method: 'DELETE', credentials: 'include' });
+      await api.fetch(`/api/tasks/${task.id}/comments/${id}`, { method: 'DELETE' });
       setComments(c => c.filter(x => x.id !== id));
     } catch { /* ignore */ }
   };
@@ -197,9 +198,8 @@ export function TaskDetailPanel({ task, orgId, onClose, onTaskUpdated: _onTaskUp
     try {
       for (const file of Array.from(files)) {
         const data = await toBase64(file);
-        await fetch(`/api/tasks/${task.id}/attachments?orgId=${orgId}`, {
-          method: 'POST', credentials: 'include',
-          headers: { 'Content-Type': 'application/json' },
+        await api.fetch(`/api/tasks/${task.id}/attachments`, {
+          method: 'POST',
           body: JSON.stringify({ name: file.name, mimeType: file.type, size: file.size, data, category: 'attachment' }),
         });
       }
@@ -211,9 +211,7 @@ export function TaskDetailPanel({ task, orgId, onClose, onTaskUpdated: _onTaskUp
   // ── Download attachment ───────────────────────────────────────────────────
   const handleDownload = async (att: Attachment) => {
     try {
-      const res = await fetch(`/api/tasks/${task.id}/attachments/${att.id}/download?orgId=${orgId}`, { credentials: 'include' });
-      if (!res.ok) return;
-      const { attachment } = await res.json();
+      const { attachment } = await api.fetch(`/api/tasks/${task.id}/attachments/${att.id}/download`);
       const link = document.createElement('a');
       link.href = `data:${attachment.mimeType};base64,${attachment.data}`;
       link.download = attachment.name;
@@ -224,7 +222,7 @@ export function TaskDetailPanel({ task, orgId, onClose, onTaskUpdated: _onTaskUp
   // ── Delete attachment ─────────────────────────────────────────────────────
   const handleDeleteAttachment = async (id: string) => {
     try {
-      await fetch(`/api/tasks/${task.id}/attachments/${id}?orgId=${orgId}`, { method: 'DELETE', credentials: 'include' });
+      await api.fetch(`/api/tasks/${task.id}/attachments/${id}`, { method: 'DELETE' });
       setAttachments(a => a.filter(x => x.id !== id));
     } catch { /* ignore */ }
   };
@@ -235,22 +233,18 @@ export function TaskDetailPanel({ task, orgId, onClose, onTaskUpdated: _onTaskUp
     if (!reportDesc.trim()) return;
     setSubmitting(true);
     try {
-      // Upload report description as a text attachment
       const descData = btoa(unescape(encodeURIComponent(reportDesc)));
-      await fetch(`/api/tasks/${task.id}/attachments?orgId=${orgId}`, {
-        method: 'POST', credentials: 'include',
-        headers: { 'Content-Type': 'application/json' },
+      await api.fetch(`/api/tasks/${task.id}/attachments`, {
+        method: 'POST',
         body: JSON.stringify({
           name: `Report${reportTitle ? ` - ${reportTitle}` : ''} (${new Date().toLocaleDateString('en-AU')}).txt`,
           mimeType: 'text/plain', size: reportDesc.length, data: descData, category: 'report',
         }),
       });
-      // Upload each file
       for (const file of reportFiles) {
         const data = await toBase64(file);
-        await fetch(`/api/tasks/${task.id}/attachments?orgId=${orgId}`, {
-          method: 'POST', credentials: 'include',
-          headers: { 'Content-Type': 'application/json' },
+        await api.fetch(`/api/tasks/${task.id}/attachments`, {
+          method: 'POST',
           body: JSON.stringify({ name: file.name, mimeType: file.type, size: file.size, data, category: 'report' }),
         });
       }
@@ -489,6 +483,9 @@ export function TaskDetailPanel({ task, orgId, onClose, onTaskUpdated: _onTaskUp
 
               {/* Comment input */}
               <div className="p-4 shrink-0" style={{ borderTop: `1px solid ${VS.border}`, background: VS.bg1 }}>
+                {postError && (
+                  <p className="text-[11px] mb-2" style={{ color: VS.red }}>{postError}</p>
+                )}
                 <div className="flex gap-2 items-end">
                   <textarea
                     value={commentText}

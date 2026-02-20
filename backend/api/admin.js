@@ -4,6 +4,7 @@ import { prisma } from '../lib/prisma.js';
 import { requireAuth, withOrgScope, requireAdmin } from '../lib/rbac.js';
 import { checkDatabaseConnection, handleDatabaseError } from '../lib/api-error-handler.js';
 import crypto from 'crypto';
+import bcrypt from 'bcryptjs';
 
 const router = express.Router();
 
@@ -15,6 +16,75 @@ const inviteUserSchema = z.object({
 
 const updateRoleSchema = z.object({
   role: z.enum(['ADMIN', 'STAFF', 'CLIENT'])
+});
+
+const createUserSchema = z.object({
+  name:     z.string().min(1).max(255),
+  email:    z.string().email(),
+  password: z.string().min(6).max(128),
+  role:     z.enum(['ADMIN', 'STAFF', 'CLIENT']),
+});
+
+/**
+ * POST /api/admin/users/create
+ * Manually create a new user and add them to the organization
+ */
+router.post('/users/create', requireAuth, withOrgScope, requireAdmin, async (req, res) => {
+  try {
+    if (!(await checkDatabaseConnection(res))) return;
+
+    const validation = createUserSchema.safeParse(req.body);
+    if (!validation.success) {
+      return res.status(400).json({ error: 'Invalid input', details: validation.error.errors });
+    }
+
+    const { name, email, password, role } = validation.data;
+
+    // Check if email is already registered
+    const existing = await prisma.user.findUnique({ where: { email } });
+    if (existing) {
+      // If user exists but isn't in this org, just add the membership
+      const existingMembership = await prisma.membership.findUnique({
+        where: { userId_orgId: { userId: existing.id, orgId: req.orgId } },
+      });
+      if (existingMembership) {
+        return res.status(409).json({ error: 'User already exists in this organization' });
+      }
+      await prisma.membership.create({
+        data: { userId: existing.id, orgId: req.orgId, role },
+      });
+      return res.status(201).json({ success: true, message: 'Existing user added to organization', userId: existing.id });
+    }
+
+    // Create the user
+    const hashedPassword = await bcrypt.hash(password, 12);
+    const user = await prisma.user.create({
+      data: { name, email, emailVerified: true },
+    });
+
+    // Create credential account (so they can log in with email + password)
+    await prisma.account.create({
+      data: {
+        accountId: email,
+        userId:    user.id,
+        providerId: 'credential',
+        password:  hashedPassword,
+      },
+    });
+
+    // Add to organization
+    await prisma.membership.create({
+      data: { userId: user.id, orgId: req.orgId, role },
+    });
+
+    res.status(201).json({
+      success: true,
+      message: 'User created and added to organization',
+      user: { id: user.id, name: user.name, email: user.email, role },
+    });
+  } catch (error) {
+    return handleDatabaseError(error, res, 'create user');
+  }
 });
 
 /**

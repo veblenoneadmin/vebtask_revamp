@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
 import {
   Users, UserPlus, Mail, Trash2, Edit3, Crown,
-  UserCog, Shield, Clock, CheckSquare, X, Check,
+  UserCog, Shield, Clock, CheckSquare, X, Check, Eye, EyeOff, UserCheck,
 } from 'lucide-react';
 
 // ── VS Code Dark+ tokens ───────────────────────────────────────────────────────
@@ -82,6 +82,15 @@ export function Admin() {
 
   // Remove member
   const [removingId, setRemovingId] = useState<string | null>(null);
+
+  // Add user form
+  const [showAddUser, setShowAddUser]       = useState(false);
+  const [addName, setAddName]               = useState('');
+  const [addEmail, setAddEmail]             = useState('');
+  const [addPassword, setAddPassword]       = useState('');
+  const [addRole, setAddRole]               = useState<'ADMIN' | 'STAFF' | 'CLIENT'>('STAFF');
+  const [showPassword, setShowPassword]     = useState(false);
+  const [addingUser, setAddingUser]         = useState(false);
 
   function showToast(msg: string, ok = true) {
     setToast({ msg, ok });
@@ -169,6 +178,28 @@ export function Admin() {
     } catch { showToast('Failed to revoke invitation.', false); }
   };
 
+  const handleAddUser = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setAddingUser(true);
+    try {
+      const res = await fetch('/api/admin/users/create', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ name: addName, email: addEmail, password: addPassword, role: addRole }),
+      });
+      const data = await res.json();
+      if (res.ok) {
+        setShowAddUser(false);
+        setAddName(''); setAddEmail(''); setAddPassword(''); setAddRole('STAFF');
+        fetchData();
+        showToast(data.message || 'User created successfully!');
+      } else {
+        showToast(data.error || 'Failed to create user', false);
+      }
+    } catch { showToast('Failed to create user', false); }
+    finally { setAddingUser(false); }
+  };
+
   // ── KPI stats ───────────────────────────────────────────────────────────────
   const pendingInvites = invites.filter(i => i.status === 'PENDING').length;
   const totalTasks     = users.reduce((a, u) => a + u._count.createdTasks, 0);
@@ -213,14 +244,24 @@ export function Admin() {
             Manage team members, roles, and invitations
           </p>
         </div>
-        <button
-          onClick={() => setShowInvite(true)}
-          className="flex items-center gap-2 px-4 py-2 rounded-lg text-[13px] font-semibold transition-all hover:opacity-90"
-          style={{ background: VS.accent, color: '#fff' }}
-        >
-          <UserPlus className="h-4 w-4" />
-          Invite Member
-        </button>
+        <div className="flex items-center gap-2">
+          <button
+            onClick={() => setShowAddUser(true)}
+            className="flex items-center gap-2 px-4 py-2 rounded-lg text-[13px] font-semibold transition-all hover:opacity-90"
+            style={{ background: VS.bg2, border: `1px solid ${VS.border2}`, color: VS.text0 }}
+          >
+            <UserCheck className="h-4 w-4" />
+            Add User
+          </button>
+          <button
+            onClick={() => setShowInvite(true)}
+            className="flex items-center gap-2 px-4 py-2 rounded-lg text-[13px] font-semibold transition-all hover:opacity-90"
+            style={{ background: VS.accent, color: '#fff' }}
+          >
+            <UserPlus className="h-4 w-4" />
+            Invite Member
+          </button>
+        </div>
       </div>
 
       {/* ── KPI strip ── */}
@@ -573,6 +614,107 @@ export function Admin() {
                 </button>
               </div>
             </div>
+          </div>
+        </div>
+      )}
+
+      {/* ── Add User Modal ── */}
+      {showAddUser && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4" style={{ background: 'rgba(0,0,0,0.75)' }}
+          onClick={e => { if (e.target === e.currentTarget) setShowAddUser(false); }}>
+          <div className="w-full max-w-md rounded-2xl overflow-hidden"
+            style={{ background: VS.bg0, border: `1px solid ${VS.border}`, boxShadow: '0 24px 60px rgba(0,0,0,0.7)' }}>
+            {/* Header */}
+            <div className="flex items-center justify-between px-5 py-4"
+              style={{ background: VS.bg1, borderBottom: `1px solid ${VS.border}` }}>
+              <div className="flex items-center gap-2">
+                <UserCheck className="h-4 w-4" style={{ color: VS.teal }} />
+                <h3 className="text-[14px] font-bold" style={{ color: VS.text0 }}>Add User Manually</h3>
+              </div>
+              <button onClick={() => setShowAddUser(false)}
+                className="h-7 w-7 rounded-lg flex items-center justify-center hover:bg-white/5" style={{ color: VS.text1 }}>
+                <X className="h-4 w-4" />
+              </button>
+            </div>
+            {/* Body */}
+            <form onSubmit={handleAddUser} className="p-5 space-y-4">
+              <p className="text-[12px]" style={{ color: VS.text2 }}>
+                Creates the account immediately — no email invite required. The user can log in right away.
+              </p>
+              <div>
+                <label className="block text-[12px] font-semibold mb-1.5" style={{ color: VS.text2 }}>Full Name</label>
+                <input
+                  type="text"
+                  value={addName}
+                  onChange={e => setAddName(e.target.value)}
+                  className={inputCls}
+                  style={inputStyle}
+                  placeholder="Jane Smith"
+                  required
+                />
+              </div>
+              <div>
+                <label className="block text-[12px] font-semibold mb-1.5" style={{ color: VS.text2 }}>Email Address</label>
+                <input
+                  type="email"
+                  value={addEmail}
+                  onChange={e => setAddEmail(e.target.value)}
+                  className={inputCls}
+                  style={inputStyle}
+                  placeholder="jane@company.com"
+                  required
+                />
+              </div>
+              <div>
+                <label className="block text-[12px] font-semibold mb-1.5" style={{ color: VS.text2 }}>Password</label>
+                <div className="relative">
+                  <input
+                    type={showPassword ? 'text' : 'password'}
+                    value={addPassword}
+                    onChange={e => setAddPassword(e.target.value)}
+                    className={inputCls}
+                    style={{ ...inputStyle, paddingRight: '2.5rem' }}
+                    placeholder="Minimum 6 characters"
+                    minLength={6}
+                    required
+                  />
+                  <button
+                    type="button"
+                    onClick={() => setShowPassword(v => !v)}
+                    className="absolute right-3 top-1/2 -translate-y-1/2"
+                    style={{ color: VS.text2 }}
+                  >
+                    {showPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                  </button>
+                </div>
+              </div>
+              <div>
+                <label className="block text-[12px] font-semibold mb-1.5" style={{ color: VS.text2 }}>Role</label>
+                <select
+                  value={addRole}
+                  onChange={e => setAddRole(e.target.value as any)}
+                  className={inputCls}
+                  style={inputStyle}
+                >
+                  <option value="STAFF">Staff — standard member</option>
+                  <option value="ADMIN">Admin — manage members &amp; settings</option>
+                  <option value="CLIENT">Client — limited view access</option>
+                </select>
+              </div>
+              <div className="flex justify-end gap-3 pt-1">
+                <button type="button" onClick={() => setShowAddUser(false)}
+                  className="px-4 py-2 rounded-lg text-[13px] font-medium hover:bg-white/5"
+                  style={{ background: VS.bg2, border: `1px solid ${VS.border}`, color: VS.text1 }}>
+                  Cancel
+                </button>
+                <button type="submit" disabled={addingUser}
+                  className="flex items-center gap-2 px-4 py-2 rounded-lg text-[13px] font-semibold disabled:opacity-50 hover:opacity-90"
+                  style={{ background: VS.teal, color: VS.bg0 }}>
+                  <UserCheck className="h-4 w-4" />
+                  {addingUser ? 'Creating…' : 'Create User'}
+                </button>
+              </div>
+            </form>
           </div>
         </div>
       )}

@@ -487,6 +487,7 @@ export function Tasks() {
                       draggable
                       onDragStart={e => handleDragStart(e, task.id)}
                       onDragEnd={handleDragEnd}
+                      onDoubleClick={() => setEditingTask(task)}
                       className="relative group cursor-grab active:cursor-grabbing"
                       style={{ opacity: isDragging ? 0.45 : 1 }}
                     >

@@ -152,10 +152,14 @@ export function Tasks() {
   // Card menu
   const [openMenuId, setOpenMenuId] = useState<string | null>(null);
 
-  // Timer
-  const [timerTaskId, setTimerTaskId] = useState<string | null>(null);
-  const [timerStart, setTimerStart]   = useState<number | null>(null);
-  const [timerAccum, setTimerAccum]   = useState<Record<string, number>>(() => {
+  // Timer — state is hydrated from localStorage so it survives refresh/restart
+  const [timerTaskId, setTimerTaskId] = useState<string | null>(() => {
+    try { return JSON.parse(localStorage.getItem('task_timer_active') || 'null')?.taskId ?? null; } catch { return null; }
+  });
+  const [timerStart, setTimerStart] = useState<number | null>(() => {
+    try { return JSON.parse(localStorage.getItem('task_timer_active') || 'null')?.startTime ?? null; } catch { return null; }
+  });
+  const [timerAccum, setTimerAccum] = useState<Record<string, number>>(() => {
     try { return JSON.parse(localStorage.getItem('task_timers') || '{}'); } catch { return {}; }
   });
   const [, setTick] = useState(0); // drives live display
@@ -204,8 +208,16 @@ export function Tasks() {
     if (showNewTaskForm || editingTask) fetchProjects();
   }, [showNewTaskForm, editingTask]);
 
-  // ── timer cleanup on unmount ────────────────────────────────────────────────
-  useEffect(() => () => { if (timerInterval.current) clearInterval(timerInterval.current); }, []);
+  // ── timer: resume interval on mount if a timer was running ─────────────────
+  useEffect(() => {
+    const active = (() => {
+      try { return JSON.parse(localStorage.getItem('task_timer_active') || 'null'); } catch { return null; }
+    })();
+    if (active?.taskId && active?.startTime) {
+      timerInterval.current = setInterval(() => setTick(t => t + 1), 1000);
+    }
+    return () => { if (timerInterval.current) clearInterval(timerInterval.current); };
+  }, []);
 
   // ── timer helpers ──────────────────────────────────────────────────────────
   const getTimerSeconds = (taskId: string) => {
@@ -225,13 +237,16 @@ export function Tasks() {
 
   const handleStartTimer = (taskId: string) => {
     if (timerInterval.current) clearInterval(timerInterval.current);
+    const startTime = Date.now();
     setTimerTaskId(taskId);
-    setTimerStart(Date.now());
+    setTimerStart(startTime);
+    localStorage.setItem('task_timer_active', JSON.stringify({ taskId, startTime }));
     timerInterval.current = setInterval(() => setTick(t => t + 1), 1000);
   };
 
   const handleStopTimer = async (taskId: string) => {
     if (timerInterval.current) { clearInterval(timerInterval.current); timerInterval.current = null; }
+    localStorage.removeItem('task_timer_active');
     const elapsed = timerStart !== null ? Math.floor((Date.now() - timerStart) / 1000) : 0;
     const newAccum = { ...timerAccum, [taskId]: (timerAccum[taskId] || 0) + elapsed };
     setTimerAccum(newAccum);

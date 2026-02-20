@@ -53,9 +53,9 @@ const VS = {
   bg3:     '#333333', // inputs / buttons
   border:  '#3c3c3c',
   border2: '#454545',
-  text0:   '#d4d4d4', // primary text
-  text1:   '#9d9d9d', // secondary text
-  text2:   '#6a6a6a', // muted text
+  text0:   '#f0f0f0', // primary text
+  text1:   '#c0c0c0', // secondary text
+  text2:   '#909090', // muted text
   blue:    '#569cd6', // keywords
   teal:    '#4ec9b0', // types
   yellow:  '#dcdcaa', // functions

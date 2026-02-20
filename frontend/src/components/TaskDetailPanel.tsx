@@ -108,7 +108,7 @@ function fileIcon(mime: string) {
 }
 
 // ── Component ──────────────────────────────────────────────────────────────────
-export function TaskDetailPanel({ task, orgId, onClose, onTaskUpdated }: Props) {
+export function TaskDetailPanel({ task, orgId, onClose, onTaskUpdated: _onTaskUpdated }: Props) {
   const { data: session } = useSession();
   const [tab, setTab] = useState<'overview' | 'comments' | 'attachments'>('overview');
 

@@ -15,7 +15,6 @@ import {
   Activity,
   Edit3,
   Trash2,
-  X,
   CheckSquare,
 } from 'lucide-react';
 import { ProjectModal } from '../components/ProjectModal';

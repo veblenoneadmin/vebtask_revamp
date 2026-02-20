@@ -427,12 +427,11 @@ export default function BrainDumpModal({ isOpen, onClose, onTasksImported }: Bra
           </div>
         )}
 
-        {/* ── Scrollable body ── */}
-        <div className="flex-1 overflow-y-auto">
-          <div className="grid grid-cols-1 lg:grid-cols-2 gap-0 divide-x" style={{ borderColor: VS.border, minHeight: 0 }}>
+        {/* ── Body: two independently-scrolling columns ── */}
+        <div className="flex-1 flex min-h-0 overflow-hidden">
 
             {/* ── LEFT: Input area ── */}
-            <div className="p-6 space-y-4">
+            <div className="flex-1 overflow-y-auto p-6 space-y-4" style={{ borderRight: `1px solid ${VS.border}` }}>
               {/* Section header */}
               <div className="flex items-center justify-between">
                 <div>
@@ -573,7 +572,7 @@ Example:
             </div>
 
             {/* ── RIGHT: Processed tasks ── */}
-            <div className="p-6 space-y-4">
+            <div className="flex-1 overflow-y-auto p-6 space-y-4">
               {processedTasks.length > 0 ? (
                 <>
                   {/* Tasks header */}
@@ -869,7 +868,6 @@ Example:
                 </div>
               )}
             </div>
-          </div>
         </div>
       </div>
     </div>

@@ -68,6 +68,7 @@ interface Props {
   orgId: string;
   onClose: () => void;
   onTaskUpdated?: () => void;
+  onCountsLoaded?: (taskId: string, comments: number, attachments: number) => void;
 }
 
 // ── Config ─────────────────────────────────────────────────────────────────────
@@ -109,7 +110,7 @@ function fileIcon(mime: string) {
 }
 
 // ── Component ──────────────────────────────────────────────────────────────────
-export function TaskDetailPanel({ task, orgId: _orgId, onClose, onTaskUpdated: _onTaskUpdated }: Props) {
+export function TaskDetailPanel({ task, orgId: _orgId, onClose, onTaskUpdated: _onTaskUpdated, onCountsLoaded }: Props) {
   const { data: session } = useSession();
   const api = useApiClient();
   const [tab, setTab] = useState<'overview' | 'comments' | 'attachments'>('overview');
@@ -138,28 +139,33 @@ export function TaskDetailPanel({ task, orgId: _orgId, onClose, onTaskUpdated: _
   const reportFileRef = useRef<HTMLInputElement>(null);
 
   // ── Fetch comments ────────────────────────────────────────────────────────
-  const fetchComments = async () => {
+  const fetchComments = async (): Promise<number> => {
     setCL(true);
     try {
       const data = await api.fetch(`/api/tasks/${task.id}/comments`);
-      setComments(data.comments ?? []);
-    } catch { /* ignore */ }
+      const list = data.comments ?? [];
+      setComments(list);
+      return list.length;
+    } catch { return 0; }
     finally { setCL(false); }
   };
 
   // ── Fetch attachments ─────────────────────────────────────────────────────
-  const fetchAttachments = async () => {
+  const fetchAttachments = async (): Promise<number> => {
     setAL(true);
     try {
       const data = await api.fetch(`/api/tasks/${task.id}/attachments`);
-      setAttachments(data.attachments ?? []);
-    } catch { /* ignore */ }
+      const list = data.attachments ?? [];
+      setAttachments(list);
+      return list.length;
+    } catch { return 0; }
     finally { setAL(false); }
   };
 
   useEffect(() => {
-    fetchComments();
-    fetchAttachments();
+    Promise.all([fetchComments(), fetchAttachments()]).then(([cc, ac]) => {
+      onCountsLoaded?.(task.id, cc, ac);
+    });
   }, [task.id]);
 
   useEffect(() => {

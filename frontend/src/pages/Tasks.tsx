@@ -10,7 +10,7 @@ import {
   Trash2,
   Search,
   MessageSquare,
-  Link2,
+  Paperclip,
   Folder,
   Filter,
   SlidersHorizontal,
@@ -163,6 +163,7 @@ export function Tasks() {
 
   // Task detail panel
   const [detailTask, setDetailTask] = useState<Task | null>(null);
+  const [taskCounts, setTaskCounts] = useState<Record<string, { comments: number; attachments: number }>>({});
 
   // Filter
   const [showFilter, setShowFilter] = useState(false);
@@ -766,8 +767,6 @@ export function Tasks() {
                   const isDragging = draggingId === task.id;
                   const date = formatDate(task.dueDate);
                   const isOverdue = task.dueDate && new Date(task.dueDate) < new Date() && task.status !== 'completed' && task.status !== 'cancelled';
-                  const tagCount = Array.isArray(task.tags) ? task.tags.length : 0;
-
                   return (
                     /*
                      * Wrapper: draggable, position:relative (no overflow so badge can bleed above).
@@ -908,11 +907,11 @@ export function Tasks() {
                           <div className="flex items-center gap-3">
                             <span className="flex items-center gap-1.5 text-[12px]" style={{ color: VS.text2 }}>
                               <MessageSquare className="h-3.5 w-3.5" />
-                              {tagCount}
+                              {taskCounts[task.id]?.comments ?? 0}
                             </span>
                             <span className="flex items-center gap-1.5 text-[12px]" style={{ color: VS.text2 }}>
-                              <Link2 className="h-3.5 w-3.5" />
-                              {task.estimatedHours || 0}
+                              <Paperclip className="h-3.5 w-3.5" />
+                              {taskCounts[task.id]?.attachments ?? 0}
                             </span>
                             <span className="flex items-center gap-1.5 text-[12px]" style={{ color: VS.text2 }}>
                               <Folder className="h-3.5 w-3.5" />
@@ -1148,6 +1147,7 @@ export function Tasks() {
           orgId={currentOrg?.id ?? ''}
           onClose={() => setDetailTask(null)}
           onTaskUpdated={fetchTasks}
+          onCountsLoaded={(id, c, a) => setTaskCounts(prev => ({ ...prev, [id]: { comments: c, attachments: a } }))}
         />
       )}
 

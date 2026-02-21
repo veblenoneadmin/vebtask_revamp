@@ -100,10 +100,10 @@ const MainLayout: React.FC = () => {
     };
   }, [session?.user?.id, orgId]);
 
-  // Live elapsed tick
+  // Live elapsed tick — pause (don't reset) when clocked out
   useEffect(() => {
     if (navTimerRef.current) clearInterval(navTimerRef.current);
-    if (!attendanceActive) { setNavElapsed(0); return; }
+    if (!attendanceActive) return; // keep last navElapsed, just stop ticking
     const tick = () => setNavElapsed(Math.floor((Date.now() - new Date(attendanceActive.timeIn).getTime()) / 1000));
     tick();
     navTimerRef.current = setInterval(tick, 1000);
@@ -150,12 +150,17 @@ const MainLayout: React.FC = () => {
             {currentTime}
           </span>
 
-          {attendanceActive && (
+          {navElapsed > 0 && (
             <>
               <span style={{ color: VS.border }}>|</span>
               <div className="flex items-center gap-1.5">
-                <span className="h-1.5 w-1.5 rounded-full animate-pulse" style={{ background: VS.teal }} />
-                <span className="text-[13px] font-mono font-semibold tabular-nums" style={{ color: VS.teal }}>
+                {attendanceActive && (
+                  <span className="h-1.5 w-1.5 rounded-full animate-pulse" style={{ background: VS.teal }} />
+                )}
+                <span
+                  className="text-[13px] font-mono font-semibold tabular-nums"
+                  style={{ color: attendanceActive ? VS.teal : VS.text2 }}
+                >
                   {fmtElapsed(navElapsed)}
                 </span>
               </div>

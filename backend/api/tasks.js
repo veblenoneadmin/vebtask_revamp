@@ -137,6 +137,40 @@ router.get('/recent', requireAuth, withOrgScope, validateQuery(commonSchemas.pag
   }
 });
 
+// Get comment + attachment counts for all tasks in an org (batch)
+router.get('/counts', requireAuth, withOrgScope, async (req, res) => {
+  try {
+    const { orgId } = req.query;
+    if (!orgId) return res.status(400).json({ error: 'orgId is required' });
+
+    const [commentRows, attachmentRows] = await Promise.all([
+      prisma.$queryRawUnsafe(
+        'SELECT taskId, COUNT(*) as count FROM task_comments WHERE orgId = ? GROUP BY taskId',
+        orgId
+      ),
+      prisma.$queryRawUnsafe(
+        'SELECT taskId, COUNT(*) as count FROM task_attachments WHERE orgId = ? GROUP BY taskId',
+        orgId
+      ),
+    ]);
+
+    const counts = {};
+    for (const row of commentRows) {
+      if (!counts[row.taskId]) counts[row.taskId] = { comments: 0, attachments: 0 };
+      counts[row.taskId].comments = Number(row.count);
+    }
+    for (const row of attachmentRows) {
+      if (!counts[row.taskId]) counts[row.taskId] = { comments: 0, attachments: 0 };
+      counts[row.taskId].attachments = Number(row.count);
+    }
+
+    res.json({ success: true, counts });
+  } catch (error) {
+    console.error('Error fetching task counts:', error);
+    res.status(500).json({ success: false, error: 'Failed to fetch counts' });
+  }
+});
+
 // Get task details
 router.get('/:taskId', requireAuth, withOrgScope, requireTaskOwnership, async (req, res) => {
   try {

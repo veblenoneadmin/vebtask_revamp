@@ -195,11 +195,8 @@ export function Tasks() {
     const go = async () => {
       if (!session?.user?.id) return;
       try {
-        const res = await fetch('/api/organizations');
-        if (res.ok) {
-          const d = await res.json();
-          if (d.organizations?.length > 0) setUserRole(d.organizations[0].role || 'CLIENT');
-        }
+        const d = await apiClient.fetch('/api/organizations');
+        if (d.organizations?.length > 0) setUserRole(d.organizations[0].role || 'CLIENT');
       } catch { /* ignore */ }
     };
     if (session) go();
@@ -210,9 +207,19 @@ export function Tasks() {
     if (!session?.user?.id || !currentOrg?.id) return;
     try {
       setLoading(true);
-      const data = await apiClient.fetch('/api/tasks', { method: 'GET' });
+      const [data, countsData] = await Promise.all([
+        apiClient.fetch('/api/tasks', { method: 'GET' }),
+        apiClient.fetch('/api/tasks/counts', { method: 'GET' }).catch(() => ({ counts: {} })),
+      ]);
       if (data.success) {
         setTasks((data.tasks || []).map((t: any) => ({ ...t, tags: t.tags || [] })));
+      }
+      if (countsData.counts) {
+        const mapped: Record<string, { comments: number; attachments: number }> = {};
+        for (const [id, c] of Object.entries(countsData.counts as Record<string, { comments: number; attachments: number }>)) {
+          mapped[id] = { comments: c.comments ?? 0, attachments: c.attachments ?? 0 };
+        }
+        setTaskCounts(mapped);
       }
     } catch { /* ignore */ }
     finally { setLoading(false); }
@@ -264,6 +271,16 @@ export function Tasks() {
     return `${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}`;
   };
 
+  const formatActualHours = (hours: number) => {
+    if (!hours) return '0m';
+    const totalMins = Math.round(hours * 60);
+    const h = Math.floor(totalMins / 60);
+    const m = totalMins % 60;
+    if (h === 0) return `${m}m`;
+    if (m === 0) return `${h}h`;
+    return `${h}h ${m}m`;
+  };
+
   const handleStartTimer = async (taskId: string) => {
     // Stop any currently running timer first, saving its elapsed time
     if (timerTaskId && timerTaskId !== taskId) {
@@ -280,13 +297,14 @@ export function Tasks() {
 
   const handleStopTimer = async (taskId: string) => {
     if (timerInterval.current) { clearInterval(timerInterval.current); timerInterval.current = null; }
-    localStorage.removeItem('task_timer_active');
-    localStorage.removeItem('task_timer_start');
 
-    // Read the start time from localStorage to avoid stale closure issues
+    // Read start time from localStorage BEFORE removing it
     const storedStart = (() => {
       try { return JSON.parse(localStorage.getItem('task_timer_start') || 'null'); } catch { return null; }
     })();
+    localStorage.removeItem('task_timer_active');
+    localStorage.removeItem('task_timer_start');
+
     const effectiveStart = storedStart ?? timerStart;
     const elapsed = effectiveStart !== null ? Math.floor((Date.now() - effectiveStart) / 1000) : 0;
 
@@ -945,7 +963,7 @@ export function Tasks() {
                             </span>
                             <span className="flex items-center gap-1.5 text-[12px]" style={{ color: VS.text2 }}>
                               <Clock className="h-3.5 w-3.5" />
-                              {task.actualHours || 0}
+                              {formatActualHours(task.actualHours || 0)}
                             </span>
                           </div>
                           <span

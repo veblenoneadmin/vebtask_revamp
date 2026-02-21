@@ -10,8 +10,6 @@ interface AttendanceLog {
   orgId: string;
   timeIn: string;
   timeOut: string | null;
-  breakStart: string | null;
-  breakDuration: number;
   duration: number;
   notes: string | null;
   date: string;
@@ -114,6 +112,8 @@ export function Attendance() {
   const [error, setError] = useState<string | null>(null);
   const [notes, setNotes] = useState('');
   const [liveTime, setLiveTime] = useState(nowTimeString());
+  const [onBreak, setOnBreak] = useState(() => !!localStorage.getItem('att_break_start'));
+  const [breakAccum, setBreakAccum] = useState(() => Number(localStorage.getItem('att_break_accum') || 0));
 
   const userId = session?.user?.id;
   const orgId = currentOrg?.id;
@@ -158,15 +158,15 @@ export function Attendance() {
   // Elapsed while clocked in (subtracts break time, pauses on break)
   useEffect(() => {
     if (!active) { setElapsed(0); return; }
-    if (active.breakStart) return; // on break — freeze display
+    if (onBreak) return; // on break — freeze display
     const tick = () => {
       const gross = Math.floor((Date.now() - new Date(active.timeIn).getTime()) / 1000);
-      setElapsed(Math.max(0, gross - (active.breakDuration ?? 0)));
+      setElapsed(Math.max(0, gross - breakAccum));
     };
     tick();
     const id = setInterval(tick, 1000);
     return () => clearInterval(id);
-  }, [active]);
+  }, [active, onBreak, breakAccum]);
 
   const handleTimeIn = async () => {
     setActionLoading(true); setError(null);
@@ -187,11 +187,21 @@ export function Attendance() {
 
   const handleTimeOut = async () => {
     setActionLoading(true); setError(null);
+    // Calculate total break including any active break
+    let totalBreak = breakAccum;
+    if (onBreak) {
+      const started = Number(localStorage.getItem('att_break_start') || Date.now());
+      totalBreak += Math.floor((Date.now() - started) / 1000);
+    }
+    localStorage.removeItem('att_break_start');
+    localStorage.removeItem('att_break_accum');
+    setOnBreak(false);
+    setBreakAccum(0);
     try {
       const res = await fetch('/api/attendance/time-out', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ userId, orgId, notes: notes || undefined }),
+        body: JSON.stringify({ userId, orgId, notes: notes || undefined, breakDuration: totalBreak }),
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || 'Failed to clock out');
@@ -202,22 +212,21 @@ export function Attendance() {
     finally { setActionLoading(false); }
   };
 
-  const handleBreak = async () => {
-    if (!userId || !orgId || !active) return;
-    setActionLoading(true); setError(null);
-    const onBreak = !!active.breakStart;
-    try {
-      const res = await fetch(`/api/attendance/${onBreak ? 'break-end' : 'break-start'}`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ userId, orgId }),
-      });
-      const data = await res.json();
-      if (!res.ok) throw new Error(data.error || 'Failed');
-      setActive(data.log);
-      window.dispatchEvent(new CustomEvent('attendance-change'));
-    } catch (e: any) { setError(e.message); }
-    finally { setActionLoading(false); }
+  const handleBreak = () => {
+    if (!active) return;
+    if (!onBreak) {
+      localStorage.setItem('att_break_start', String(Date.now()));
+      setOnBreak(true);
+    } else {
+      const started = Number(localStorage.getItem('att_break_start') || Date.now());
+      const secs = Math.floor((Date.now() - started) / 1000);
+      const newAccum = breakAccum + secs;
+      localStorage.setItem('att_break_accum', String(newAccum));
+      localStorage.removeItem('att_break_start');
+      setBreakAccum(newAccum);
+      setOnBreak(false);
+    }
+    window.dispatchEvent(new CustomEvent('attendance-change'));
   };
 
   const isClockedIn = !!active;
@@ -418,7 +427,7 @@ export function Attendance() {
                   style={{
                     width: '100%',
                     padding: '12px 0',
-                    background: active?.breakStart
+                    background: onBreak
                       ? 'linear-gradient(135deg, hsl(142 76% 36%) 0%, hsl(158 64% 46%) 100%)'
                       : 'linear-gradient(135deg, hsl(40 96% 40%) 0%, hsl(35 92% 52%) 100%)',
                     border: 'none',
@@ -438,7 +447,7 @@ export function Attendance() {
                   onMouseOver={e => { if (!actionLoading) (e.currentTarget.style.transform = 'translateY(-1px)'); }}
                   onMouseOut={e => (e.currentTarget.style.transform = 'translateY(0)')}
                 >
-                  {active?.breakStart ? '▶ Resume' : '⏸ Take Break'}
+                  {onBreak ? '▶ Resume' : '⏸ Take Break'}
                 </button>
                 {/* Time Out */}
                 <button

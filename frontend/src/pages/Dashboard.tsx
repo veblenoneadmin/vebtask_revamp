@@ -125,9 +125,11 @@ export function Dashboard() {
   const [loading, setLoading] = useState(true);
 
   // ── Attendance state ───────────────────────────────────────────────────────
-  const [attendanceActive, setAttendanceActive] = useState<{ id: string; timeIn: string; breakStart?: string | null; breakDuration?: number } | null>(null);
+  const [attendanceActive, setAttendanceActive] = useState<{ id: string; timeIn: string } | null>(null);
   const [attendanceElapsed, setAttendanceElapsed] = useState(0);
   const [attendanceLoading, setAttendanceLoading] = useState(false);
+  const [onBreak, setOnBreak] = useState(() => !!localStorage.getItem('att_break_start'));
+  const [breakAccum, setBreakAccum] = useState(() => Number(localStorage.getItem('att_break_accum') || 0));
 
   // ── Fetch everything in parallel ──────────────────────────────────────────
   const fetchDashboard = useCallback(async () => {
@@ -201,15 +203,17 @@ export function Dashboard() {
   // ── Attendance tick (subtracts break time, pauses on break) ───────────────
   useEffect(() => {
     if (!attendanceActive) { setAttendanceElapsed(0); return; }
-    if (attendanceActive.breakStart) return; // on break — freeze
+    if (onBreak) return; // freeze while on break
     const tick = () => {
       const gross = Math.floor((Date.now() - new Date(attendanceActive.timeIn).getTime()) / 1000);
-      setAttendanceElapsed(Math.max(0, gross - (attendanceActive.breakDuration ?? 0)));
+      const currentBreak = onBreak && localStorage.getItem('att_break_start')
+        ? Math.floor((Date.now() - Number(localStorage.getItem('att_break_start'))) / 1000) : 0;
+      setAttendanceElapsed(Math.max(0, gross - breakAccum - currentBreak));
     };
     tick();
     const id = setInterval(tick, 1000);
     return () => clearInterval(id);
-  }, [attendanceActive]);
+  }, [attendanceActive, onBreak, breakAccum]);
 
   const handleTimeIn = async () => {
     if (!session?.user?.id || !currentOrg?.id) return;
@@ -230,10 +234,20 @@ export function Dashboard() {
   const handleTimeOut = async () => {
     if (!session?.user?.id || !currentOrg?.id) return;
     setAttendanceLoading(true);
+    // Calculate total break including any active break
+    let totalBreak = breakAccum;
+    if (onBreak) {
+      const started = Number(localStorage.getItem('att_break_start') || Date.now());
+      totalBreak += Math.floor((Date.now() - started) / 1000);
+    }
+    localStorage.removeItem('att_break_start');
+    localStorage.removeItem('att_break_accum');
+    setOnBreak(false);
+    setBreakAccum(0);
     try {
       const res = await fetch('/api/attendance/time-out', {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ userId: session.user.id, orgId: currentOrg.id }),
+        body: JSON.stringify({ userId: session.user.id, orgId: currentOrg.id, breakDuration: totalBreak }),
       });
       if (res.ok) {
         setAttendanceActive(null);
@@ -244,22 +258,21 @@ export function Dashboard() {
     finally { setAttendanceLoading(false); }
   };
 
-  const handleBreak = async () => {
-    if (!session?.user?.id || !currentOrg?.id || !attendanceActive) return;
-    setAttendanceLoading(true);
-    const onBreak = !!attendanceActive.breakStart;
-    try {
-      const res = await fetch(`/api/attendance/${onBreak ? 'break-end' : 'break-start'}`, {
-        method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ userId: session.user.id, orgId: currentOrg.id }),
-      });
-      if (res.ok) {
-        const data = await res.json();
-        setAttendanceActive(data.log);
-        window.dispatchEvent(new CustomEvent('attendance-change'));
-      }
-    } catch { /* ignore */ }
-    finally { setAttendanceLoading(false); }
+  const handleBreak = () => {
+    if (!attendanceActive) return;
+    if (!onBreak) {
+      localStorage.setItem('att_break_start', String(Date.now()));
+      setOnBreak(true);
+    } else {
+      const started = Number(localStorage.getItem('att_break_start') || Date.now());
+      const secs = Math.floor((Date.now() - started) / 1000);
+      const newAccum = breakAccum + secs;
+      localStorage.setItem('att_break_accum', String(newAccum));
+      localStorage.removeItem('att_break_start');
+      setBreakAccum(newAccum);
+      setOnBreak(false);
+    }
+    window.dispatchEvent(new CustomEvent('attendance-change'));
   };
 
   // ── Early returns ──────────────────────────────────────────────────────────
@@ -373,12 +386,12 @@ export function Dashboard() {
               onClick={handleBreak}
               disabled={attendanceLoading}
               className="flex items-center gap-2 px-4 py-2 rounded-lg text-[13px] font-semibold transition-all shrink-0 disabled:opacity-50"
-              style={attendanceActive.breakStart
+              style={onBreak
                 ? { background: 'rgba(78,201,176,0.12)', color: VS.teal, border: `1px solid rgba(78,201,176,0.25)` }
                 : { background: 'rgba(255,180,0,0.10)', color: '#f0b429', border: '1px solid rgba(255,180,0,0.25)' }
               }
             >
-              {attendanceActive.breakStart ? '▶ Resume' : '⏸ Break'}
+              {onBreak ? '▶ Resume' : '⏸ Break'}
             </button>
           )}
           <button

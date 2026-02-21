@@ -54,7 +54,8 @@ const MainLayout: React.FC = () => {
   const [currentTime, setCurrentTime] = useState(nowClock());
 
   // Attendance timer
-  const [attendanceActive, setAttendanceActive] = useState<{ timeIn: string; breakStart?: string | null; breakDuration?: number } | null>(null);
+  const [attendanceActive, setAttendanceActive] = useState<{ timeIn: string } | null>(null);
+  const [navOnBreak, setNavOnBreak] = useState(false);
   const [navElapsed, setNavElapsed] = useState(0);
   const navTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
@@ -88,7 +89,11 @@ const MainLayout: React.FC = () => {
       try {
         const q = new URLSearchParams({ userId: session!.user!.id, orgId }).toString();
         const res = await fetch(`/api/attendance/status?${q}`);
-        if (res.ok) setAttendanceActive((await res.json()).active);
+        if (res.ok) {
+          const data = await res.json();
+          setAttendanceActive(data.active);
+          setNavOnBreak(!!localStorage.getItem('att_break_start'));
+        }
       } catch { /* ignore */ }
     };
     fetchStatus();
@@ -104,17 +109,17 @@ const MainLayout: React.FC = () => {
   useEffect(() => {
     if (navTimerRef.current) clearInterval(navTimerRef.current);
     if (!attendanceActive) return; // keep last navElapsed, just stop ticking
-    if (attendanceActive.breakStart) return; // on break — freeze the counter
+    if (navOnBreak) return; // on break — freeze the counter
 
     const tick = () => {
       const gross = Math.floor((Date.now() - new Date(attendanceActive.timeIn).getTime()) / 1000);
-      const breakSecs = attendanceActive.breakDuration ?? 0;
-      setNavElapsed(Math.max(0, gross - breakSecs));
+      const breakAccum = Number(localStorage.getItem('att_break_accum') || 0);
+      setNavElapsed(Math.max(0, gross - breakAccum));
     };
     tick();
     navTimerRef.current = setInterval(tick, 1000);
     return () => { if (navTimerRef.current) clearInterval(navTimerRef.current); };
-  }, [attendanceActive]);
+  }, [attendanceActive, navOnBreak]);
 
   const handleSignOut = async () => {
     try { await signOut(); } catch { /* ignore */ }
@@ -160,17 +165,17 @@ const MainLayout: React.FC = () => {
             <>
               <span style={{ color: VS.border }}>|</span>
               <div className="flex items-center gap-1.5">
-                {attendanceActive && !attendanceActive.breakStart && (
+                {attendanceActive && !navOnBreak && (
                   <span className="h-1.5 w-1.5 rounded-full animate-pulse" style={{ background: VS.teal }} />
                 )}
-                {attendanceActive?.breakStart && (
+                {navOnBreak && (
                   <span className="text-[10px] font-bold uppercase tracking-widest px-1.5 py-0.5 rounded" style={{ background: `${VS.red}22`, color: VS.red }}>
                     Break
                   </span>
                 )}
                 <span
                   className="text-[13px] font-mono font-semibold tabular-nums"
-                  style={{ color: attendanceActive && !attendanceActive.breakStart ? VS.teal : VS.text2 }}
+                  style={{ color: attendanceActive && !navOnBreak ? VS.teal : VS.text2 }}
                 >
                   {fmtElapsed(navElapsed)}
                 </span>

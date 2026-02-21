@@ -54,7 +54,7 @@ const MainLayout: React.FC = () => {
   const [currentTime, setCurrentTime] = useState(nowClock());
 
   // Attendance timer
-  const [attendanceActive, setAttendanceActive] = useState<{ timeIn: string } | null>(null);
+  const [attendanceActive, setAttendanceActive] = useState<{ timeIn: string; breakStart?: string | null; breakDuration?: number } | null>(null);
   const [navElapsed, setNavElapsed] = useState(0);
   const navTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
@@ -100,11 +100,17 @@ const MainLayout: React.FC = () => {
     };
   }, [session?.user?.id, orgId]);
 
-  // Live elapsed tick — pause (don't reset) when clocked out
+  // Live elapsed tick — pause on break or clock-out, subtract break time
   useEffect(() => {
     if (navTimerRef.current) clearInterval(navTimerRef.current);
     if (!attendanceActive) return; // keep last navElapsed, just stop ticking
-    const tick = () => setNavElapsed(Math.floor((Date.now() - new Date(attendanceActive.timeIn).getTime()) / 1000));
+    if (attendanceActive.breakStart) return; // on break — freeze the counter
+
+    const tick = () => {
+      const gross = Math.floor((Date.now() - new Date(attendanceActive.timeIn).getTime()) / 1000);
+      const breakSecs = attendanceActive.breakDuration ?? 0;
+      setNavElapsed(Math.max(0, gross - breakSecs));
+    };
     tick();
     navTimerRef.current = setInterval(tick, 1000);
     return () => { if (navTimerRef.current) clearInterval(navTimerRef.current); };
@@ -154,12 +160,17 @@ const MainLayout: React.FC = () => {
             <>
               <span style={{ color: VS.border }}>|</span>
               <div className="flex items-center gap-1.5">
-                {attendanceActive && (
+                {attendanceActive && !attendanceActive.breakStart && (
                   <span className="h-1.5 w-1.5 rounded-full animate-pulse" style={{ background: VS.teal }} />
+                )}
+                {attendanceActive?.breakStart && (
+                  <span className="text-[10px] font-bold uppercase tracking-widest px-1.5 py-0.5 rounded" style={{ background: `${VS.red}22`, color: VS.red }}>
+                    Break
+                  </span>
                 )}
                 <span
                   className="text-[13px] font-mono font-semibold tabular-nums"
-                  style={{ color: attendanceActive ? VS.teal : VS.text2 }}
+                  style={{ color: attendanceActive && !attendanceActive.breakStart ? VS.teal : VS.text2 }}
                 >
                   {fmtElapsed(navElapsed)}
                 </span>

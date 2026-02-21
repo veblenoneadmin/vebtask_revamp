@@ -10,6 +10,8 @@ interface AttendanceLog {
   orgId: string;
   timeIn: string;
   timeOut: string | null;
+  breakStart: string | null;
+  breakDuration: number;
   duration: number;
   notes: string | null;
   date: string;
@@ -153,10 +155,14 @@ export function Attendance() {
     return () => clearInterval(id);
   }, []);
 
-  // Elapsed while clocked in
+  // Elapsed while clocked in (subtracts break time, pauses on break)
   useEffect(() => {
     if (!active) { setElapsed(0); return; }
-    const tick = () => setElapsed(Math.floor((Date.now() - new Date(active.timeIn).getTime()) / 1000));
+    if (active.breakStart) return; // on break — freeze display
+    const tick = () => {
+      const gross = Math.floor((Date.now() - new Date(active.timeIn).getTime()) / 1000);
+      setElapsed(Math.max(0, gross - (active.breakDuration ?? 0)));
+    };
     tick();
     const id = setInterval(tick, 1000);
     return () => clearInterval(id);
@@ -191,6 +197,24 @@ export function Attendance() {
       if (!res.ok) throw new Error(data.error || 'Failed to clock out');
       setNotes('');
       await loadAll();
+      window.dispatchEvent(new CustomEvent('attendance-change'));
+    } catch (e: any) { setError(e.message); }
+    finally { setActionLoading(false); }
+  };
+
+  const handleBreak = async () => {
+    if (!userId || !orgId || !active) return;
+    setActionLoading(true); setError(null);
+    const onBreak = !!active.breakStart;
+    try {
+      const res = await fetch(`/api/attendance/${onBreak ? 'break-end' : 'break-start'}`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ userId, orgId }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || 'Failed');
+      setActive(data.log);
       window.dispatchEvent(new CustomEvent('attendance-change'));
     } catch (e: any) { setError(e.message); }
     finally { setActionLoading(false); }
@@ -386,34 +410,66 @@ export function Attendance() {
                 {actionLoading ? 'Clocking In...' : 'Time In'}
               </button>
             ) : (
-              <button
-                onClick={handleTimeOut}
-                disabled={actionLoading}
-                style={{
-                  width: '100%',
-                  padding: '14px 0',
-                  background: 'linear-gradient(135deg, hsl(0 84% 50%) 0%, hsl(14 91% 58%) 100%)',
-                  border: 'none',
-                  borderRadius: 12,
-                  color: '#fff',
-                  fontSize: 15,
-                  fontWeight: 700,
-                  cursor: actionLoading ? 'not-allowed' : 'pointer',
-                  opacity: actionLoading ? 0.7 : 1,
-                  display: 'flex',
-                  alignItems: 'center',
-                  justifyContent: 'center',
-                  gap: 10,
-                  boxShadow: '0 4px 20px hsl(0 84% 50% / 0.4)',
-                  transition: 'opacity 0.2s, transform 0.1s',
-                  fontFamily: 'Inter, sans-serif',
-                }}
-                onMouseOver={e => { if (!actionLoading) (e.currentTarget.style.transform = 'translateY(-1px)'); }}
-                onMouseOut={e => (e.currentTarget.style.transform = 'translateY(0)')}
-              >
-                <LogOut size={18} />
-                {actionLoading ? 'Clocking Out...' : 'Time Out'}
-              </button>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+                {/* Break / Resume */}
+                <button
+                  onClick={handleBreak}
+                  disabled={actionLoading}
+                  style={{
+                    width: '100%',
+                    padding: '12px 0',
+                    background: active?.breakStart
+                      ? 'linear-gradient(135deg, hsl(142 76% 36%) 0%, hsl(158 64% 46%) 100%)'
+                      : 'linear-gradient(135deg, hsl(40 96% 40%) 0%, hsl(35 92% 52%) 100%)',
+                    border: 'none',
+                    borderRadius: 12,
+                    color: '#fff',
+                    fontSize: 14,
+                    fontWeight: 700,
+                    cursor: actionLoading ? 'not-allowed' : 'pointer',
+                    opacity: actionLoading ? 0.7 : 1,
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    gap: 8,
+                    transition: 'opacity 0.2s, transform 0.1s',
+                    fontFamily: 'Inter, sans-serif',
+                  }}
+                  onMouseOver={e => { if (!actionLoading) (e.currentTarget.style.transform = 'translateY(-1px)'); }}
+                  onMouseOut={e => (e.currentTarget.style.transform = 'translateY(0)')}
+                >
+                  {active?.breakStart ? '▶ Resume' : '⏸ Take Break'}
+                </button>
+                {/* Time Out */}
+                <button
+                  onClick={handleTimeOut}
+                  disabled={actionLoading}
+                  style={{
+                    width: '100%',
+                    padding: '14px 0',
+                    background: 'linear-gradient(135deg, hsl(0 84% 50%) 0%, hsl(14 91% 58%) 100%)',
+                    border: 'none',
+                    borderRadius: 12,
+                    color: '#fff',
+                    fontSize: 15,
+                    fontWeight: 700,
+                    cursor: actionLoading ? 'not-allowed' : 'pointer',
+                    opacity: actionLoading ? 0.7 : 1,
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    gap: 10,
+                    boxShadow: '0 4px 20px hsl(0 84% 50% / 0.4)',
+                    transition: 'opacity 0.2s, transform 0.1s',
+                    fontFamily: 'Inter, sans-serif',
+                  }}
+                  onMouseOver={e => { if (!actionLoading) (e.currentTarget.style.transform = 'translateY(-1px)'); }}
+                  onMouseOut={e => (e.currentTarget.style.transform = 'translateY(0)')}
+                >
+                  <LogOut size={18} />
+                  {actionLoading ? 'Clocking Out...' : 'Time Out'}
+                </button>
+              </div>
             )}
           </div>
         </div>

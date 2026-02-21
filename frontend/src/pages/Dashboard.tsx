@@ -125,7 +125,7 @@ export function Dashboard() {
   const [loading, setLoading] = useState(true);
 
   // ── Attendance state ───────────────────────────────────────────────────────
-  const [attendanceActive, setAttendanceActive] = useState<{ id: string; timeIn: string } | null>(null);
+  const [attendanceActive, setAttendanceActive] = useState<{ id: string; timeIn: string; breakStart?: string | null; breakDuration?: number } | null>(null);
   const [attendanceElapsed, setAttendanceElapsed] = useState(0);
   const [attendanceLoading, setAttendanceLoading] = useState(false);
 
@@ -198,10 +198,14 @@ export function Dashboard() {
 
   useEffect(() => { fetchDashboard(); }, [fetchDashboard]);
 
-  // ── Attendance tick ────────────────────────────────────────────────────────
+  // ── Attendance tick (subtracts break time, pauses on break) ───────────────
   useEffect(() => {
     if (!attendanceActive) { setAttendanceElapsed(0); return; }
-    const tick = () => setAttendanceElapsed(Math.floor((Date.now() - new Date(attendanceActive.timeIn).getTime()) / 1000));
+    if (attendanceActive.breakStart) return; // on break — freeze
+    const tick = () => {
+      const gross = Math.floor((Date.now() - new Date(attendanceActive.timeIn).getTime()) / 1000);
+      setAttendanceElapsed(Math.max(0, gross - (attendanceActive.breakDuration ?? 0)));
+    };
     tick();
     const id = setInterval(tick, 1000);
     return () => clearInterval(id);
@@ -234,6 +238,24 @@ export function Dashboard() {
       if (res.ok) {
         setAttendanceActive(null);
         fetchDashboard();
+        window.dispatchEvent(new CustomEvent('attendance-change'));
+      }
+    } catch { /* ignore */ }
+    finally { setAttendanceLoading(false); }
+  };
+
+  const handleBreak = async () => {
+    if (!session?.user?.id || !currentOrg?.id || !attendanceActive) return;
+    setAttendanceLoading(true);
+    const onBreak = !!attendanceActive.breakStart;
+    try {
+      const res = await fetch(`/api/attendance/${onBreak ? 'break-end' : 'break-start'}`, {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ userId: session.user.id, orgId: currentOrg.id }),
+      });
+      if (res.ok) {
+        const data = await res.json();
+        setAttendanceActive(data.log);
         window.dispatchEvent(new CustomEvent('attendance-change'));
       }
     } catch { /* ignore */ }
@@ -345,6 +367,19 @@ export function Dashboard() {
                 {fmtTime(attendanceActive.timeIn)}
               </p>
             </div>
+          )}
+          {attendanceActive && (
+            <button
+              onClick={handleBreak}
+              disabled={attendanceLoading}
+              className="flex items-center gap-2 px-4 py-2 rounded-lg text-[13px] font-semibold transition-all shrink-0 disabled:opacity-50"
+              style={attendanceActive.breakStart
+                ? { background: 'rgba(78,201,176,0.12)', color: VS.teal, border: `1px solid rgba(78,201,176,0.25)` }
+                : { background: 'rgba(255,180,0,0.10)', color: '#f0b429', border: '1px solid rgba(255,180,0,0.25)' }
+              }
+            >
+              {attendanceActive.breakStart ? '▶ Resume' : '⏸ Break'}
+            </button>
           )}
           <button
             onClick={attendanceActive ? handleTimeOut : handleTimeIn}

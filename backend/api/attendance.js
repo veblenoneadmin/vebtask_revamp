@@ -68,7 +68,7 @@ router.post('/time-in', requireAuth, withOrgScope, async (req, res) => {
 });
 
 // POST /api/attendance/time-out
-// Clock out – sets timeOut and calculates duration
+// Clock out – sets timeOut and calculates net duration (excluding breaks)
 router.post('/time-out', requireAuth, withOrgScope, async (req, res) => {
   try {
     const { userId, orgId, notes } = req.body;
@@ -86,22 +86,87 @@ router.post('/time-out', requireAuth, withOrgScope, async (req, res) => {
     }
 
     const now = new Date();
-    const duration = Math.floor((now.getTime() - active.timeIn.getTime()) / 1000);
+    // If still on break when clocking out, count that break too
+    let extraBreak = 0;
+    if (active.breakStart) {
+      extraBreak = Math.floor((now.getTime() - active.breakStart.getTime()) / 1000);
+    }
+    const totalBreak = (active.breakDuration || 0) + extraBreak;
+    const gross = Math.floor((now.getTime() - active.timeIn.getTime()) / 1000);
+    const duration = Math.max(0, gross - totalBreak);
 
     const log = await prisma.attendanceLog.update({
       where: { id: active.id },
       data: {
         timeOut: now,
         duration,
+        breakDuration: totalBreak,
+        breakStart: null,
         notes: notes || active.notes,
       },
     });
 
-    console.log(`⏹️ Time Out: user ${userId}, duration ${duration}s`);
+    console.log(`⏹️ Time Out: user ${userId}, duration ${duration}s (break ${totalBreak}s)`);
     res.json({ log, message: 'Clocked out successfully' });
   } catch (error) {
     console.error('Error clocking out:', error);
     res.status(500).json({ error: 'Failed to clock out' });
+  }
+});
+
+// POST /api/attendance/break-start
+router.post('/break-start', requireAuth, withOrgScope, async (req, res) => {
+  try {
+    const { userId, orgId } = req.body;
+    if (!userId || !orgId) return res.status(400).json({ error: 'userId and orgId are required' });
+
+    const active = await prisma.attendanceLog.findFirst({
+      where: { userId, orgId, timeOut: null },
+      orderBy: { timeIn: 'desc' },
+    });
+    if (!active) return res.status(404).json({ error: 'No active clock-in found' });
+    if (active.breakStart) return res.status(409).json({ error: 'Already on break' });
+
+    const log = await prisma.attendanceLog.update({
+      where: { id: active.id },
+      data: { breakStart: new Date() },
+    });
+
+    console.log(`☕ Break Start: user ${userId}`);
+    res.json({ log, message: 'Break started' });
+  } catch (error) {
+    console.error('Error starting break:', error);
+    res.status(500).json({ error: 'Failed to start break' });
+  }
+});
+
+// POST /api/attendance/break-end
+router.post('/break-end', requireAuth, withOrgScope, async (req, res) => {
+  try {
+    const { userId, orgId } = req.body;
+    if (!userId || !orgId) return res.status(400).json({ error: 'userId and orgId are required' });
+
+    const active = await prisma.attendanceLog.findFirst({
+      where: { userId, orgId, timeOut: null },
+      orderBy: { timeIn: 'desc' },
+    });
+    if (!active) return res.status(404).json({ error: 'No active clock-in found' });
+    if (!active.breakStart) return res.status(409).json({ error: 'Not on break' });
+
+    const breakSecs = Math.floor((Date.now() - active.breakStart.getTime()) / 1000);
+    const log = await prisma.attendanceLog.update({
+      where: { id: active.id },
+      data: {
+        breakStart: null,
+        breakDuration: (active.breakDuration || 0) + breakSecs,
+      },
+    });
+
+    console.log(`▶️ Break End: user ${userId}, break was ${breakSecs}s`);
+    res.json({ log, message: 'Break ended' });
+  } catch (error) {
+    console.error('Error ending break:', error);
+    res.status(500).json({ error: 'Failed to end break' });
   }
 });
 

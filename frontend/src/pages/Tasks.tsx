@@ -884,16 +884,13 @@ export function Tasks() {
 
                         {/* ── Centered hover timer button ── */}
                         {userRole !== 'CLIENT' && (
-                          <button
-                            onClick={e => {
-                              e.stopPropagation();
-                              timerTaskId === task.id ? handleStopTimer(task.id) : handleStartTimer(task.id);
-                            }}
+                          <div
                             className="absolute inset-0 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity duration-200 z-10 pointer-events-none"
-                            title={timerTaskId === task.id ? 'Stop timer' : 'Start timer'}
                           >
                             <span
-                              className="flex items-center justify-center h-10 w-10 rounded-full backdrop-blur-sm transition-transform duration-150 hover:scale-110 pointer-events-auto"
+                              onClick={e => { e.stopPropagation(); timerTaskId === task.id ? handleStopTimer(task.id) : handleStartTimer(task.id); }}
+                              onDoubleClick={e => e.stopPropagation()}
+                              className="flex items-center justify-center h-10 w-10 rounded-full backdrop-blur-sm transition-transform duration-150 hover:scale-110 pointer-events-auto cursor-pointer"
                               style={{
                                 background: timerTaskId === task.id ? `${VS.teal}cc` : 'rgba(0,0,0,0.55)',
                                 border: `2px solid ${timerTaskId === task.id ? VS.teal : 'rgba(255,255,255,0.2)'}`,
@@ -905,7 +902,7 @@ export function Tasks() {
                                 ? <Square className="h-4 w-4 fill-current" />
                                 : <Play className="h-4 w-4 fill-current ml-0.5" />}
                             </span>
-                          </button>
+                          </div>
                         )}
 
                         {/* ── Live timer strip (only when running) ── */}

@@ -11,7 +11,7 @@ import {
   Search,
   MessageSquare,
   Paperclip,
-  Folder,
+  Clock,
   Filter,
   SlidersHorizontal,
   Play,
@@ -914,7 +914,7 @@ export function Tasks() {
                               {taskCounts[task.id]?.attachments ?? 0}
                             </span>
                             <span className="flex items-center gap-1.5 text-[12px]" style={{ color: VS.text2 }}>
-                              <Folder className="h-3.5 w-3.5" />
+                              <Clock className="h-3.5 w-3.5" />
                               {task.actualHours || 0}
                             </span>
                           </div>

@@ -882,22 +882,21 @@ export function Tasks() {
                               e.stopPropagation();
                               timerTaskId === task.id ? handleStopTimer(task.id) : handleStartTimer(task.id);
                             }}
-                            className="absolute inset-x-0 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity duration-200 z-10"
-                            style={{ top: '30%', transform: 'translateY(-50%)' }}
+                            className="absolute inset-0 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity duration-200 z-10"
                             title={timerTaskId === task.id ? 'Stop timer' : 'Start timer'}
                           >
                             <span
-                              className="flex items-center justify-center h-16 w-16 rounded-full backdrop-blur-sm transition-transform duration-150 hover:scale-110"
+                              className="flex items-center justify-center h-10 w-10 rounded-full backdrop-blur-sm transition-transform duration-150 hover:scale-110"
                               style={{
                                 background: timerTaskId === task.id ? `${VS.teal}cc` : 'rgba(0,0,0,0.55)',
                                 border: `2px solid ${timerTaskId === task.id ? VS.teal : 'rgba(255,255,255,0.2)'}`,
                                 color: '#fff',
-                                boxShadow: timerTaskId === task.id ? `0 0 20px ${VS.teal}66` : '0 4px 16px rgba(0,0,0,0.5)',
+                                boxShadow: timerTaskId === task.id ? `0 0 16px ${VS.teal}66` : '0 4px 12px rgba(0,0,0,0.5)',
                               }}
                             >
                               {timerTaskId === task.id
-                                ? <Square className="h-7 w-7 fill-current" />
-                                : <Play className="h-7 w-7 fill-current ml-0.5" />}
+                                ? <Square className="h-4 w-4 fill-current" />
+                                : <Play className="h-4 w-4 fill-current ml-0.5" />}
                             </span>
                           </button>
                         )}

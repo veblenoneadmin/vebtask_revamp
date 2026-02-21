@@ -918,12 +918,33 @@ export function Tasks() {
                               {task.actualHours || 0}
                             </span>
                           </div>
-                          <span
-                            className="text-[12px] font-medium"
-                            style={{ color: isOverdue ? VS.red : VS.text2 }}
-                          >
-                            {date || '—'}
-                          </span>
+                          <div className="flex items-center gap-2">
+                            {userRole !== 'CLIENT' && (
+                              <button
+                                onClick={e => {
+                                  e.stopPropagation();
+                                  timerTaskId === task.id ? handleStopTimer(task.id) : handleStartTimer(task.id);
+                                }}
+                                className="flex items-center justify-center h-5 w-5 rounded-md transition-all"
+                                style={{
+                                  background: timerTaskId === task.id ? `${VS.teal}22` : VS.bg3,
+                                  color: timerTaskId === task.id ? VS.teal : VS.text2,
+                                  border: `1px solid ${timerTaskId === task.id ? VS.teal + '55' : VS.border}`,
+                                }}
+                                title={timerTaskId === task.id ? 'Stop timer' : 'Start timer'}
+                              >
+                                {timerTaskId === task.id
+                                  ? <Square className="h-2.5 w-2.5 fill-current" />
+                                  : <Play className="h-2.5 w-2.5 fill-current" />}
+                              </button>
+                            )}
+                            <span
+                              className="text-[12px] font-medium"
+                              style={{ color: isOverdue ? VS.red : VS.text2 }}
+                            >
+                              {date || '—'}
+                            </span>
+                          </div>
                         </div>
                       </div>
 

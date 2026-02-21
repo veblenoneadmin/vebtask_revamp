@@ -3,6 +3,13 @@ import { createPortal } from 'react-dom';
 import type { Project } from '../hooks/useTasks';
 import { X, Save, Building2, Star, Calendar, DollarSign, Users, Target, Zap } from 'lucide-react';
 
+const VS = {
+  bg1: '#252526', bg2: '#2d2d2d', bg3: '#333333',
+  border: '#3c3c3c', text0: '#f0f0f0', text1: '#c0c0c0', text2: '#909090',
+  blue: '#569cd6', teal: '#4ec9b0', yellow: '#dcdcaa',
+  red: '#f44747', green: '#6a9955', accent: '#007acc',
+};
+
 interface ProjectModalProps {
   isOpen: boolean;
   onClose: () => void;
@@ -15,28 +22,58 @@ const PROJECT_COLORS = [
   { color: '#646cff', name: 'Primary', gradient: 'linear-gradient(135deg, #646cff, #8b5cf6)' },
   { color: '#10b981', name: 'Success', gradient: 'linear-gradient(135deg, #10b981, #059669)' },
   { color: '#f59e0b', name: 'Warning', gradient: 'linear-gradient(135deg, #f59e0b, #d97706)' },
-  { color: '#ef4444', name: 'Error', gradient: 'linear-gradient(135deg, #ef4444, #dc2626)' },
-  { color: '#8b5cf6', name: 'Purple', gradient: 'linear-gradient(135deg, #8b5cf6, #7c3aed)' },
-  { color: '#06b6d4', name: 'Cyan', gradient: 'linear-gradient(135deg, #06b6d4, #0891b2)' },
-  { color: '#84cc16', name: 'Lime', gradient: 'linear-gradient(135deg, #84cc16, #65a30d)' },
-  { color: '#f97316', name: 'Orange', gradient: 'linear-gradient(135deg, #f97316, #ea580c)' },
-  { color: '#ec4899', name: 'Pink', gradient: 'linear-gradient(135deg, #ec4899, #db2777)' },
-  { color: '#6366f1', name: 'Indigo', gradient: 'linear-gradient(135deg, #6366f1, #4f46e5)' }
+  { color: '#ef4444', name: 'Error',   gradient: 'linear-gradient(135deg, #ef4444, #dc2626)' },
+  { color: '#8b5cf6', name: 'Purple',  gradient: 'linear-gradient(135deg, #8b5cf6, #7c3aed)' },
+  { color: '#06b6d4', name: 'Cyan',    gradient: 'linear-gradient(135deg, #06b6d4, #0891b2)' },
+  { color: '#84cc16', name: 'Lime',    gradient: 'linear-gradient(135deg, #84cc16, #65a30d)' },
+  { color: '#f97316', name: 'Orange',  gradient: 'linear-gradient(135deg, #f97316, #ea580c)' },
+  { color: '#ec4899', name: 'Pink',    gradient: 'linear-gradient(135deg, #ec4899, #db2777)' },
+  { color: '#6366f1', name: 'Indigo',  gradient: 'linear-gradient(135deg, #6366f1, #4f46e5)' },
 ];
+
+const STATUS_OPTIONS = [
+  { value: 'planning',  label: 'Planning',  dot: VS.blue   },
+  { value: 'active',    label: 'Active',    dot: VS.teal   },
+  { value: 'completed', label: 'Completed', dot: VS.green  },
+  { value: 'on_hold',   label: 'On Hold',   dot: VS.yellow },
+  { value: 'cancelled', label: 'Cancelled', dot: VS.red    },
+];
+
+const fieldStyle: React.CSSProperties = {
+  width: '100%',
+  padding: '8px 12px',
+  background: VS.bg3,
+  border: `1px solid ${VS.border}`,
+  borderRadius: 4,
+  color: VS.text0,
+  fontSize: 13,
+  outline: 'none',
+  boxSizing: 'border-box',
+  fontFamily: 'inherit',
+};
+
+const labelStyle: React.CSSProperties = {
+  display: 'flex',
+  alignItems: 'center',
+  gap: 6,
+  fontSize: 12,
+  fontWeight: 600,
+  color: VS.text1,
+  marginBottom: 6,
+};
 
 export function ProjectModal({ isOpen, onClose, onSave, onUpdate, project }: ProjectModalProps) {
   const [formData, setFormData] = useState({
     name: '',
     description: '',
-    color: '#646cff',
+    color: PROJECT_COLORS[0].color,
     status: 'planning' as 'planning' | 'active' | 'completed' | 'on_hold' | 'cancelled',
     clientName: '',
     budget: '',
     startDate: '',
     deadline: '',
-    priority: 'medium' as 'low' | 'medium' | 'high'
+    priority: 'medium' as 'low' | 'medium' | 'high',
   });
-
   const [selectedColorIndex, setSelectedColorIndex] = useState(0);
 
   useEffect(() => {
@@ -50,21 +87,15 @@ export function ProjectModal({ isOpen, onClose, onSave, onUpdate, project }: Pro
         budget: '',
         startDate: project.startDate ? new Date(project.startDate).toISOString().split('T')[0] : '',
         deadline: project.endDate ? new Date(project.endDate).toISOString().split('T')[0] : '',
-        priority: 'medium'
+        priority: 'medium',
       });
-      const colorIndex = PROJECT_COLORS.findIndex(c => c.color === project.color);
-      setSelectedColorIndex(colorIndex >= 0 ? colorIndex : 0);
+      const idx = PROJECT_COLORS.findIndex(c => c.color === project.color);
+      setSelectedColorIndex(idx >= 0 ? idx : 0);
     } else {
       setFormData({
-        name: '',
-        description: '',
-        color: PROJECT_COLORS[0].color,
-        status: 'planning',
-        clientName: '',
-        budget: '',
-        startDate: '',
-        deadline: '',
-        priority: 'medium'
+        name: '', description: '', color: PROJECT_COLORS[0].color,
+        status: 'planning', clientName: '', budget: '',
+        startDate: '', deadline: '', priority: 'medium',
       });
       setSelectedColorIndex(0);
     }
@@ -72,8 +103,6 @@ export function ProjectModal({ isOpen, onClose, onSave, onUpdate, project }: Pro
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    
-    // Prepare data for API
     const projectData = {
       name: formData.name,
       description: formData.description,
@@ -83,20 +112,16 @@ export function ProjectModal({ isOpen, onClose, onSave, onUpdate, project }: Pro
       budget: formData.budget ? parseFloat(formData.budget) : null,
       startDate: formData.startDate ? new Date(formData.startDate).toISOString() : null,
       endDate: formData.deadline ? new Date(formData.deadline).toISOString() : null,
-      clientId: null, // Will be handled when client management is added
-      clientName: formData.clientName // Include client name for temporary storage
+      clientId: null,
+      clientName: formData.clientName,
     };
-    
     if (project && onUpdate) {
       onUpdate(project.id, projectData);
     } else {
       onSave(projectData);
     }
-    
     onClose();
   };
-
-  if (!isOpen) return null;
 
   const handleColorSelect = (index: number) => {
     setSelectedColorIndex(index);
@@ -105,265 +130,233 @@ export function ProjectModal({ isOpen, onClose, onSave, onUpdate, project }: Pro
 
   const getPriorityIcon = (priority: string) => {
     switch (priority) {
-      case 'high': return <Zap className="w-4 h-4 text-red-500" />;
-      case 'medium': return <Target className="w-4 h-4 text-yellow-500" />;
-      case 'low': return <Star className="w-4 h-4 text-green-500" />;
-      default: return <Target className="w-4 h-4" />;
+      case 'high':   return <Zap size={14} color={VS.red} />;
+      case 'medium': return <Target size={14} color={VS.yellow} />;
+      case 'low':    return <Star size={14} color={VS.teal} />;
+      default:       return <Target size={14} />;
     }
   };
 
+  if (!isOpen) return null;
+
+  const accentGrad = PROJECT_COLORS[selectedColorIndex].gradient;
+
   return createPortal(
     <div
-      className="modal-overlay glass"
-      style={{
-        position: 'fixed',
-        top: 0,
-        left: 0,
-        right: 0,
-        bottom: 0,
-        background: 'rgba(0, 0, 0, 0.7)',
-        display: 'flex',
-        alignItems: 'center',
-        justifyContent: 'center',
-        zIndex: 99999
-      }}
-      onClick={(e) => {
-        // Close modal when clicking on overlay (not the modal content)
-        if (e.target === e.currentTarget) {
-          onClose();
-        }
-      }}
+      style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.75)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 99999 }}
+      onClick={e => { if (e.target === e.currentTarget) onClose(); }}
     >
       <div
-        className="modal-content glass shadow-elevation"
         style={{
-          maxWidth: '600px',
           width: '95%',
+          maxWidth: 580,
           maxHeight: '90vh',
           overflowY: 'auto',
-          position: 'relative',
-          backgroundColor: '#1a1a1a',
-          borderRadius: '12px',
-          border: '1px solid #333'
+          background: VS.bg2,
+          border: `1px solid ${VS.border}`,
+          borderRadius: 8,
+          display: 'flex',
+          flexDirection: 'column',
+          boxShadow: '0 20px 60px rgba(0,0,0,0.6)',
         }}
       >
-        {/* Enhanced Header */}
-        <div className="modal-header" style={{ 
-          background: PROJECT_COLORS[selectedColorIndex].gradient,
-          borderRadius: '8px 8px 0 0',
-          padding: '24px',
-          color: 'white'
-        }}>
-          <div className="flex items-center gap-3">
-            <div className="h-10 w-10 rounded-xl bg-white/20 flex items-center justify-center">
-              <Building2 className="w-5 h-5" />
+        {/* Header */}
+        <div style={{ background: accentGrad, borderRadius: '8px 8px 0 0', padding: '20px 24px', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+            <div style={{ width: 38, height: 38, borderRadius: 8, background: 'rgba(255,255,255,0.2)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+              <Building2 size={20} color="#fff" />
             </div>
             <div>
-              <h2 className="text-xl font-bold m-0">
+              <h2 style={{ color: '#fff', fontWeight: 700, fontSize: 16, margin: 0 }}>
                 {project ? 'Edit Project' : 'Create New Project'}
               </h2>
-              <p className="text-white/80 text-sm m-0 mt-1">
+              <p style={{ color: 'rgba(255,255,255,0.75)', fontSize: 12, margin: 0, marginTop: 2 }}>
                 {project ? 'Update project details' : 'Set up a new project to track progress'}
               </p>
             </div>
           </div>
-          <button 
-            className="modal-close bg-white/20 hover:bg-white/30 rounded-lg p-2"
+          <button
             onClick={onClose}
+            style={{ background: 'rgba(255,255,255,0.2)', border: 'none', borderRadius: 6, color: '#fff', padding: '6px 8px', cursor: 'pointer', display: 'flex', alignItems: 'center' }}
           >
-            <X size={20} />
+            <X size={18} />
           </button>
         </div>
-        
-        <form onSubmit={handleSubmit} className="modal-form" style={{ padding: '24px' }}>
-          {/* Project Name & Description */}
-          <div className="space-y-6">
-            <div className="form-group">
-              <label className="flex items-center gap-2 text-sm font-semibold text-white mb-2">
-                <Building2 className="w-4 h-4" />
-                Project Name *
-              </label>
+
+        {/* Form */}
+        <form onSubmit={handleSubmit} style={{ padding: 24, display: 'flex', flexDirection: 'column', gap: 20 }}>
+
+          {/* Project Name */}
+          <div>
+            <label style={labelStyle}><Building2 size={13} /> Project Name *</label>
+            <input
+              type="text"
+              value={formData.name}
+              onChange={e => setFormData(prev => ({ ...prev, name: e.target.value }))}
+              required
+              placeholder="Enter a compelling project name"
+              style={fieldStyle}
+            />
+          </div>
+
+          {/* Description */}
+          <div>
+            <label style={labelStyle}><Star size={13} /> Description</label>
+            <textarea
+              value={formData.description}
+              onChange={e => setFormData(prev => ({ ...prev, description: e.target.value }))}
+              rows={3}
+              placeholder="Describe the project goals, scope, and key deliverables..."
+              style={{ ...fieldStyle, resize: 'none', lineHeight: 1.5 }}
+            />
+          </div>
+
+          {/* Client + Priority */}
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 14 }}>
+            <div>
+              <label style={labelStyle}><Users size={13} /> Client Name</label>
               <input
                 type="text"
-                value={formData.name}
-                onChange={(e) => setFormData(prev => ({ ...prev, name: e.target.value }))}
-                required
-                placeholder="Enter a compelling project name"
-                className="w-full p-3 bg-surface-elevated border border-border rounded-lg text-white placeholder-muted-foreground focus:border-primary focus:ring-2 focus:ring-primary/20 transition-all"
+                value={formData.clientName}
+                onChange={e => setFormData(prev => ({ ...prev, clientName: e.target.value }))}
+                placeholder="Client or company name"
+                style={fieldStyle}
               />
             </div>
-
-            <div className="form-group">
-              <label className="flex items-center gap-2 text-sm font-semibold text-white mb-2">
-                <Star className="w-4 h-4" />
-                Description
-              </label>
-              <textarea
-                value={formData.description}
-                onChange={(e) => setFormData(prev => ({ ...prev, description: e.target.value }))}
-                rows={3}
-                placeholder="Describe the project goals, scope, and key deliverables..."
-                className="w-full p-3 bg-surface-elevated border border-border rounded-lg text-white placeholder-muted-foreground focus:border-primary focus:ring-2 focus:ring-primary/20 transition-all resize-none"
-              />
-            </div>
-
-            {/* Two-column layout for additional fields */}
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              <div className="form-group">
-                <label className="flex items-center gap-2 text-sm font-semibold text-white mb-2">
-                  <Users className="w-4 h-4" />
-                  Client Name
-                </label>
-                <input
-                  type="text"
-                  value={formData.clientName}
-                  onChange={(e) => setFormData(prev => ({ ...prev, clientName: e.target.value }))}
-                  placeholder="Client or company name"
-                  className="w-full p-3 bg-surface-elevated border border-border rounded-lg text-white placeholder-muted-foreground focus:border-primary focus:ring-2 focus:ring-primary/20 transition-all"
-                />
-              </div>
-
-              <div className="form-group">
-                <label className="flex items-center gap-2 text-sm font-semibold text-white mb-2">
-                  {getPriorityIcon(formData.priority)}
-                  Priority
-                </label>
-                <select
-                  value={formData.priority}
-                  onChange={(e) => setFormData(prev => ({ ...prev, priority: e.target.value as any }))}
-                  className="w-full p-3 bg-surface-elevated border border-border rounded-lg text-white focus:border-primary focus:ring-2 focus:ring-primary/20 transition-all"
-                >
-                  <option value="low" className="bg-surface-elevated">Low Priority</option>
-                  <option value="medium" className="bg-surface-elevated">Medium Priority</option>
-                  <option value="high" className="bg-surface-elevated">High Priority</option>
-                </select>
-              </div>
-            </div>
-
-            <div className="form-group">
-              <label className="flex items-center gap-2 text-sm font-semibold text-white mb-2">
-                <DollarSign className="w-4 h-4" />
-                Budget ($)
-              </label>
-              <input
-                type="number"
-                value={formData.budget}
-                onChange={(e) => setFormData(prev => ({ ...prev, budget: e.target.value }))}
-                placeholder="0"
-                min="0"
-                step="100"
-                className="w-full p-3 bg-surface-elevated border border-border rounded-lg text-white placeholder-muted-foreground focus:border-primary focus:ring-2 focus:ring-primary/20 transition-all"
-              />
-            </div>
-
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              <div className="form-group">
-                <label className="flex items-center gap-2 text-sm font-semibold text-white mb-2">
-                  <Calendar className="w-4 h-4" />
-                  Start Date
-                </label>
-                <input
-                  type="date"
-                  value={formData.startDate}
-                  onChange={(e) => setFormData(prev => ({ ...prev, startDate: e.target.value }))}
-                  className="w-full p-3 bg-surface-elevated border border-border rounded-lg text-white focus:border-primary focus:ring-2 focus:ring-primary/20 transition-all"
-                />
-              </div>
-
-              <div className="form-group">
-                <label className="flex items-center gap-2 text-sm font-semibold text-white mb-2">
-                  <Calendar className="w-4 h-4" />
-                  End Date
-                </label>
-                <input
-                  type="date"
-                  value={formData.deadline}
-                  onChange={(e) => setFormData(prev => ({ ...prev, deadline: e.target.value }))}
-                  className="w-full p-3 bg-surface-elevated border border-border rounded-lg text-white focus:border-primary focus:ring-2 focus:ring-primary/20 transition-all"
-                />
-              </div>
-            </div>
-
-            {/* Status & Color Selection */}
-            <div className="form-group">
-              <label className="flex items-center gap-2 text-sm font-semibold text-white mb-3">
-                <Target className="w-4 h-4" />
-                Project Status
-              </label>
-              <div className="grid grid-cols-2 gap-2">
-                {[
-                  { value: 'planning', label: 'Planning', color: 'bg-purple-500' },
-                  { value: 'active', label: 'Active', color: 'bg-green-500' },
-                  { value: 'completed', label: 'Completed', color: 'bg-blue-500' },
-                  { value: 'on_hold', label: 'On Hold', color: 'bg-yellow-500' },
-                  { value: 'cancelled', label: 'Cancelled', color: 'bg-red-500' }
-                ].map((status) => (
-                  <button
-                    key={status.value}
-                    type="button"
-                    onClick={() => setFormData(prev => ({ ...prev, status: status.value as any }))}
-                    className={`p-3 rounded-lg border transition-all flex items-center justify-center gap-2 ${
-                      formData.status === status.value
-                        ? 'border-primary bg-primary/20 text-white'
-                        : 'border-border bg-surface-elevated text-muted-foreground hover:border-primary/50'
-                    }`}
-                  >
-                    <div className={`w-2 h-2 rounded-full ${status.color}`}></div>
-                    {status.label}
-                  </button>
-                ))}
-              </div>
-            </div>
-
-            {/* Enhanced Color Picker */}
-            <div className="form-group">
-              <label className="flex items-center gap-2 text-sm font-semibold text-white mb-3">
-                <Star className="w-4 h-4" />
-                Project Color Theme
-              </label>
-              <div className="grid grid-cols-5 gap-3">
-                {PROJECT_COLORS.map((colorOption, index) => (
-                  <button
-                    key={index}
-                    type="button"
-                    onClick={() => handleColorSelect(index)}
-                    className={`relative h-12 rounded-lg transition-all group ${
-                      selectedColorIndex === index 
-                        ? 'ring-4 ring-white/50 scale-110' 
-                        : 'hover:scale-105'
-                    }`}
-                    style={{ background: colorOption.gradient }}
-                    title={colorOption.name}
-                  >
-                    {selectedColorIndex === index && (
-                      <div className="absolute inset-0 flex items-center justify-center">
-                        <div className="w-3 h-3 bg-white rounded-full"></div>
-                      </div>
-                    )}
-                  </button>
-                ))}
-              </div>
-              <p className="text-xs text-muted-foreground mt-2">
-                Selected: {PROJECT_COLORS[selectedColorIndex].name}
-              </p>
+            <div>
+              <label style={labelStyle}>{getPriorityIcon(formData.priority)} Priority</label>
+              <select
+                value={formData.priority}
+                onChange={e => setFormData(prev => ({ ...prev, priority: e.target.value as any }))}
+                style={fieldStyle}
+              >
+                <option value="low">Low Priority</option>
+                <option value="medium">Medium Priority</option>
+                <option value="high">High Priority</option>
+              </select>
             </div>
           </div>
 
-          {/* Enhanced Action Buttons */}
-          <div className="modal-actions flex justify-end gap-3 pt-6 mt-6 border-t border-border">
-            <button 
-              type="button" 
-              className="px-6 py-2 bg-surface-elevated hover:bg-muted border border-border rounded-lg text-white transition-all"
+          {/* Budget */}
+          <div>
+            <label style={labelStyle}><DollarSign size={13} /> Budget ($)</label>
+            <input
+              type="number"
+              value={formData.budget}
+              onChange={e => setFormData(prev => ({ ...prev, budget: e.target.value }))}
+              placeholder="0"
+              min="0"
+              step="100"
+              style={fieldStyle}
+            />
+          </div>
+
+          {/* Start + End Date */}
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 14 }}>
+            <div>
+              <label style={labelStyle}><Calendar size={13} /> Start Date</label>
+              <input
+                type="date"
+                value={formData.startDate}
+                onChange={e => setFormData(prev => ({ ...prev, startDate: e.target.value }))}
+                style={fieldStyle}
+              />
+            </div>
+            <div>
+              <label style={labelStyle}><Calendar size={13} /> End Date</label>
+              <input
+                type="date"
+                value={formData.deadline}
+                onChange={e => setFormData(prev => ({ ...prev, deadline: e.target.value }))}
+                style={fieldStyle}
+              />
+            </div>
+          </div>
+
+          {/* Status */}
+          <div>
+            <label style={labelStyle}><Target size={13} /> Project Status</label>
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 8 }}>
+              {STATUS_OPTIONS.map(s => {
+                const active = formData.status === s.value;
+                return (
+                  <button
+                    key={s.value}
+                    type="button"
+                    onClick={() => setFormData(prev => ({ ...prev, status: s.value as any }))}
+                    style={{
+                      padding: '8px 10px',
+                      borderRadius: 4,
+                      border: `1px solid ${active ? s.dot : VS.border}`,
+                      background: active ? `${s.dot}18` : VS.bg3,
+                      color: active ? s.dot : VS.text2,
+                      fontSize: 12,
+                      fontWeight: active ? 600 : 400,
+                      cursor: 'pointer',
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      gap: 6,
+                      transition: 'all 0.15s',
+                    }}
+                  >
+                    <span style={{ width: 7, height: 7, borderRadius: '50%', background: s.dot, flexShrink: 0 }} />
+                    {s.label}
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+
+          {/* Color Theme */}
+          <div>
+            <label style={labelStyle}><Star size={13} /> Project Color Theme</label>
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(5, 1fr)', gap: 10 }}>
+              {PROJECT_COLORS.map((c, i) => (
+                <button
+                  key={i}
+                  type="button"
+                  onClick={() => handleColorSelect(i)}
+                  title={c.name}
+                  style={{
+                    height: 40,
+                    borderRadius: 6,
+                    background: c.gradient,
+                    border: selectedColorIndex === i ? '2px solid #fff' : '2px solid transparent',
+                    outline: selectedColorIndex === i ? `2px solid ${c.color}` : 'none',
+                    cursor: 'pointer',
+                    transform: selectedColorIndex === i ? 'scale(1.08)' : 'scale(1)',
+                    transition: 'all 0.15s',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                  }}
+                >
+                  {selectedColorIndex === i && (
+                    <span style={{ width: 10, height: 10, borderRadius: '50%', background: '#fff', display: 'block' }} />
+                  )}
+                </button>
+              ))}
+            </div>
+            <p style={{ fontSize: 11, color: VS.text2, marginTop: 6 }}>
+              Selected: {PROJECT_COLORS[selectedColorIndex].name}
+            </p>
+          </div>
+
+          {/* Actions */}
+          <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 10, paddingTop: 16, borderTop: `1px solid ${VS.border}` }}>
+            <button
+              type="button"
               onClick={onClose}
+              style={{ padding: '7px 18px', background: VS.bg3, border: `1px solid ${VS.border}`, borderRadius: 4, color: VS.text1, fontSize: 13, cursor: 'pointer' }}
             >
               Cancel
             </button>
-            <button 
-              type="submit" 
-              className="px-6 py-2 rounded-lg text-white font-medium transition-all flex items-center gap-2 shadow-glow"
-              style={{ background: PROJECT_COLORS[selectedColorIndex].gradient }}
+            <button
+              type="submit"
+              style={{ padding: '7px 18px', background: accentGrad, border: 'none', borderRadius: 4, color: '#fff', fontSize: 13, fontWeight: 600, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 6 }}
             >
-              <Save size={16} />
+              <Save size={14} />
               {project ? 'Update Project' : 'Create Project'}
             </button>
           </div>

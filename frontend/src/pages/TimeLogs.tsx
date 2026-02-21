@@ -1,8 +1,5 @@
 import { useState, useEffect } from 'react';
 import { useSession } from '../lib/auth-client';
-import { Card, CardContent, CardHeader } from '../components/ui/card';
-import { Button } from '../components/ui/button';
-import { Badge } from '../components/ui/badge';
 import {
   Clock,
   Calendar,
@@ -13,9 +10,28 @@ import {
   Target,
   Building2,
   TrendingUp,
-  BarChart3
+  BarChart3,
 } from 'lucide-react';
-import { cn } from '../lib/utils';
+
+// ── VS Code Dark+ tokens ───────────────────────────────────────────────────────
+const VS = {
+  bg0:    '#1e1e1e',
+  bg1:    '#252526',
+  bg2:    '#2d2d2d',
+  bg3:    '#333333',
+  border: '#3c3c3c',
+  text0:  '#f0f0f0',
+  text1:  '#c0c0c0',
+  text2:  '#909090',
+  blue:   '#569cd6',
+  teal:   '#4ec9b0',
+  yellow: '#dcdcaa',
+  orange: '#ce9178',
+  purple: '#c586c0',
+  red:    '#f44747',
+  green:  '#6a9955',
+  accent: '#007acc',
+};
 
 interface TimeLog {
   id: string;
@@ -32,6 +48,96 @@ interface TimeLog {
   status: 'logged' | 'approved';
 }
 
+// ── Stat card sub-component ────────────────────────────────────────────────────
+function StatCard({
+  label,
+  value,
+  color,
+  icon: Icon,
+}: {
+  label: string;
+  value: string | number;
+  color: string;
+  icon: React.ElementType;
+}) {
+  return (
+    <div
+      className="rounded-xl p-5 flex items-center gap-4"
+      style={{ background: VS.bg1, border: `1px solid ${VS.border}` }}
+    >
+      <div
+        className="h-11 w-11 rounded-xl flex items-center justify-center shrink-0"
+        style={{ background: `${color}18`, border: `1px solid ${color}33` }}
+      >
+        <Icon className="h-5 w-5" style={{ color }} />
+      </div>
+      <div>
+        <p className="text-2xl font-bold tabular-nums leading-none" style={{ color: VS.text0 }}>
+          {value}
+        </p>
+        <p
+          className="text-[11px] font-semibold uppercase tracking-widest mt-1"
+          style={{ color: VS.text2 }}
+        >
+          {label}
+        </p>
+      </div>
+    </div>
+  );
+}
+
+// ── Status badge helper ────────────────────────────────────────────────────────
+function statusStyles(status: string): React.CSSProperties {
+  switch (status) {
+    case 'approved':
+      return {
+        background: `${VS.teal}18`,
+        color: VS.teal,
+        border: `1px solid ${VS.teal}33`,
+        borderRadius: 6,
+        padding: '2px 8px',
+        fontSize: 11,
+        fontWeight: 600,
+        textTransform: 'capitalize',
+        display: 'inline-block',
+      };
+    case 'logged':
+      return {
+        background: `${VS.yellow}18`,
+        color: VS.yellow,
+        border: `1px solid ${VS.yellow}33`,
+        borderRadius: 6,
+        padding: '2px 8px',
+        fontSize: 11,
+        fontWeight: 600,
+        textTransform: 'capitalize',
+        display: 'inline-block',
+      };
+    default:
+      return {
+        background: `${VS.text2}18`,
+        color: VS.text2,
+        border: `1px solid ${VS.text2}33`,
+        borderRadius: 6,
+        padding: '2px 8px',
+        fontSize: 11,
+        fontWeight: 600,
+        textTransform: 'capitalize',
+        display: 'inline-block',
+      };
+  }
+}
+
+// ── Shared input/select style ──────────────────────────────────────────────────
+const inputStyle: React.CSSProperties = {
+  background: VS.bg2,
+  border: `1px solid ${VS.border}`,
+  borderRadius: 8,
+  padding: '8px 12px',
+  color: VS.text0,
+  outline: 'none',
+  fontSize: 13,
+};
 
 export function TimeLogs() {
   const { data: session } = useSession();
@@ -47,7 +153,7 @@ export function TimeLogs() {
   useEffect(() => {
     const fetchUserOrgInfo = async () => {
       if (!session?.user?.id) return;
-      
+
       try {
         const response = await fetch(`/api/organizations?userId=${session.user.id}`);
         if (response.ok) {
@@ -70,13 +176,13 @@ export function TimeLogs() {
   useEffect(() => {
     const fetchTimeLogs = async () => {
       if (!session?.user?.id || orgId === 'default') return;
-      
+
       setLoading(true);
       try {
         const response = await fetch(`/api/timers/recent?userId=${session.user.id}&orgId=${orgId}&limit=50`);
         if (response.ok) {
           const data = await response.json();
-          
+
           // Transform API data to match our TimeLog interface
           const transformedLogs: TimeLog[] = (data.entries || []).map((entry: any) => ({
             id: entry.id,
@@ -84,15 +190,27 @@ export function TimeLogs() {
             projectName: entry.projectName || 'General',
             clientName: entry.clientName || 'Internal',
             date: entry.startTime ? new Date(entry.startTime).toISOString().split('T')[0] : '',
-            startTime: entry.startTime ? new Date(entry.startTime).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', hour12: false }) : '',
-            endTime: entry.endTime ? new Date(entry.endTime).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', hour12: false }) : '',
+            startTime: entry.startTime
+              ? new Date(entry.startTime).toLocaleTimeString('en-US', {
+                  hour: '2-digit',
+                  minute: '2-digit',
+                  hour12: false,
+                })
+              : '',
+            endTime: entry.endTime
+              ? new Date(entry.endTime).toLocaleTimeString('en-US', {
+                  hour: '2-digit',
+                  minute: '2-digit',
+                  hour12: false,
+                })
+              : '',
             duration: entry.duration ? Math.round(entry.duration / 60) : 0, // Convert seconds to minutes
             description: entry.description || 'No description',
             isBillable: true, // TODO: Add billable field to API
             tags: [entry.category].filter(Boolean),
-            status: entry.status === 'running' ? 'logged' : 'logged' // TODO: Add proper status field
+            status: entry.status === 'running' ? 'logged' : 'logged', // TODO: Add proper status field
           }));
-          
+
           setTimeLogs(transformedLogs);
         } else {
           console.error('Failed to fetch time logs');
@@ -109,23 +227,16 @@ export function TimeLogs() {
     fetchTimeLogs();
   }, [session, orgId]);
 
-  const filteredLogs = timeLogs.filter(log => {
-    const matchesSearch = log.taskTitle.toLowerCase().includes(searchTerm.toLowerCase()) ||
-                         log.projectName.toLowerCase().includes(searchTerm.toLowerCase()) ||
-                         log.description.toLowerCase().includes(searchTerm.toLowerCase());
+  const filteredLogs = timeLogs.filter((log) => {
+    const matchesSearch =
+      log.taskTitle.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      log.projectName.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      log.description.toLowerCase().includes(searchTerm.toLowerCase());
     const matchesStatus = filterStatus === 'all' || log.status === filterStatus;
     const matchesClient = filterClient === 'all' || log.clientName === filterClient;
-    
+
     return matchesSearch && matchesStatus && matchesClient;
   });
-
-  const getStatusColor = (status: string) => {
-    switch (status) {
-      case 'approved': return 'text-success bg-success/10 border-success/20';
-      case 'logged': return 'text-warning bg-warning/10 border-warning/20';
-      default: return 'text-muted-foreground bg-muted/10 border-border';
-    }
-  };
 
   const formatDuration = (minutes: number): string => {
     const hours = Math.floor(minutes / 60);
@@ -134,273 +245,415 @@ export function TimeLogs() {
   };
 
   const timeStats = {
-    totalHours: Math.round(filteredLogs.reduce((sum, log) => sum + log.duration, 0) / 60 * 10) / 10,
-    billableHours: Math.round(filteredLogs.filter(log => log.isBillable).reduce((sum, log) => sum + log.duration, 0) / 60 * 10) / 10,
+    totalHours:
+      Math.round(
+        (filteredLogs.reduce((sum, log) => sum + log.duration, 0) / 60) * 10
+      ) / 10,
+    billableHours:
+      Math.round(
+        (filteredLogs
+          .filter((log) => log.isBillable)
+          .reduce((sum, log) => sum + log.duration, 0) /
+          60) *
+          10
+      ) / 10,
     totalEntries: filteredLogs.length,
-    completedTasks: filteredLogs.filter(log => log.status === 'approved').length
+    completedTasks: filteredLogs.filter((log) => log.status === 'approved').length,
   };
 
-  const uniqueClients = [...new Set(timeLogs.map(log => log.clientName))];
+  const uniqueClients = [...new Set(timeLogs.map((log) => log.clientName))];
 
+  // ── Loading skeleton ─────────────────────────────────────────────────────────
   if (loading) {
     return (
-      <div className="space-y-8">
+      <div className="space-y-6">
+        {/* Header skeleton */}
         <div className="flex items-center justify-between">
-          <div>
-            <h1 className="text-3xl font-bold gradient-text">Time Tracking</h1>
-            <p className="text-muted-foreground mt-2">Loading your time logs...</p>
+          <div className="animate-pulse space-y-2">
+            <div className="h-7 rounded-lg w-48" style={{ background: VS.bg2 }} />
+            <div className="h-4 rounded w-56" style={{ background: VS.bg2 }} />
           </div>
         </div>
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
+
+        {/* Stat cards skeleton */}
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-5">
           {[...Array(4)].map((_, i) => (
-            <Card key={i} className="glass p-6">
-              <div className="animate-pulse">
-                <div className="h-4 bg-muted rounded w-3/4 mb-2"></div>
-                <div className="h-8 bg-muted rounded w-1/2"></div>
+            <div
+              key={i}
+              className="rounded-xl p-5 animate-pulse"
+              style={{ background: VS.bg1, border: `1px solid ${VS.border}` }}
+            >
+              <div className="flex items-center gap-4">
+                <div className="h-11 w-11 rounded-xl" style={{ background: VS.bg2 }} />
+                <div className="space-y-2">
+                  <div className="h-6 rounded w-16" style={{ background: VS.bg2 }} />
+                  <div className="h-3 rounded w-24" style={{ background: VS.bg2 }} />
+                </div>
               </div>
-            </Card>
+            </div>
           ))}
         </div>
-        <Card className="glass">
-          <CardContent className="p-6">
-            <div className="space-y-4">
-              {[...Array(5)].map((_, i) => (
-                <div key={i} className="animate-pulse">
-                  <div className="h-4 bg-muted rounded w-full mb-2"></div>
-                  <div className="h-3 bg-muted rounded w-2/3"></div>
-                </div>
-              ))}
+
+        {/* Table skeleton */}
+        <div
+          className="rounded-xl p-5 animate-pulse space-y-4"
+          style={{ background: VS.bg1, border: `1px solid ${VS.border}` }}
+        >
+          {[...Array(5)].map((_, i) => (
+            <div key={i} className="space-y-2">
+              <div className="h-4 rounded w-full" style={{ background: VS.bg2 }} />
+              <div className="h-3 rounded w-2/3" style={{ background: VS.bg2 }} />
             </div>
-          </CardContent>
-        </Card>
+          ))}
+        </div>
       </div>
     );
   }
 
+  // ── Main render ──────────────────────────────────────────────────────────────
   return (
-    <div className="space-y-8">
-      {/* Header */}
-      <div className="flex items-center justify-between">
+    <div className="space-y-6">
+
+      {/* ── Page header ── */}
+      <div className="flex items-center justify-between gap-4">
         <div>
-          <h1 className="text-3xl font-bold gradient-text">Time Logs</h1>
-          <p className="text-muted-foreground mt-2">Track and manage your time entries</p>
+          <h1 className="text-2xl font-bold" style={{ color: VS.text0 }}>
+            Time Logs
+          </h1>
+          <p className="text-[13px] mt-1" style={{ color: VS.text2 }}>
+            Track and manage your time entries
+          </p>
         </div>
-        <div className="flex items-center space-x-2">
-          <Button variant="outline" className="glass-surface">
-            <Download className="h-4 w-4 mr-2" />
+        <div className="flex items-center gap-2">
+          <button
+            style={{
+              display: 'flex',
+              alignItems: 'center',
+              gap: 6,
+              background: VS.bg2,
+              border: `1px solid ${VS.border}`,
+              borderRadius: 8,
+              padding: '8px 14px',
+              color: VS.text1,
+              fontSize: 13,
+              fontWeight: 500,
+              cursor: 'pointer',
+            }}
+          >
+            <Download className="h-4 w-4" />
             Export
-          </Button>
-          <Button className="bg-gradient-primary hover:bg-gradient-primary/90 text-white shadow-glow">
-            <Play className="h-4 w-4 mr-2" />
+          </button>
+          <button
+            style={{
+              display: 'flex',
+              alignItems: 'center',
+              gap: 6,
+              background: `${VS.accent}cc`,
+              border: `1px solid ${VS.accent}`,
+              borderRadius: 8,
+              padding: '8px 14px',
+              color: VS.text0,
+              fontSize: 13,
+              fontWeight: 600,
+              cursor: 'pointer',
+            }}
+          >
+            <Play className="h-4 w-4" />
             Start Timer
-          </Button>
+          </button>
         </div>
       </div>
 
-      {/* Stats Cards */}
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
-        <Card className="glass shadow-elevation">
-          <CardContent className="p-6">
-            <div className="flex items-center">
-              <div className="h-12 w-12 rounded-xl bg-gradient-primary flex items-center justify-center shadow-glow mr-4">
-                <Clock className="h-6 w-6 text-white" />
-              </div>
-              <div>
-                <p className="text-2xl font-bold">{timeStats.totalHours}h</p>
-                <p className="text-sm text-muted-foreground">Total Hours</p>
-              </div>
-            </div>
-          </CardContent>
-        </Card>
-
-        <Card className="glass shadow-elevation">
-          <CardContent className="p-6">
-            <div className="flex items-center">
-              <div className="h-12 w-12 rounded-xl bg-gradient-success flex items-center justify-center shadow-glow mr-4">
-                <TrendingUp className="h-6 w-6 text-white" />
-              </div>
-              <div>
-                <p className="text-2xl font-bold">{timeStats.billableHours}h</p>
-                <p className="text-sm text-muted-foreground">Billable Hours</p>
-              </div>
-            </div>
-          </CardContent>
-        </Card>
-
-        <Card className="glass shadow-elevation">
-          <CardContent className="p-6">
-            <div className="flex items-center">
-              <div className="h-12 w-12 rounded-xl bg-gradient-info flex items-center justify-center shadow-glow mr-4">
-                <BarChart3 className="h-6 w-6 text-white" />
-              </div>
-              <div>
-                <p className="text-2xl font-bold">{timeStats.totalEntries}</p>
-                <p className="text-sm text-muted-foreground">Total Entries</p>
-              </div>
-            </div>
-          </CardContent>
-        </Card>
-
-        <Card className="glass shadow-elevation">
-          <CardContent className="p-6">
-            <div className="flex items-center">
-              <div className="h-12 w-12 rounded-xl bg-gradient-warning flex items-center justify-center shadow-glow mr-4">
-                <Target className="h-6 w-6 text-white" />
-              </div>
-              <div>
-                <p className="text-2xl font-bold">{timeStats.completedTasks}</p>
-                <p className="text-sm text-muted-foreground">Completed Tasks</p>
-              </div>
-            </div>
-          </CardContent>
-        </Card>
+      {/* ── Stats Cards ── */}
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-5">
+        <StatCard
+          label="Total Hours"
+          value={`${timeStats.totalHours}h`}
+          color={VS.accent}
+          icon={Clock}
+        />
+        <StatCard
+          label="Billable Hours"
+          value={`${timeStats.billableHours}h`}
+          color={VS.teal}
+          icon={TrendingUp}
+        />
+        <StatCard
+          label="Total Entries"
+          value={timeStats.totalEntries}
+          color={VS.blue}
+          icon={BarChart3}
+        />
+        <StatCard
+          label="Completed Tasks"
+          value={timeStats.completedTasks}
+          color={VS.yellow}
+          icon={Target}
+        />
       </div>
 
-      {/* Filters */}
-      <Card className="glass shadow-elevation">
-        <CardContent className="p-6">
-          <div className="flex flex-col md:flex-row gap-4 items-center">
-            {/* Search */}
-            <div className="relative flex-1">
-              <Search className="absolute left-3 top-3 h-4 w-4 text-muted-foreground" />
-              <input
-                type="text"
-                placeholder="Search time logs..."
-                value={searchTerm}
-                onChange={(e) => setSearchTerm(e.target.value)}
-                className="w-full pl-10 pr-4 py-2 glass-surface border border-border rounded-lg focus:outline-none focus:ring-2 focus:ring-primary"
-              />
-            </div>
+      {/* ── Filters ── */}
+      <div
+        className="rounded-xl p-5"
+        style={{ background: VS.bg1, border: `1px solid ${VS.border}` }}
+      >
+        <div className="flex flex-col md:flex-row gap-3 items-stretch md:items-center">
 
-            {/* Date Range */}
-            <select
-              value={selectedDateRange}
-              onChange={(e) => setSelectedDateRange(e.target.value as any)}
-              className="px-4 py-2 glass-surface border border-border rounded-lg focus:outline-none focus:ring-2 focus:ring-primary"
-            >
-              <option value="today">Today</option>
-              <option value="week">This Week</option>
-              <option value="month">This Month</option>
-              <option value="custom">Custom Range</option>
-            </select>
-
-            {/* Status Filter */}
-            <select
-              value={filterStatus}
-              onChange={(e) => setFilterStatus(e.target.value)}
-              className="px-4 py-2 glass-surface border border-border rounded-lg focus:outline-none focus:ring-2 focus:ring-primary"
-            >
-              <option value="all">All Status</option>
-              <option value="logged">Logged</option>
-              <option value="approved">Approved</option>
-            </select>
-
-            {/* Client Filter */}
-            <select
-              value={filterClient}
-              onChange={(e) => setFilterClient(e.target.value)}
-              className="px-4 py-2 glass-surface border border-border rounded-lg focus:outline-none focus:ring-2 focus:ring-primary"
-            >
-              <option value="all">All Clients</option>
-              {uniqueClients.map((client) => (
-                <option key={client} value={client}>{client}</option>
-              ))}
-            </select>
+          {/* Search */}
+          <div className="relative flex-1">
+            <Search
+              className="absolute h-4 w-4 pointer-events-none"
+              style={{ left: 10, top: '50%', transform: 'translateY(-50%)', color: VS.text2 }}
+            />
+            <input
+              type="text"
+              placeholder="Search time logs..."
+              value={searchTerm}
+              onChange={(e) => setSearchTerm(e.target.value)}
+              style={{
+                ...inputStyle,
+                width: '100%',
+                paddingLeft: 32,
+                boxSizing: 'border-box',
+              }}
+            />
           </div>
-        </CardContent>
-      </Card>
 
-      {/* Time Logs Table */}
-      <Card className="glass shadow-elevation">
-        <CardHeader>
-          <div className="flex items-center justify-between">
-            <h2 className="text-xl font-semibold">Time Entries ({filteredLogs.length})</h2>
-            <div className="flex items-center space-x-2">
-              <Button size="sm" variant="outline" className="glass-surface">
-                <Filter className="h-4 w-4 mr-2" />
-                More Filters
-              </Button>
-            </div>
-          </div>
-        </CardHeader>
-        <CardContent className="p-0">
-          <div className="overflow-x-auto">
-            <table className="w-full">
-              <thead>
-                <tr className="border-b border-border">
-                  <th className="text-left p-4 font-medium text-muted-foreground">Date</th>
-                  <th className="text-left p-4 font-medium text-muted-foreground">Task</th>
-                  <th className="text-left p-4 font-medium text-muted-foreground">Project</th>
-                  <th className="text-left p-4 font-medium text-muted-foreground">Client</th>
-                  <th className="text-left p-4 font-medium text-muted-foreground">Duration</th>
-                  <th className="text-left p-4 font-medium text-muted-foreground">Status</th>
-                </tr>
-              </thead>
-              <tbody>
-                {filteredLogs.map((log) => (
-                  <tr key={log.id} className="border-b border-border hover:bg-surface-elevated/50 transition-colors">
-                    <td className="p-4">
-                      <div className="flex items-center space-x-2">
-                        <Calendar className="h-4 w-4 text-muted-foreground" />
-                        <div>
-                          <p className="text-sm font-medium">{new Date(log.date).toLocaleDateString()}</p>
-                          <p className="text-xs text-muted-foreground">{log.startTime} - {log.endTime}</p>
-                        </div>
-                      </div>
-                    </td>
-                    <td className="p-4">
-                      <div>
-                        <p className="font-medium">{log.taskTitle}</p>
-                        <p className="text-sm text-muted-foreground line-clamp-1">{log.description}</p>
-                      </div>
-                    </td>
-                    <td className="p-4">
-                      <div className="flex items-center space-x-2">
-                        <Target className="h-4 w-4 text-muted-foreground" />
-                        <span className="text-sm">{log.projectName}</span>
-                      </div>
-                    </td>
-                    <td className="p-4">
-                      <div className="flex items-center space-x-2">
-                        <Building2 className="h-4 w-4 text-muted-foreground" />
-                        <span className="text-sm">{log.clientName}</span>
-                      </div>
-                    </td>
-                    <td className="p-4">
-                      <div className="flex items-center space-x-2">
-                        <Clock className="h-4 w-4 text-muted-foreground" />
-                        <span className="font-medium">{formatDuration(log.duration)}</span>
-                      </div>
-                    </td>
-                    <td className="p-4">
-                      <Badge className={cn("text-xs capitalize", getStatusColor(log.status))}>
-                        {log.status}
-                      </Badge>
-                    </td>
-                  </tr>
+          {/* Date Range */}
+          <select
+            value={selectedDateRange}
+            onChange={(e) => setSelectedDateRange(e.target.value as any)}
+            style={inputStyle}
+          >
+            <option value="today">Today</option>
+            <option value="week">This Week</option>
+            <option value="month">This Month</option>
+            <option value="custom">Custom Range</option>
+          </select>
+
+          {/* Status Filter */}
+          <select
+            value={filterStatus}
+            onChange={(e) => setFilterStatus(e.target.value)}
+            style={inputStyle}
+          >
+            <option value="all">All Status</option>
+            <option value="logged">Logged</option>
+            <option value="approved">Approved</option>
+          </select>
+
+          {/* Client Filter */}
+          <select
+            value={filterClient}
+            onChange={(e) => setFilterClient(e.target.value)}
+            style={inputStyle}
+          >
+            <option value="all">All Clients</option>
+            {uniqueClients.map((client) => (
+              <option key={client} value={client}>
+                {client}
+              </option>
+            ))}
+          </select>
+        </div>
+      </div>
+
+      {/* ── Time Entries Table ── */}
+      <div
+        className="rounded-xl overflow-hidden"
+        style={{ background: VS.bg1, border: `1px solid ${VS.border}` }}
+      >
+        {/* Table header row */}
+        <div
+          className="flex items-center justify-between px-5 py-4"
+          style={{ borderBottom: `1px solid ${VS.border}` }}
+        >
+          <h2 className="text-[13px] font-bold" style={{ color: VS.text0 }}>
+            Time Entries{' '}
+            <span style={{ color: VS.text2, fontWeight: 400 }}>({filteredLogs.length})</span>
+          </h2>
+          <button
+            style={{
+              display: 'flex',
+              alignItems: 'center',
+              gap: 6,
+              background: VS.bg2,
+              border: `1px solid ${VS.border}`,
+              borderRadius: 6,
+              padding: '5px 10px',
+              color: VS.text1,
+              fontSize: 12,
+              cursor: 'pointer',
+            }}
+          >
+            <Filter className="h-3.5 w-3.5" />
+            More Filters
+          </button>
+        </div>
+
+        {/* Table */}
+        <div className="overflow-x-auto">
+          <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+            <thead>
+              <tr style={{ borderBottom: `1px solid ${VS.border}` }}>
+                {['Date', 'Task', 'Project', 'Client', 'Duration', 'Status'].map((heading) => (
+                  <th
+                    key={heading}
+                    style={{
+                      textAlign: 'left',
+                      padding: '10px 16px',
+                      fontSize: 11,
+                      fontWeight: 600,
+                      textTransform: 'uppercase',
+                      letterSpacing: '0.08em',
+                      color: VS.text2,
+                      whiteSpace: 'nowrap',
+                    }}
+                  >
+                    {heading}
+                  </th>
                 ))}
-              </tbody>
-            </table>
+              </tr>
+            </thead>
+            <tbody>
+              {filteredLogs.map((log, idx) => (
+                <tr
+                  key={log.id}
+                  style={{
+                    borderBottom:
+                      idx < filteredLogs.length - 1 ? `1px solid ${VS.border}` : 'none',
+                    transition: 'background 0.15s',
+                  }}
+                  onMouseEnter={(e) =>
+                    ((e.currentTarget as HTMLTableRowElement).style.background = VS.bg2)
+                  }
+                  onMouseLeave={(e) =>
+                    ((e.currentTarget as HTMLTableRowElement).style.background = 'transparent')
+                  }
+                >
+                  {/* Date */}
+                  <td style={{ padding: '12px 16px', verticalAlign: 'middle' }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                      <Calendar className="h-4 w-4 shrink-0" style={{ color: VS.text2 }} />
+                      <div>
+                        <p style={{ fontSize: 13, fontWeight: 500, color: VS.text0, margin: 0 }}>
+                          {new Date(log.date).toLocaleDateString()}
+                        </p>
+                        <p style={{ fontSize: 11, color: VS.text2, margin: 0 }}>
+                          {log.startTime} – {log.endTime}
+                        </p>
+                      </div>
+                    </div>
+                  </td>
+
+                  {/* Task */}
+                  <td style={{ padding: '12px 16px', verticalAlign: 'middle', maxWidth: 240 }}>
+                    <p
+                      style={{
+                        fontSize: 13,
+                        fontWeight: 500,
+                        color: VS.text0,
+                        margin: 0,
+                        whiteSpace: 'nowrap',
+                        overflow: 'hidden',
+                        textOverflow: 'ellipsis',
+                      }}
+                    >
+                      {log.taskTitle}
+                    </p>
+                    <p
+                      style={{
+                        fontSize: 11,
+                        color: VS.text2,
+                        margin: 0,
+                        whiteSpace: 'nowrap',
+                        overflow: 'hidden',
+                        textOverflow: 'ellipsis',
+                      }}
+                    >
+                      {log.description}
+                    </p>
+                  </td>
+
+                  {/* Project */}
+                  <td style={{ padding: '12px 16px', verticalAlign: 'middle' }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                      <Target className="h-4 w-4 shrink-0" style={{ color: VS.text2 }} />
+                      <span style={{ fontSize: 13, color: VS.text1 }}>{log.projectName}</span>
+                    </div>
+                  </td>
+
+                  {/* Client */}
+                  <td style={{ padding: '12px 16px', verticalAlign: 'middle' }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                      <Building2 className="h-4 w-4 shrink-0" style={{ color: VS.text2 }} />
+                      <span style={{ fontSize: 13, color: VS.text1 }}>{log.clientName}</span>
+                    </div>
+                  </td>
+
+                  {/* Duration */}
+                  <td style={{ padding: '12px 16px', verticalAlign: 'middle' }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                      <Clock className="h-4 w-4 shrink-0" style={{ color: VS.text2 }} />
+                      <span style={{ fontSize: 13, fontWeight: 600, color: VS.text0 }}>
+                        {formatDuration(log.duration)}
+                      </span>
+                    </div>
+                  </td>
+
+                  {/* Status */}
+                  <td style={{ padding: '12px 16px', verticalAlign: 'middle' }}>
+                    <span style={statusStyles(log.status)}>{log.status}</span>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+
+        {/* Empty state */}
+        {filteredLogs.length === 0 && (
+          <div
+            style={{
+              textAlign: 'center',
+              padding: '56px 24px',
+              display: 'flex',
+              flexDirection: 'column',
+              alignItems: 'center',
+              gap: 12,
+            }}
+          >
+            <Clock className="h-12 w-12" style={{ color: VS.text2 }} />
+            <h3 style={{ fontSize: 16, fontWeight: 600, color: VS.text0, margin: 0 }}>
+              No time logs found
+            </h3>
+            <p style={{ fontSize: 13, color: VS.text2, margin: 0 }}>
+              {searchTerm || filterStatus !== 'all' || filterClient !== 'all'
+                ? 'Try adjusting your filters or search term'
+                : 'Start tracking your time to see logs here'}
+            </p>
+            <button
+              style={{
+                display: 'flex',
+                alignItems: 'center',
+                gap: 6,
+                background: `${VS.accent}cc`,
+                border: `1px solid ${VS.accent}`,
+                borderRadius: 8,
+                padding: '8px 16px',
+                color: VS.text0,
+                fontSize: 13,
+                fontWeight: 600,
+                cursor: 'pointer',
+                marginTop: 4,
+              }}
+            >
+              <Play className="h-4 w-4" />
+              Start Timer
+            </button>
           </div>
-          
-          {filteredLogs.length === 0 && (
-            <div className="text-center py-12">
-              <Clock className="h-12 w-12 text-muted-foreground mx-auto mb-4" />
-              <h3 className="text-lg font-semibold mb-2">No time logs found</h3>
-              <p className="text-muted-foreground mb-4">
-                {searchTerm || filterStatus !== 'all' || filterClient !== 'all' 
-                  ? 'Try adjusting your filters or search term'
-                  : 'Start tracking your time to see logs here'
-                }
-              </p>
-              <Button>
-                <Play className="h-4 w-4 mr-2" />
-                Start Timer
-              </Button>
-            </div>
-          )}
-        </CardContent>
-      </Card>
+        )}
+      </div>
     </div>
   );
 }

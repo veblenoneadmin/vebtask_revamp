@@ -1,8 +1,6 @@
 import { useState, useEffect } from 'react';
 import { useSession } from '../lib/auth-client';
-import { Card, CardContent, CardHeader } from '../components/ui/card';
-import { Button } from '../components/ui/button';
-import { 
+import {
   User,
   Bell,
   Shield,
@@ -18,17 +16,36 @@ import {
   Trash2
 } from 'lucide-react';
 
+const VS = {
+  bg0: '#1e1e1e',
+  bg1: '#252526',
+  bg2: '#2d2d2d',
+  bg3: '#333333',
+  border: '#3c3c3c',
+  text0: '#f0f0f0',
+  text1: '#c0c0c0',
+  text2: '#909090',
+  blue: '#569cd6',
+  teal: '#4ec9b0',
+  yellow: '#dcdcaa',
+  orange: '#ce9178',
+  purple: '#c586c0',
+  red: '#f44747',
+  green: '#6a9955',
+  accent: '#007acc',
+};
+
 export function Settings() {
   const { data: session } = useSession();
   const [activeTab, setActiveTab] = useState('profile');
   const [showPassword, setShowPassword] = useState(false);
-  
+
   // Extract real user data from session
   const userName = session?.user?.name || '';
   const nameWords = userName.split(' ');
   const firstName = nameWords[0] || '';
   const lastName = nameWords.slice(1).join(' ') || '';
-  
+
   // Form states with real user data
   const [profile, setProfile] = useState({
     firstName: firstName,
@@ -56,7 +73,7 @@ export function Settings() {
       const nameWords = userName.split(' ');
       const firstName = nameWords[0] || '';
       const lastName = nameWords.slice(1).join(' ') || '';
-      
+
       setProfile(prev => ({
         ...prev,
         firstName: firstName,
@@ -81,184 +98,355 @@ export function Settings() {
     // Here you would normally save to your backend
   };
 
+  const labelStyle: React.CSSProperties = {
+    display: 'block',
+    fontSize: 11,
+    fontWeight: 600,
+    textTransform: 'uppercase',
+    letterSpacing: '0.06em',
+    color: VS.text2,
+    marginBottom: 6,
+  };
+
+  const inputStyle: React.CSSProperties = {
+    background: VS.bg2,
+    border: `1px solid ${VS.border}`,
+    borderRadius: 8,
+    padding: '8px 12px',
+    color: VS.text0,
+    fontSize: 13,
+    width: '100%',
+    outline: 'none',
+    boxSizing: 'border-box',
+  };
+
+  const inputWithIconStyle: React.CSSProperties = {
+    ...inputStyle,
+    paddingLeft: 36,
+  };
+
+  const cardStyle: React.CSSProperties = {
+    background: VS.bg1,
+    border: `1px solid ${VS.border}`,
+    borderRadius: 12,
+    padding: 24,
+  };
+
+  const sectionTitleStyle: React.CSSProperties = {
+    fontSize: 14,
+    fontWeight: 600,
+    color: VS.text0,
+    marginBottom: 16,
+    marginTop: 0,
+  };
+
+  const dividerStyle: React.CSSProperties = {
+    height: 1,
+    background: VS.border,
+    margin: '16px 0',
+  };
+
+  const saveButtonStyle: React.CSSProperties = {
+    background: VS.accent,
+    color: 'white',
+    padding: '8px 20px',
+    borderRadius: 8,
+    border: 'none',
+    fontSize: 13,
+    fontWeight: 500,
+    cursor: 'pointer',
+    display: 'inline-flex',
+    alignItems: 'center',
+    gap: 6,
+  };
+
   const renderProfileSettings = () => (
     <div className="space-y-6">
       {/* Profile Picture */}
-      <Card className="glass shadow-elevation">
-        <CardContent className="p-6">
-          <h3 className="text-lg font-semibold mb-4">Profile Picture</h3>
-          <div className="flex items-center space-x-4">
-            <div className="h-20 w-20 rounded-full bg-gradient-primary flex items-center justify-center shadow-glow">
-              <span className="text-2xl font-bold text-white">
-                {profile.firstName[0]}{profile.lastName[0]}
-              </span>
-            </div>
-            <div className="space-x-2">
-              <Button size="sm" className="glass-surface">
-                <Camera className="h-4 w-4 mr-2" />
-                Upload Photo
-              </Button>
-              <Button size="sm" variant="outline" className="glass-surface">
-                <Trash2 className="h-4 w-4 mr-2" />
-                Remove
-              </Button>
-            </div>
+      <div style={cardStyle}>
+        <p style={sectionTitleStyle}>Profile Picture</p>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 20 }}>
+          <div
+            style={{
+              height: 72,
+              width: 72,
+              borderRadius: '50%',
+              background: `linear-gradient(135deg, ${VS.accent}, ${VS.purple})`,
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              flexShrink: 0,
+            }}
+          >
+            <span style={{ fontSize: 24, fontWeight: 700, color: 'white' }}>
+              {profile.firstName[0]}{profile.lastName[0]}
+            </span>
           </div>
-        </CardContent>
-      </Card>
+          <div style={{ display: 'flex', gap: 8 }}>
+            <button
+              style={{
+                background: VS.bg3,
+                border: `1px solid ${VS.border}`,
+                borderRadius: 8,
+                color: VS.text0,
+                padding: '7px 14px',
+                fontSize: 12,
+                cursor: 'pointer',
+                display: 'inline-flex',
+                alignItems: 'center',
+                gap: 6,
+              }}
+            >
+              <Camera style={{ width: 14, height: 14 }} />
+              Upload Photo
+            </button>
+            <button
+              style={{
+                background: 'transparent',
+                border: `1px solid ${VS.border}`,
+                borderRadius: 8,
+                color: VS.text2,
+                padding: '7px 14px',
+                fontSize: 12,
+                cursor: 'pointer',
+                display: 'inline-flex',
+                alignItems: 'center',
+                gap: 6,
+              }}
+            >
+              <Trash2 style={{ width: 14, height: 14 }} />
+              Remove
+            </button>
+          </div>
+        </div>
+      </div>
 
       {/* Personal Information */}
-      <Card className="glass shadow-elevation">
-        <CardHeader>
-          <h3 className="text-lg font-semibold">Personal Information</h3>
-        </CardHeader>
-        <CardContent className="space-y-4">
-          <div className="grid grid-cols-2 gap-4">
-            <div>
-              <label className="block text-sm font-medium mb-2">First Name</label>
-              <input
-                type="text"
-                value={profile.firstName}
-                onChange={(e) => setProfile(prev => ({ ...prev, firstName: e.target.value }))}
-                className="w-full px-3 py-2 glass-surface border border-border rounded-lg focus:outline-none focus:ring-2 focus:ring-primary"
-              />
-            </div>
-            <div>
-              <label className="block text-sm font-medium mb-2">Last Name</label>
-              <input
-                type="text"
-                value={profile.lastName}
-                onChange={(e) => setProfile(prev => ({ ...prev, lastName: e.target.value }))}
-                className="w-full px-3 py-2 glass-surface border border-border rounded-lg focus:outline-none focus:ring-2 focus:ring-primary"
-              />
-            </div>
-          </div>
-          
-          <div>
-            <label className="block text-sm font-medium mb-2">Email</label>
-            <div className="relative">
-              <Mail className="absolute left-3 top-3 h-4 w-4 text-muted-foreground" />
-              <input
-                type="email"
-                value={profile.email}
-                onChange={(e) => setProfile(prev => ({ ...prev, email: e.target.value }))}
-                className="w-full pl-10 pr-3 py-2 glass-surface border border-border rounded-lg focus:outline-none focus:ring-2 focus:ring-primary"
-              />
-            </div>
-          </div>
+      <div style={cardStyle}>
+        <p style={sectionTitleStyle}>Personal Information</p>
 
-          <div className="grid grid-cols-2 gap-4">
-            <div>
-              <label className="block text-sm font-medium mb-2">Phone</label>
-              <div className="relative">
-                <Phone className="absolute left-3 top-3 h-4 w-4 text-muted-foreground" />
-                <input
-                  type="tel"
-                  value={profile.phone}
-                  onChange={(e) => setProfile(prev => ({ ...prev, phone: e.target.value }))}
-                  className="w-full pl-10 pr-3 py-2 glass-surface border border-border rounded-lg focus:outline-none focus:ring-2 focus:ring-primary"
-                />
-              </div>
-            </div>
-            <div>
-              <label className="block text-sm font-medium mb-2">Location</label>
-              <div className="relative">
-                <MapPin className="absolute left-3 top-3 h-4 w-4 text-muted-foreground" />
-                <input
-                  type="text"
-                  value={profile.location}
-                  onChange={(e) => setProfile(prev => ({ ...prev, location: e.target.value }))}
-                  className="w-full pl-10 pr-3 py-2 glass-surface border border-border rounded-lg focus:outline-none focus:ring-2 focus:ring-primary"
-                />
-              </div>
-            </div>
-          </div>
-
+        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16, marginBottom: 16 }}>
           <div>
-            <label className="block text-sm font-medium mb-2">Bio</label>
-            <textarea
-              value={profile.bio}
-              onChange={(e) => setProfile(prev => ({ ...prev, bio: e.target.value }))}
-              rows={3}
-              className="w-full px-3 py-2 glass-surface border border-border rounded-lg focus:outline-none focus:ring-2 focus:ring-primary resize-none"
+            <label style={labelStyle}>First Name</label>
+            <input
+              type="text"
+              value={profile.firstName}
+              onChange={(e) => setProfile(prev => ({ ...prev, firstName: e.target.value }))}
+              style={inputStyle}
             />
           </div>
+          <div>
+            <label style={labelStyle}>Last Name</label>
+            <input
+              type="text"
+              value={profile.lastName}
+              onChange={(e) => setProfile(prev => ({ ...prev, lastName: e.target.value }))}
+              style={inputStyle}
+            />
+          </div>
+        </div>
 
-          <div className="grid grid-cols-2 gap-4">
-            <div>
-              <label className="block text-sm font-medium mb-2">Timezone</label>
-              <select
-                value={profile.timezone}
-                onChange={(e) => setProfile(prev => ({ ...prev, timezone: e.target.value }))}
-                className="w-full px-3 py-2 glass-surface border border-border rounded-lg focus:outline-none focus:ring-2 focus:ring-primary"
-              >
-                <option value="America/Los_Angeles">Pacific Time (PT)</option>
-                <option value="America/Denver">Mountain Time (MT)</option>
-                <option value="America/Chicago">Central Time (CT)</option>
-                <option value="America/New_York">Eastern Time (ET)</option>
-              </select>
-            </div>
-            <div>
-              <label className="block text-sm font-medium mb-2">Default Hourly Rate</label>
-              <div className="relative">
-                <DollarSign className="absolute left-3 top-3 h-4 w-4 text-muted-foreground" />
-                <input
-                  type="number"
-                  value={profile.hourlyRate}
-                  onChange={(e) => setProfile(prev => ({ ...prev, hourlyRate: Number(e.target.value) }))}
-                  className="w-full pl-10 pr-3 py-2 glass-surface border border-border rounded-lg focus:outline-none focus:ring-2 focus:ring-primary"
-                />
-              </div>
+        <div style={{ marginBottom: 16 }}>
+          <label style={labelStyle}>Email</label>
+          <div style={{ position: 'relative' }}>
+            <Mail
+              style={{
+                position: 'absolute',
+                left: 10,
+                top: '50%',
+                transform: 'translateY(-50%)',
+                width: 14,
+                height: 14,
+                color: VS.text2,
+              }}
+            />
+            <input
+              type="email"
+              value={profile.email}
+              onChange={(e) => setProfile(prev => ({ ...prev, email: e.target.value }))}
+              style={inputWithIconStyle}
+            />
+          </div>
+        </div>
+
+        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16, marginBottom: 16 }}>
+          <div>
+            <label style={labelStyle}>Phone</label>
+            <div style={{ position: 'relative' }}>
+              <Phone
+                style={{
+                  position: 'absolute',
+                  left: 10,
+                  top: '50%',
+                  transform: 'translateY(-50%)',
+                  width: 14,
+                  height: 14,
+                  color: VS.text2,
+                }}
+              />
+              <input
+                type="tel"
+                value={profile.phone}
+                onChange={(e) => setProfile(prev => ({ ...prev, phone: e.target.value }))}
+                style={inputWithIconStyle}
+              />
             </div>
           </div>
+          <div>
+            <label style={labelStyle}>Location</label>
+            <div style={{ position: 'relative' }}>
+              <MapPin
+                style={{
+                  position: 'absolute',
+                  left: 10,
+                  top: '50%',
+                  transform: 'translateY(-50%)',
+                  width: 14,
+                  height: 14,
+                  color: VS.text2,
+                }}
+              />
+              <input
+                type="text"
+                value={profile.location}
+                onChange={(e) => setProfile(prev => ({ ...prev, location: e.target.value }))}
+                style={inputWithIconStyle}
+              />
+            </div>
+          </div>
+        </div>
 
-          <Button onClick={() => handleSave('profile')} className="bg-gradient-primary hover:bg-gradient-primary/90 text-white">
-            <Save className="h-4 w-4 mr-2" />
-            Save Changes
-          </Button>
-        </CardContent>
-      </Card>
+        <div style={{ marginBottom: 16 }}>
+          <label style={labelStyle}>Bio</label>
+          <textarea
+            value={profile.bio}
+            onChange={(e) => setProfile(prev => ({ ...prev, bio: e.target.value }))}
+            rows={3}
+            style={{
+              ...inputStyle,
+              resize: 'none',
+              lineHeight: 1.5,
+            }}
+          />
+        </div>
+
+        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16, marginBottom: 20 }}>
+          <div>
+            <label style={labelStyle}>Timezone</label>
+            <select
+              value={profile.timezone}
+              onChange={(e) => setProfile(prev => ({ ...prev, timezone: e.target.value }))}
+              style={{ ...inputStyle, cursor: 'pointer' }}
+            >
+              <option value="America/Los_Angeles">Pacific Time (PT)</option>
+              <option value="America/Denver">Mountain Time (MT)</option>
+              <option value="America/Chicago">Central Time (CT)</option>
+              <option value="America/New_York">Eastern Time (ET)</option>
+            </select>
+          </div>
+          <div>
+            <label style={labelStyle}>Default Hourly Rate</label>
+            <div style={{ position: 'relative' }}>
+              <DollarSign
+                style={{
+                  position: 'absolute',
+                  left: 10,
+                  top: '50%',
+                  transform: 'translateY(-50%)',
+                  width: 14,
+                  height: 14,
+                  color: VS.text2,
+                }}
+              />
+              <input
+                type="number"
+                value={profile.hourlyRate}
+                onChange={(e) => setProfile(prev => ({ ...prev, hourlyRate: Number(e.target.value) }))}
+                style={inputWithIconStyle}
+              />
+            </div>
+          </div>
+        </div>
+
+        <button onClick={() => handleSave('profile')} style={saveButtonStyle}>
+          <Save style={{ width: 14, height: 14 }} />
+          Save Changes
+        </button>
+      </div>
     </div>
   );
 
   const renderNotificationSettings = () => (
-    <Card className="glass shadow-elevation">
-      <CardHeader>
-        <h3 className="text-lg font-semibold">Notification Preferences</h3>
-      </CardHeader>
-      <CardContent className="space-y-6">
-        {Object.entries(notifications).map(([key, value]) => (
-          <div key={key} className="flex items-center justify-between py-2">
-            <div>
-              <p className="font-medium">
-                {key.replace(/([A-Z])/g, ' $1').replace(/^./, str => str.toUpperCase())}
-              </p>
-              <p className="text-sm text-muted-foreground">
-                {key === 'emailNotifications' && 'Receive email notifications for important updates'}
-                {key === 'pushNotifications' && 'Get push notifications on your devices'}
-                {key === 'taskReminders' && 'Reminders for upcoming task deadlines'}
-                {key === 'weeklyReports' && 'Weekly productivity and time tracking reports'}
-                {key === 'marketingEmails' && 'Product updates and promotional content'}
-              </p>
+    <div style={cardStyle}>
+      <p style={sectionTitleStyle}>Notification Preferences</p>
+      <div>
+        {Object.entries(notifications).map(([key, value], idx) => (
+          <div key={key}>
+            {idx > 0 && <div style={dividerStyle} />}
+            <div
+              style={{
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'space-between',
+                paddingTop: idx === 0 ? 0 : 4,
+                paddingBottom: 4,
+              }}
+            >
+              <div>
+                <p style={{ fontSize: 13, fontWeight: 500, color: VS.text0, margin: 0, marginBottom: 2 }}>
+                  {key.replace(/([A-Z])/g, ' $1').replace(/^./, str => str.toUpperCase())}
+                </p>
+                <p style={{ fontSize: 12, color: VS.text2, margin: 0 }}>
+                  {key === 'emailNotifications' && 'Receive email notifications for important updates'}
+                  {key === 'pushNotifications' && 'Get push notifications on your devices'}
+                  {key === 'taskReminders' && 'Reminders for upcoming task deadlines'}
+                  {key === 'weeklyReports' && 'Weekly productivity and time tracking reports'}
+                  {key === 'marketingEmails' && 'Product updates and promotional content'}
+                </p>
+              </div>
+              <label style={{ position: 'relative', display: 'inline-flex', alignItems: 'center', cursor: 'pointer', flexShrink: 0, marginLeft: 16 }}>
+                <input
+                  type="checkbox"
+                  checked={value}
+                  onChange={(e) => setNotifications(prev => ({ ...prev, [key]: e.target.checked }))}
+                  className="sr-only peer"
+                />
+                <div
+                  style={{
+                    width: 44,
+                    height: 24,
+                    borderRadius: 12,
+                    background: value ? VS.accent : VS.bg3,
+                    border: `1px solid ${value ? VS.accent : VS.border}`,
+                    position: 'relative',
+                    transition: 'background 0.2s, border-color 0.2s',
+                  }}
+                >
+                  <div
+                    style={{
+                      position: 'absolute',
+                      top: 2,
+                      left: value ? 20 : 2,
+                      width: 18,
+                      height: 18,
+                      borderRadius: '50%',
+                      background: 'white',
+                      transition: 'left 0.2s',
+                    }}
+                  />
+                </div>
+              </label>
             </div>
-            <label className="relative inline-flex items-center cursor-pointer">
-              <input
-                type="checkbox"
-                checked={value}
-                onChange={(e) => setNotifications(prev => ({ ...prev, [key]: e.target.checked }))}
-                className="sr-only peer"
-              />
-              <div className="w-11 h-6 bg-muted peer-focus:outline-none peer-focus:ring-2 peer-focus:ring-primary rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-primary"></div>
-            </label>
           </div>
         ))}
-        
-        <Button onClick={() => handleSave('notifications')} className="bg-gradient-primary hover:bg-gradient-primary/90 text-white">
-          <Save className="h-4 w-4 mr-2" />
+      </div>
+      <div style={{ marginTop: 24 }}>
+        <button onClick={() => handleSave('notifications')} style={saveButtonStyle}>
+          <Save style={{ width: 14, height: 14 }} />
           Save Preferences
-        </Button>
-      </CardContent>
-    </Card>
+        </button>
+      </div>
+    </div>
   );
 
   const renderTab = () => {
@@ -269,72 +457,89 @@ export function Settings() {
         return renderNotificationSettings();
       case 'preferences':
         return (
-          <Card className="glass shadow-elevation">
-            <CardContent className="p-6">
-              <h3 className="text-lg font-semibold mb-4">App Preferences</h3>
-              <div className="space-y-4">
-                <div className="grid grid-cols-2 gap-4">
-                  <div>
-                    <label className="block text-sm font-medium mb-2">Theme</label>
-                    <select className="w-full px-3 py-2 glass-surface border border-border rounded-lg">
-                      <option value="dark">Dark</option>
-                      <option value="light">Light</option>
-                      <option value="auto">Auto</option>
-                    </select>
-                  </div>
-                  <div>
-                    <label className="block text-sm font-medium mb-2">Date Format</label>
-                    <select className="w-full px-3 py-2 glass-surface border border-border rounded-lg">
-                      <option value="MM/dd/yyyy">MM/DD/YYYY</option>
-                      <option value="dd/MM/yyyy">DD/MM/YYYY</option>
-                      <option value="yyyy-MM-dd">YYYY-MM-DD</option>
-                    </select>
-                  </div>
-                </div>
-                <p className="text-center text-muted-foreground">More preference options coming soon...</p>
+          <div style={cardStyle}>
+            <p style={sectionTitleStyle}>App Preferences</p>
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16, marginBottom: 16 }}>
+              <div>
+                <label style={labelStyle}>Theme</label>
+                <select style={{ ...inputStyle, cursor: 'pointer' }}>
+                  <option value="dark">Dark</option>
+                  <option value="light">Light</option>
+                  <option value="auto">Auto</option>
+                </select>
               </div>
-            </CardContent>
-          </Card>
+              <div>
+                <label style={labelStyle}>Date Format</label>
+                <select style={{ ...inputStyle, cursor: 'pointer' }}>
+                  <option value="MM/dd/yyyy">MM/DD/YYYY</option>
+                  <option value="dd/MM/yyyy">DD/MM/YYYY</option>
+                  <option value="yyyy-MM-dd">YYYY-MM-DD</option>
+                </select>
+              </div>
+            </div>
+            <p style={{ textAlign: 'center', color: VS.text2, fontSize: 13, margin: 0 }}>
+              More preference options coming soon...
+            </p>
+          </div>
         );
       case 'billing':
         return (
-          <Card className="glass shadow-elevation">
-            <CardContent className="p-6">
-              <h3 className="text-lg font-semibold mb-4">Billing & Subscription</h3>
-              <div className="text-center py-8">
-                <DollarSign className="h-12 w-12 mx-auto mb-4 text-muted-foreground" />
-                <p className="text-muted-foreground">Billing features coming soon...</p>
-              </div>
-            </CardContent>
-          </Card>
+          <div style={cardStyle}>
+            <p style={sectionTitleStyle}>Billing &amp; Subscription</p>
+            <div style={{ textAlign: 'center', padding: '32px 0' }}>
+              <DollarSign
+                style={{
+                  width: 48,
+                  height: 48,
+                  margin: '0 auto 16px',
+                  color: VS.text2,
+                  display: 'block',
+                }}
+              />
+              <p style={{ color: VS.text2, fontSize: 13, margin: 0 }}>Billing features coming soon...</p>
+            </div>
+          </div>
         );
       case 'security':
         return (
-          <Card className="glass shadow-elevation">
-            <CardContent className="p-6">
-              <h3 className="text-lg font-semibold mb-4">Security Settings</h3>
-              <div className="space-y-4">
-                <div>
-                  <label className="block text-sm font-medium mb-2">Change Password</label>
-                  <div className="relative">
-                    <input
-                      type={showPassword ? 'text' : 'password'}
-                      placeholder="Enter new password"
-                      className="w-full pl-3 pr-10 py-2 glass-surface border border-border rounded-lg focus:outline-none focus:ring-2 focus:ring-primary"
-                    />
-                    <button
-                      type="button"
-                      onClick={() => setShowPassword(!showPassword)}
-                      className="absolute right-3 top-3 text-muted-foreground hover:text-foreground"
-                    >
-                      {showPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
-                    </button>
-                  </div>
-                </div>
-                <p className="text-center text-muted-foreground">More security options coming soon...</p>
+          <div style={cardStyle}>
+            <p style={sectionTitleStyle}>Security Settings</p>
+            <div style={{ marginBottom: 16 }}>
+              <label style={labelStyle}>Change Password</label>
+              <div style={{ position: 'relative' }}>
+                <input
+                  type={showPassword ? 'text' : 'password'}
+                  placeholder="Enter new password"
+                  style={{ ...inputStyle, paddingRight: 40 }}
+                />
+                <button
+                  type="button"
+                  onClick={() => setShowPassword(!showPassword)}
+                  style={{
+                    position: 'absolute',
+                    right: 10,
+                    top: '50%',
+                    transform: 'translateY(-50%)',
+                    background: 'none',
+                    border: 'none',
+                    cursor: 'pointer',
+                    color: VS.text2,
+                    display: 'flex',
+                    alignItems: 'center',
+                    padding: 0,
+                  }}
+                >
+                  {showPassword
+                    ? <EyeOff style={{ width: 14, height: 14 }} />
+                    : <Eye style={{ width: 14, height: 14 }} />
+                  }
+                </button>
               </div>
-            </CardContent>
-          </Card>
+            </div>
+            <p style={{ textAlign: 'center', color: VS.text2, fontSize: 13, margin: 0 }}>
+              More security options coming soon...
+            </p>
+          </div>
         );
       default:
         return null;
@@ -342,39 +547,59 @@ export function Settings() {
   };
 
   return (
-    <div className="space-y-8">
+    <div className="space-y-6">
       {/* Header */}
       <div>
-        <h1 className="text-3xl font-bold gradient-text">Settings</h1>
-        <p className="text-muted-foreground mt-2">Manage your account preferences and configuration</p>
+        <h1 style={{ fontSize: 22, fontWeight: 700, color: VS.text0, margin: 0 }}>Settings</h1>
+        <p style={{ color: VS.text2, fontSize: 13, marginTop: 4, marginBottom: 0 }}>
+          Manage your account preferences and configuration
+        </p>
       </div>
 
-      <div className="grid grid-cols-1 lg:grid-cols-4 gap-8">
+      <div className="grid grid-cols-1 lg:grid-cols-4 gap-6">
         {/* Sidebar Navigation */}
         <div className="lg:col-span-1">
-          <Card className="glass shadow-elevation">
-            <CardContent className="p-0">
-              <div className="space-y-1">
-                {tabs.map((tab) => {
-                  const Icon = tab.icon;
-                  return (
-                    <button
-                      key={tab.id}
-                      onClick={() => setActiveTab(tab.id)}
-                      className={`w-full flex items-center space-x-3 px-4 py-3 text-left transition-colors ${
-                        activeTab === tab.id 
-                          ? 'bg-primary/10 text-primary border-r-2 border-primary' 
-                          : 'text-muted-foreground hover:text-foreground hover:bg-surface-elevated/50'
-                      }`}
-                    >
-                      <Icon className="h-4 w-4" />
-                      <span className="font-medium">{tab.label}</span>
-                    </button>
-                  );
-                })}
-              </div>
-            </CardContent>
-          </Card>
+          <div
+            style={{
+              background: VS.bg1,
+              border: `1px solid ${VS.border}`,
+              borderRadius: 12,
+              overflow: 'hidden',
+            }}
+          >
+            {tabs.map((tab) => {
+              const Icon = tab.icon;
+              const isActive = activeTab === tab.id;
+              return (
+                <button
+                  key={tab.id}
+                  onClick={() => setActiveTab(tab.id)}
+                  style={{
+                    width: '100%',
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: 10,
+                    padding: '10px 16px',
+                    textAlign: 'left',
+                    background: isActive ? `${VS.accent}15` : 'transparent',
+                    color: isActive ? VS.accent : VS.text2,
+                    borderLeft: isActive ? `2px solid ${VS.accent}` : '2px solid transparent',
+                    border: 'none',
+                    borderLeftStyle: 'solid',
+                    borderLeftWidth: 2,
+                    borderLeftColor: isActive ? VS.accent : 'transparent',
+                    cursor: 'pointer',
+                    fontSize: 13,
+                    fontWeight: isActive ? 600 : 400,
+                    transition: 'background 0.15s, color 0.15s',
+                  }}
+                >
+                  <Icon style={{ width: 15, height: 15, flexShrink: 0 }} />
+                  <span>{tab.label}</span>
+                </button>
+              );
+            })}
+          </div>
         </div>
 
         {/* Main Content */}

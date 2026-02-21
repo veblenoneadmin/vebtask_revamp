@@ -2,9 +2,6 @@ import { useState, useEffect } from 'react';
 import { useSession } from '../lib/auth-client';
 import { useApiClient } from '../lib/api-client';
 import { useOrganization } from '../contexts/OrganizationContext';
-import { Card, CardContent, CardHeader } from '../components/ui/card';
-import { Button } from '../components/ui/button';
-import { Badge } from '../components/ui/badge';
 import {
   FileText,
   Plus,
@@ -16,8 +13,14 @@ import {
   Trash2,
   Calendar,
 } from 'lucide-react';
-import { cn } from '../lib/utils';
 import { createPortal } from 'react-dom';
+
+const VS = {
+  bg0: '#1e1e1e', bg1: '#252526', bg2: '#2d2d2d', bg3: '#333333',
+  border: '#3c3c3c', text0: '#f0f0f0', text1: '#c0c0c0', text2: '#909090',
+  blue: '#569cd6', teal: '#4ec9b0', yellow: '#dcdcaa', orange: '#ce9178',
+  purple: '#c586c0', red: '#f44747', green: '#6a9955', accent: '#007acc',
+};
 
 interface Project {
   id: string;
@@ -29,7 +32,6 @@ interface Project {
   completion?: number;
   color: string;
 }
-
 
 interface ReportModalProps {
   isOpen: boolean;
@@ -59,11 +61,9 @@ function ReportModal({ isOpen, onClose, onSave }: ReportModalProps) {
 
     setLoading(true);
     try {
-      // Use the same orgId logic as Projects page
       const orgId = currentOrg?.id || 'org_1757046595553';
       console.log('🔧 Fetching projects with orgId:', orgId);
 
-      // Fetch projects using apiClient like Projects page
       const projectsData = await apiClient.fetch(`/api/projects?userId=${session.user.id}&orgId=${orgId}&limit=100`);
 
       if (projectsData.success) {
@@ -107,7 +107,6 @@ function ReportModal({ isOpen, onClose, onSave }: ReportModalProps) {
 
     onSave(reportData);
 
-    // Reset form
     setSelectedProject('');
     setUserName('');
     setDescription('');
@@ -117,72 +116,116 @@ function ReportModal({ isOpen, onClose, onSave }: ReportModalProps) {
 
   if (!isOpen) return null;
 
+  const labelStyle: React.CSSProperties = {
+    display: 'flex',
+    alignItems: 'center',
+    gap: 6,
+    fontSize: 11,
+    fontWeight: 600,
+    textTransform: 'uppercase',
+    letterSpacing: '0.06em',
+    color: VS.text2,
+    marginBottom: 6,
+  };
+
+  const inputStyle: React.CSSProperties = {
+    width: '100%',
+    background: VS.bg2,
+    border: `1px solid ${VS.border}`,
+    borderRadius: 8,
+    padding: '8px 12px',
+    color: VS.text0,
+    fontSize: 14,
+    outline: 'none',
+    boxSizing: 'border-box',
+  };
+
   return createPortal(
     <div
-      className="modal-overlay glass"
       style={{
         position: 'fixed',
-        top: 0,
-        left: 0,
-        right: 0,
-        bottom: 0,
-        background: 'rgba(0, 0, 0, 0.7)',
+        inset: 0,
+        background: 'rgba(0,0,0,0.75)',
+        zIndex: 9999,
         display: 'flex',
         alignItems: 'center',
         justifyContent: 'center',
-        zIndex: 99999
       }}
       onClick={(e) => {
-        if (e.target === e.currentTarget) {
-          onClose();
-        }
+        if (e.target === e.currentTarget) onClose();
       }}
     >
       <div
-        className="modal-content glass shadow-elevation"
         style={{
-          maxWidth: '700px',
+          background: VS.bg1,
+          border: `1px solid ${VS.border}`,
+          borderRadius: 12,
           width: '95%',
+          maxWidth: 680,
           maxHeight: '90vh',
           overflowY: 'auto',
           position: 'relative',
-          backgroundColor: '#1a1a1a',
-          borderRadius: '12px',
-          border: '1px solid #333'
         }}
       >
         {/* Header */}
-        <div className="modal-header" style={{
-          background: 'linear-gradient(135deg, #646cff, #8b5cf6)',
-          borderRadius: '8px 8px 0 0',
-          padding: '24px',
-          color: 'white'
-        }}>
-          <div className="flex items-center gap-3">
-            <div className="h-10 w-10 rounded-xl bg-white/20 flex items-center justify-center">
-              <FileText className="w-5 h-5" />
+        <div
+          style={{
+            background: VS.bg2,
+            borderBottom: `1px solid ${VS.border}`,
+            padding: '20px 24px',
+            borderRadius: '12px 12px 0 0',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'space-between',
+          }}
+        >
+          <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+            <div
+              style={{
+                width: 40,
+                height: 40,
+                borderRadius: 8,
+                background: VS.bg3,
+                border: `1px solid ${VS.border}`,
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                color: VS.blue,
+              }}
+            >
+              <FileText size={18} />
             </div>
             <div>
-              <h2 className="text-xl font-bold m-0">Create New Report</h2>
-              <p className="text-white/80 text-sm m-0 mt-1">
+              <div style={{ fontSize: 16, fontWeight: 600, color: VS.text0 }}>Create New Report</div>
+              <div style={{ fontSize: 12, color: VS.text2, marginTop: 2 }}>
                 Generate a report with project and task breakdown
-              </p>
+              </div>
             </div>
           </div>
           <button
-            className="modal-close bg-white/20 hover:bg-white/30 rounded-lg p-2"
             onClick={onClose}
+            style={{
+              background: 'transparent',
+              border: 'none',
+              color: VS.text2,
+              cursor: 'pointer',
+              padding: 6,
+              borderRadius: 6,
+              display: 'flex',
+              alignItems: 'center',
+            }}
           >
-            <X size={20} />
+            <X size={18} />
           </button>
         </div>
 
-        <form onSubmit={handleSubmit} className="modal-form" style={{ padding: '24px' }}>
-          <div className="space-y-6">
+        {/* Form */}
+        <form onSubmit={handleSubmit} style={{ padding: 24 }}>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 20 }}>
             {/* User Name */}
-            <div className="form-group">
-              <label className="flex items-center gap-2 text-sm font-semibold text-white mb-2">
-                <Users className="w-4 h-4" />
+            <div>
+              <label style={labelStyle}>
+                <Users size={13} />
                 Your Name *
               </label>
               <input
@@ -191,25 +234,25 @@ function ReportModal({ isOpen, onClose, onSave }: ReportModalProps) {
                 onChange={(e) => setUserName(e.target.value)}
                 required
                 placeholder="Enter your name"
-                className="w-full p-3 bg-surface-elevated border border-border rounded-lg text-white placeholder-muted-foreground focus:border-primary focus:ring-2 focus:ring-primary/20 transition-all"
+                style={inputStyle}
               />
             </div>
 
             {/* Project Selection */}
-            <div className="form-group">
-              <label className="flex items-center gap-2 text-sm font-semibold text-white mb-2">
-                <Building2 className="w-4 h-4" />
+            <div>
+              <label style={labelStyle}>
+                <Building2 size={13} />
                 Select Project *
               </label>
               <select
                 value={selectedProject}
                 onChange={(e) => setSelectedProject(e.target.value)}
                 required
-                className="w-full p-3 bg-surface-elevated border border-border rounded-lg text-white focus:border-primary focus:ring-2 focus:ring-primary/20 transition-all"
+                style={inputStyle}
               >
-                <option value="" className="bg-surface-elevated">Choose a project...</option>
+                <option value="" style={{ background: VS.bg2 }}>Choose a project...</option>
                 {projects.map((project) => (
-                  <option key={project.id} value={project.id} className="bg-surface-elevated">
+                  <option key={project.id} value={project.id} style={{ background: VS.bg2 }}>
                     {project.name}
                   </option>
                 ))}
@@ -217,9 +260,9 @@ function ReportModal({ isOpen, onClose, onSave }: ReportModalProps) {
             </div>
 
             {/* Description */}
-            <div className="form-group">
-              <label className="flex items-center gap-2 text-sm font-semibold text-white mb-2">
-                <FileText className="w-4 h-4" />
+            <div>
+              <label style={labelStyle}>
+                <FileText size={13} />
                 Report Description *
               </label>
               <textarea
@@ -228,77 +271,112 @@ function ReportModal({ isOpen, onClose, onSave }: ReportModalProps) {
                 required
                 placeholder="Describe the report details, progress, issues, or any relevant information..."
                 rows={4}
-                className="w-full p-3 bg-surface-elevated border border-border rounded-lg text-white placeholder-muted-foreground focus:border-primary focus:ring-2 focus:ring-primary/20 transition-all resize-none"
+                style={{ ...inputStyle, resize: 'none', fontFamily: 'inherit' }}
               />
             </div>
 
             {/* Image Upload */}
-            <div className="form-group">
-              <label className="flex items-center gap-2 text-sm font-semibold text-white mb-2">
-                <Plus className="w-4 h-4" />
+            <div>
+              <label style={labelStyle}>
+                <Plus size={13} />
                 Upload Screenshot/Image
               </label>
-              <div className="space-y-3">
-                <input
-                  type="file"
-                  accept="image/*"
-                  onChange={handleImageUpload}
-                  className="w-full p-3 bg-surface-elevated border border-border rounded-lg text-white file:mr-4 file:py-2 file:px-4 file:rounded-lg file:border-0 file:text-sm file:font-semibold file:bg-primary file:text-white hover:file:bg-primary/90"
-                />
-                {uploadedImage && (
-                  <div className="relative">
-                    <img
-                      src={uploadedImage}
-                      alt="Uploaded screenshot"
-                      className="w-full max-h-96 object-contain rounded-lg border border-border"
-                    />
-                    <button
-                      type="button"
-                      onClick={() => setUploadedImage(null)}
-                      className="absolute top-2 right-2 bg-red-500 hover:bg-red-600 text-white rounded-full p-1 transition-colors"
-                    >
-                      <X className="w-4 h-4" />
-                    </button>
-                  </div>
-                )}
-              </div>
+              <input
+                type="file"
+                accept="image/*"
+                onChange={handleImageUpload}
+                style={{
+                  ...inputStyle,
+                  padding: '6px 12px',
+                  cursor: 'pointer',
+                  color: VS.text1,
+                }}
+              />
+              {uploadedImage && (
+                <div style={{ marginTop: 10, position: 'relative' }}>
+                  <img
+                    src={uploadedImage}
+                    alt="Uploaded screenshot"
+                    style={{
+                      width: '100%',
+                      maxHeight: 320,
+                      objectFit: 'contain',
+                      borderRadius: 8,
+                      border: `1px solid ${VS.border}`,
+                    }}
+                  />
+                  <button
+                    type="button"
+                    onClick={() => setUploadedImage(null)}
+                    style={{
+                      position: 'absolute',
+                      top: 8,
+                      right: 8,
+                      background: VS.red,
+                      border: 'none',
+                      borderRadius: '50%',
+                      width: 24,
+                      height: 24,
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      color: '#fff',
+                      cursor: 'pointer',
+                    }}
+                  >
+                    <X size={14} />
+                  </button>
+                </div>
+              )}
             </div>
 
             {/* Project Breakdown */}
             {selectedProject && (
-              <div className="form-group">
-                <label className="flex items-center gap-2 text-sm font-semibold text-white mb-3">
-                  <Target className="w-4 h-4" />
+              <div>
+                <label style={labelStyle}>
+                  <Target size={13} />
                   Project Breakdown
                 </label>
                 {(() => {
                   const project = projects.find(p => p.id === selectedProject);
                   return project ? (
-                    <div className="p-4 glass-surface rounded-lg">
-                      <div className="flex items-center justify-between mb-3">
-                        <h3 className="font-semibold text-white">{project.name}</h3>
-                        <Badge className={cn(
-                          "text-xs capitalize",
-                          project.status === 'completed' ? 'bg-success/20 text-success' :
-                          project.status === 'active' ? 'bg-info/20 text-info' :
-                          project.status === 'planning' ? 'bg-warning/20 text-warning' :
-                          'bg-muted/20 text-muted-foreground'
-                        )}>
+                    <div
+                      style={{
+                        background: VS.bg2,
+                        border: `1px solid ${VS.border}`,
+                        borderRadius: 8,
+                        padding: 16,
+                      }}
+                    >
+                      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 8 }}>
+                        <span style={{ fontWeight: 600, color: VS.text0 }}>{project.name}</span>
+                        <span
+                          style={{
+                            fontSize: 11,
+                            fontWeight: 600,
+                            padding: '2px 8px',
+                            borderRadius: 4,
+                            background: VS.bg3,
+                            color: VS.teal,
+                            border: `1px solid ${VS.border}`,
+                            textTransform: 'capitalize',
+                          }}
+                        >
                           {project.status}
-                        </Badge>
+                        </span>
                       </div>
-                      <p className="text-sm text-muted-foreground mb-3">{project.description}</p>
-                      <div className="grid grid-cols-2 gap-4 text-sm">
-                        {project.budget && (
+                      <p style={{ fontSize: 13, color: VS.text2, margin: '0 0 10px 0' }}>{project.description}</p>
+                      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8, fontSize: 13 }}>
+                        {project.budget !== undefined && (
                           <div>
-                            <span className="text-muted-foreground">Budget: </span>
-                            <span className="font-semibold text-white">${project.budget.toLocaleString()}</span>
+                            <span style={{ color: VS.text2 }}>Budget: </span>
+                            <span style={{ fontWeight: 600, color: VS.text0 }}>${project.budget.toLocaleString()}</span>
                           </div>
                         )}
                         {project.completion !== undefined && (
                           <div>
-                            <span className="text-muted-foreground">Progress: </span>
-                            <span className="font-semibold text-white">{project.completion}%</span>
+                            <span style={{ color: VS.text2 }}>Progress: </span>
+                            <span style={{ fontWeight: 600, color: VS.text0 }}>{project.completion}%</span>
                           </div>
                         )}
                       </div>
@@ -307,25 +385,53 @@ function ReportModal({ isOpen, onClose, onSave }: ReportModalProps) {
                 })()}
               </div>
             )}
-
           </div>
 
           {/* Action Buttons */}
-          <div className="modal-actions flex justify-end gap-3 pt-6 mt-6 border-t border-border">
+          <div
+            style={{
+              display: 'flex',
+              justifyContent: 'flex-end',
+              gap: 10,
+              paddingTop: 20,
+              marginTop: 20,
+              borderTop: `1px solid ${VS.border}`,
+            }}
+          >
             <button
               type="button"
-              className="px-6 py-2 bg-surface-elevated hover:bg-muted border border-border rounded-lg text-white transition-all"
               onClick={onClose}
+              style={{
+                background: VS.bg3,
+                color: VS.text1,
+                border: `1px solid ${VS.border}`,
+                borderRadius: 8,
+                padding: '8px 18px',
+                fontSize: 14,
+                cursor: 'pointer',
+              }}
             >
               Cancel
             </button>
             <button
               type="submit"
               disabled={loading || !userName || !selectedProject || !description}
-              className="px-6 py-2 rounded-lg text-white font-medium transition-all flex items-center gap-2 shadow-glow disabled:opacity-50"
-              style={{ background: 'linear-gradient(135deg, #646cff, #8b5cf6)' }}
+              style={{
+                background: VS.accent,
+                color: '#fff',
+                border: 'none',
+                borderRadius: 8,
+                padding: '8px 18px',
+                fontSize: 14,
+                fontWeight: 600,
+                cursor: loading || !userName || !selectedProject || !description ? 'not-allowed' : 'pointer',
+                opacity: loading || !userName || !selectedProject || !description ? 0.5 : 1,
+                display: 'flex',
+                alignItems: 'center',
+                gap: 7,
+              }}
             >
-              <Save size={16} />
+              <Save size={15} />
               Create Report
             </button>
           </div>
@@ -345,7 +451,6 @@ export function Reports() {
   const [loading, setLoading] = useState(true);
   const [selectedDate, setSelectedDate] = useState<string>('');
 
-  // Fetch reports from database
   const fetchReports = async () => {
     if (!session?.user?.id || !currentOrg?.id) return;
 
@@ -371,7 +476,6 @@ export function Reports() {
     }
   };
 
-  // Load reports on component mount
   useEffect(() => {
     fetchReports();
   }, [session?.user?.id, currentOrg?.id]);
@@ -386,7 +490,6 @@ export function Reports() {
     try {
       console.log('💾 Saving report:', reportData);
 
-      // Create the payload that matches the backend expectation
       const requestPayload = {
         title: reportData.project?.name || 'Project Report',
         description: reportData.description,
@@ -397,7 +500,6 @@ export function Reports() {
 
       console.log('📤 Request payload:', requestPayload);
 
-      // ULTIMATE FALLBACK: Use simple endpoint that finds any available user/org
       console.log('🔧 Using simple endpoint with any available user/org');
       const data = await apiClient.fetch(`/api/simple/user-reports`, {
         method: 'POST',
@@ -410,7 +512,6 @@ export function Reports() {
       if (data.success) {
         console.log('✅ Report saved successfully');
         alert('Report created successfully!');
-        // Refresh the reports list
         await fetchReports();
       } else {
         console.error('Failed to save report:', data.error);
@@ -442,7 +543,6 @@ export function Reports() {
       if (data.success) {
         console.log('✅ Report deleted successfully');
         alert('Report deleted successfully!');
-        // Refresh the reports list
         await fetchReports();
       } else {
         console.error('Failed to delete report:', data.error);
@@ -454,45 +554,34 @@ export function Reports() {
     }
   };
 
-  // Convert Tailwind color classes to hex colors
   const tailwindToHex = (tailwindClass: string): string => {
     const colorMap: { [key: string]: string } = {
-      'bg-primary': '#3b82f6',    // blue-500
-      'bg-secondary': '#6b7280',  // gray-500
-      'bg-success': '#10b981',    // emerald-500
-      'bg-warning': '#f59e0b',    // amber-500
-      'bg-danger': '#ef4444',     // red-500
-      'bg-info': '#06b6d4',       // cyan-500
-      'bg-purple': '#8b5cf6',     // violet-500
-      'bg-pink': '#ec4899',       // pink-500
-      'bg-indigo': '#6366f1',     // indigo-500
-      'bg-green': '#22c55e',      // green-500
-      'bg-red': '#ef4444',        // red-500
-      'bg-blue': '#3b82f6',       // blue-500
-      'bg-yellow': '#eab308',     // yellow-500
-      'bg-orange': '#f97316',     // orange-500
-      'bg-teal': '#14b8a6',       // teal-500
-      'bg-cyan': '#06b6d4',       // cyan-500
+      'bg-primary': '#3b82f6',
+      'bg-secondary': '#6b7280',
+      'bg-success': '#10b981',
+      'bg-warning': '#f59e0b',
+      'bg-danger': '#ef4444',
+      'bg-info': '#06b6d4',
+      'bg-purple': '#8b5cf6',
+      'bg-pink': '#ec4899',
+      'bg-indigo': '#6366f1',
+      'bg-green': '#22c55e',
+      'bg-red': '#ef4444',
+      'bg-blue': '#3b82f6',
+      'bg-yellow': '#eab308',
+      'bg-orange': '#f97316',
+      'bg-teal': '#14b8a6',
+      'bg-cyan': '#06b6d4',
     };
     return colorMap[tailwindClass] || '#6b7280';
   };
 
-  // Get project color for reports
   const getProjectColor = (project?: any): string => {
-    if (!project?.color) {
-      return '#6b7280'; // Default gray color
-    }
-
-    // If it's already a hex color, return as is
-    if (project.color.startsWith('#')) {
-      return project.color;
-    }
-
-    // If it's a Tailwind class, convert to hex
+    if (!project?.color) return '#6b7280';
+    if (project.color.startsWith('#')) return project.color;
     return tailwindToHex(project.color);
   };
 
-  // Filter reports based on selected date
   const filteredReports = selectedDate
     ? reports.filter(report =>
         new Date(report.createdAt).toDateString() === new Date(selectedDate).toDateString()
@@ -500,201 +589,383 @@ export function Reports() {
     : reports;
 
   return (
-    <div className="space-y-8">
+    <div className="space-y-6">
       {/* Header */}
-      <div className="flex items-center justify-between">
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
         <div>
-          <h1 className="text-3xl font-bold gradient-text">Reports</h1>
-          <p className="text-muted-foreground mt-2">Create and manage your project reports</p>
+          <h1 style={{ fontSize: 24, fontWeight: 700, color: VS.text0, margin: 0 }}>Reports</h1>
+          <p style={{ fontSize: 13, color: VS.text2, marginTop: 4 }}>Create and manage your project reports</p>
         </div>
-        <Button
+        <button
           onClick={() => setShowReportModal(true)}
-          className="bg-gradient-primary hover:bg-gradient-primary/90 text-white shadow-glow"
+          style={{
+            background: VS.accent,
+            color: '#fff',
+            border: 'none',
+            borderRadius: 8,
+            padding: '8px 16px',
+            fontSize: 14,
+            fontWeight: 600,
+            cursor: 'pointer',
+            display: 'flex',
+            alignItems: 'center',
+            gap: 7,
+          }}
         >
-          <Plus className="h-4 w-4 mr-2" />
+          <Plus size={16} />
           Add Report
-        </Button>
+        </button>
       </div>
 
       {/* Date Filter */}
-      <Card className="glass shadow-elevation">
-        <CardContent className="p-6">
-          <div className="flex flex-col md:flex-row gap-4 items-center">
-            <div className="flex items-center gap-2">
-              <Calendar className="h-5 w-5 text-primary" />
-              <label className="text-sm font-medium text-white">Filter by Date:</label>
-            </div>
-
-            <div className="flex gap-3 items-center">
-              <input
-                type="date"
-                value={selectedDate ? new Date(selectedDate).toISOString().split('T')[0] : ''}
-                onChange={(e) => {
-                  if (e.target.value) {
-                    const selectedDate = new Date(e.target.value + 'T00:00:00.000Z');
-                    setSelectedDate(selectedDate.toISOString());
-                  } else {
-                    setSelectedDate('');
-                  }
-                }}
-                className="px-3 py-2 glass-surface border border-border rounded-lg focus:outline-none focus:ring-2 focus:ring-primary text-white"
-                title="Pick a date to filter reports"
-              />
-
-              {selectedDate && (
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  onClick={() => setSelectedDate('')}
-                  className="text-muted-foreground hover:text-white"
-                >
-                  <X className="h-4 w-4 mr-1" />
-                  Clear Filter
-                </Button>
-              )}
-            </div>
+      <div
+        className="rounded-xl p-5"
+        style={{ background: VS.bg1, border: `1px solid ${VS.border}` }}
+      >
+        <div style={{ display: 'flex', flexWrap: 'wrap', gap: 12, alignItems: 'center' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+            <Calendar size={16} style={{ color: VS.blue }} />
+            <span style={{ fontSize: 13, fontWeight: 600, color: VS.text1 }}>Filter by Date:</span>
           </div>
-        </CardContent>
-      </Card>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+            <input
+              type="date"
+              value={selectedDate ? new Date(selectedDate).toISOString().split('T')[0] : ''}
+              onChange={(e) => {
+                if (e.target.value) {
+                  const d = new Date(e.target.value + 'T00:00:00.000Z');
+                  setSelectedDate(d.toISOString());
+                } else {
+                  setSelectedDate('');
+                }
+              }}
+              title="Pick a date to filter reports"
+              style={{
+                background: VS.bg2,
+                border: `1px solid ${VS.border}`,
+                borderRadius: 8,
+                padding: '8px 12px',
+                color: VS.text0,
+                fontSize: 13,
+                outline: 'none',
+                colorScheme: 'dark',
+              }}
+            />
+            {selectedDate && (
+              <button
+                onClick={() => setSelectedDate('')}
+                style={{
+                  background: VS.bg3,
+                  color: VS.text1,
+                  border: `1px solid ${VS.border}`,
+                  borderRadius: 8,
+                  padding: '7px 13px',
+                  fontSize: 13,
+                  cursor: 'pointer',
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: 5,
+                }}
+              >
+                <X size={14} />
+                Clear Filter
+              </button>
+            )}
+          </div>
+        </div>
+      </div>
 
       {/* Reports List */}
-      <div className="space-y-6">
+      <div>
         {loading ? (
-          <Card className="glass shadow-elevation">
-            <CardContent className="p-12 text-center">
-              <div className="w-8 h-8 border-2 border-primary border-t-transparent rounded-full animate-spin mx-auto mb-4"></div>
-              <h3 className="text-xl font-semibold mb-2">Loading Reports...</h3>
-              <p className="text-muted-foreground">Please wait while we fetch your reports.</p>
-            </CardContent>
-          </Card>
+          <div
+            className="rounded-xl p-5"
+            style={{
+              background: VS.bg1,
+              border: `1px solid ${VS.border}`,
+              textAlign: 'center',
+              padding: '64px 24px',
+            }}
+          >
+            <div
+              style={{
+                width: 32,
+                height: 32,
+                border: `2px solid ${VS.border}`,
+                borderTopColor: VS.accent,
+                borderRadius: '50%',
+                animation: 'spin 0.8s linear infinite',
+                margin: '0 auto 16px',
+              }}
+            />
+            <div style={{ fontSize: 16, fontWeight: 600, color: VS.text0, marginBottom: 6 }}>Loading Reports...</div>
+            <div style={{ fontSize: 13, color: VS.text2 }}>Please wait while we fetch your reports.</div>
+            <style>{`@keyframes spin { to { transform: rotate(360deg); } }`}</style>
+          </div>
         ) : filteredReports.length === 0 ? (
-          <Card className="glass shadow-elevation">
-            <CardContent className="p-12 text-center">
-              <FileText className="h-16 w-16 text-muted-foreground mx-auto mb-4" />
-              {selectedDate ? (
-                <>
-                  <h3 className="text-xl font-semibold mb-2">No Reports for Selected Date</h3>
-                  <p className="text-muted-foreground mb-6">
-                    No reports were created on{' '}
-                    {new Date(selectedDate).toLocaleDateString('en-US', {
-                      weekday: 'long',
-                      year: 'numeric',
-                      month: 'long',
-                      day: 'numeric'
-                    })}
-                    . Try selecting a different date or create a new report.
-                  </p>
-                  <div className="flex gap-3 justify-center">
-                    <Button
-                      variant="outline"
-                      onClick={() => setSelectedDate('')}
-                      className="shadow-glow"
-                    >
-                      Show All Reports
-                    </Button>
-                    <Button
-                      onClick={() => setShowReportModal(true)}
-                      className="bg-gradient-primary hover:bg-gradient-primary/90 text-white shadow-glow"
-                    >
-                      <Plus className="h-4 w-4 mr-2" />
-                      Create Report
-                    </Button>
-                  </div>
-                </>
-              ) : (
-                <>
-                  <h3 className="text-xl font-semibold mb-2">No Reports Yet</h3>
-                  <p className="text-muted-foreground mb-6">Create your first report to get started with project analysis and documentation.</p>
-                  <Button
-                    onClick={() => setShowReportModal(true)}
-                    className="bg-gradient-primary hover:bg-gradient-primary/90 text-white shadow-glow"
+          <div
+            className="rounded-xl"
+            style={{
+              background: VS.bg1,
+              border: `1px solid ${VS.border}`,
+              textAlign: 'center',
+              padding: '64px 24px',
+            }}
+          >
+            <FileText size={52} style={{ color: VS.text2, margin: '0 auto 16px', opacity: 0.5 }} />
+            {selectedDate ? (
+              <>
+                <div style={{ fontSize: 18, fontWeight: 600, color: VS.text0, marginBottom: 8 }}>
+                  No Reports for Selected Date
+                </div>
+                <p style={{ fontSize: 13, color: VS.text2, marginBottom: 24 }}>
+                  No reports were created on{' '}
+                  {new Date(selectedDate).toLocaleDateString('en-US', {
+                    weekday: 'long',
+                    year: 'numeric',
+                    month: 'long',
+                    day: 'numeric',
+                  })}
+                  . Try selecting a different date or create a new report.
+                </p>
+                <div style={{ display: 'flex', gap: 10, justifyContent: 'center' }}>
+                  <button
+                    onClick={() => setSelectedDate('')}
+                    style={{
+                      background: VS.bg3,
+                      color: VS.text1,
+                      border: `1px solid ${VS.border}`,
+                      borderRadius: 8,
+                      padding: '8px 16px',
+                      fontSize: 14,
+                      cursor: 'pointer',
+                    }}
                   >
-                    <Plus className="h-4 w-4 mr-2" />
-                    Create First Report
-                  </Button>
-                </>
-              )}
-            </CardContent>
-          </Card>
+                    Show All Reports
+                  </button>
+                  <button
+                    onClick={() => setShowReportModal(true)}
+                    style={{
+                      background: VS.accent,
+                      color: '#fff',
+                      border: 'none',
+                      borderRadius: 8,
+                      padding: '8px 16px',
+                      fontSize: 14,
+                      fontWeight: 600,
+                      cursor: 'pointer',
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: 7,
+                    }}
+                  >
+                    <Plus size={15} />
+                    Create Report
+                  </button>
+                </div>
+              </>
+            ) : (
+              <>
+                <div style={{ fontSize: 18, fontWeight: 600, color: VS.text0, marginBottom: 8 }}>No Reports Yet</div>
+                <p style={{ fontSize: 13, color: VS.text2, marginBottom: 24 }}>
+                  Create your first report to get started with project analysis and documentation.
+                </p>
+                <button
+                  onClick={() => setShowReportModal(true)}
+                  style={{
+                    background: VS.accent,
+                    color: '#fff',
+                    border: 'none',
+                    borderRadius: 8,
+                    padding: '8px 18px',
+                    fontSize: 14,
+                    fontWeight: 600,
+                    cursor: 'pointer',
+                    display: 'inline-flex',
+                    alignItems: 'center',
+                    gap: 7,
+                  }}
+                >
+                  <Plus size={15} />
+                  Create First Report
+                </button>
+              </>
+            )}
+          </div>
         ) : (
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+          <div
+            style={{
+              display: 'grid',
+              gridTemplateColumns: 'repeat(auto-fill, minmax(280px, 1fr))',
+              gap: 20,
+            }}
+          >
             {filteredReports.map((report) => {
               const projectColor = getProjectColor(report.project);
 
               return (
-              <Card key={report.id} className="glass shadow-elevation hover:shadow-glow transition-all relative">
-                {/* Project Color Border */}
                 <div
-                  className="absolute left-0 top-0 bottom-0 w-1 z-10 rounded-l-lg"
-                  style={{ backgroundColor: projectColor }}
-                />
-                <CardHeader>
-                  <div className="flex items-center justify-between">
-                    <div className="h-10 w-10 rounded-xl bg-gradient-primary flex items-center justify-center shadow-glow">
-                      <FileText className="h-5 w-5 text-white" />
+                  key={report.id}
+                  style={{
+                    background: VS.bg1,
+                    border: `1px solid ${VS.border}`,
+                    borderRadius: 12,
+                    position: 'relative',
+                    overflow: 'hidden',
+                  }}
+                >
+                  {/* Project color accent bar */}
+                  <div
+                    style={{
+                      position: 'absolute',
+                      left: 0,
+                      top: 0,
+                      bottom: 0,
+                      width: 4,
+                      background: projectColor,
+                    }}
+                  />
+
+                  {/* Card Header */}
+                  <div
+                    style={{
+                      padding: '16px 16px 12px 20px',
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'space-between',
+                      borderBottom: `1px solid ${VS.border}`,
+                    }}
+                  >
+                    <div
+                      style={{
+                        width: 36,
+                        height: 36,
+                        borderRadius: 8,
+                        background: VS.bg2,
+                        border: `1px solid ${VS.border}`,
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                        color: VS.blue,
+                      }}
+                    >
+                      <FileText size={16} />
                     </div>
-                    <div className="flex items-center gap-2">
-                      <Badge className="bg-success/20 text-success">
-                        {new Date(report.createdAt).toLocaleDateString()}
-                      </Badge>
-                      <Button
-                        variant="ghost"
-                        size="sm"
-                        onClick={() => handleDeleteReport(report.id)}
-                        className="h-8 w-8 p-0 text-muted-foreground hover:text-red-500 hover:bg-red-500/10"
-                        title="Delete report"
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                      <span
+                        style={{
+                          fontSize: 11,
+                          fontWeight: 600,
+                          padding: '3px 8px',
+                          borderRadius: 4,
+                          background: VS.bg2,
+                          color: VS.green,
+                          border: `1px solid ${VS.border}`,
+                        }}
                       >
-                        <Trash2 className="h-4 w-4" />
-                      </Button>
+                        {new Date(report.createdAt).toLocaleDateString()}
+                      </span>
+                      <button
+                        onClick={() => handleDeleteReport(report.id)}
+                        title="Delete report"
+                        style={{
+                          background: 'transparent',
+                          border: 'none',
+                          color: VS.text2,
+                          cursor: 'pointer',
+                          padding: 5,
+                          borderRadius: 6,
+                          display: 'flex',
+                          alignItems: 'center',
+                          transition: 'color 0.15s',
+                        }}
+                        onMouseEnter={(e) => (e.currentTarget.style.color = VS.red)}
+                        onMouseLeave={(e) => (e.currentTarget.style.color = VS.text2)}
+                      >
+                        <Trash2 size={15} />
+                      </button>
                     </div>
                   </div>
-                </CardHeader>
-                <CardContent>
-                  <h3 className="font-semibold text-lg mb-2">{report.title || 'General Report'}</h3>
-                  <p className="text-sm text-muted-foreground mb-2">Created by {report.userName}</p>
 
-                  {report.description && (
-                    <p className="text-sm text-white mb-4 bg-surface-elevated rounded p-2">
-                      {report.description.length > 100
-                        ? `${report.description.substring(0, 100)}...`
-                        : report.description}
-                    </p>
-                  )}
-
-                  {report.image && (
-                    <div className="mb-4">
-                      <img
-                        src={report.image}
-                        alt="Report screenshot"
-                        className="w-full max-h-96 object-contain rounded border border-border cursor-pointer hover:shadow-lg transition-shadow"
-                        onClick={() => window.open(report.image, '_blank')}
-                      />
+                  {/* Card Body */}
+                  <div style={{ padding: '14px 16px 16px 20px' }}>
+                    <div style={{ fontSize: 15, fontWeight: 600, color: VS.text0, marginBottom: 4 }}>
+                      {report.title || 'General Report'}
                     </div>
-                  )}
+                    <div style={{ fontSize: 12, color: VS.text2, marginBottom: 10 }}>
+                      Created by {report.userName}
+                    </div>
 
-                  {report.project && (
-                    <div className="space-y-2">
-                      <div className="flex justify-between text-sm">
-                        <span className="text-muted-foreground">Status:</span>
-                        <Badge className={cn(
-                          "text-xs",
-                          report.project.status === 'completed' ? 'bg-success/20 text-success' :
-                          report.project.status === 'active' ? 'bg-info/20 text-info' :
-                          'bg-warning/20 text-warning'
-                        )}>
-                          {report.project.status}
-                        </Badge>
+                    {report.description && (
+                      <div
+                        style={{
+                          fontSize: 13,
+                          color: VS.text1,
+                          background: VS.bg2,
+                          borderRadius: 6,
+                          padding: '8px 10px',
+                          marginBottom: 12,
+                          lineHeight: 1.5,
+                        }}
+                      >
+                        {report.description.length > 100
+                          ? `${report.description.substring(0, 100)}...`
+                          : report.description}
                       </div>
-                      {report.project.budget && (
-                        <div className="flex justify-between text-sm">
-                          <span className="text-muted-foreground">Budget:</span>
-                          <span className="font-medium">${report.project.budget.toLocaleString()}</span>
+                    )}
+
+                    {report.image && (
+                      <div style={{ marginBottom: 12 }}>
+                        <img
+                          src={report.image}
+                          alt="Report screenshot"
+                          style={{
+                            width: '100%',
+                            maxHeight: 200,
+                            objectFit: 'contain',
+                            borderRadius: 8,
+                            border: `1px solid ${VS.border}`,
+                            cursor: 'pointer',
+                          }}
+                          onClick={() => window.open(report.image, '_blank')}
+                        />
+                      </div>
+                    )}
+
+                    {report.project && (
+                      <div style={{ display: 'flex', flexDirection: 'column', gap: 6, fontSize: 13 }}>
+                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                          <span style={{ color: VS.text2 }}>Status:</span>
+                          <span
+                            style={{
+                              fontSize: 11,
+                              fontWeight: 600,
+                              padding: '2px 8px',
+                              borderRadius: 4,
+                              background: VS.bg2,
+                              color:
+                                report.project.status === 'completed' ? VS.teal :
+                                report.project.status === 'active' ? VS.blue :
+                                VS.yellow,
+                              border: `1px solid ${VS.border}`,
+                              textTransform: 'capitalize',
+                            }}
+                          >
+                            {report.project.status}
+                          </span>
                         </div>
-                      )}
-                    </div>
-                  )}
-                </CardContent>
-              </Card>
+                        {report.project.budget && (
+                          <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                            <span style={{ color: VS.text2 }}>Budget:</span>
+                            <span style={{ fontWeight: 600, color: VS.text0 }}>
+                              ${report.project.budget.toLocaleString()}
+                            </span>
+                          </div>
+                        )}
+                      </div>
+                    )}
+                  </div>
+                </div>
               );
             })}
           </div>

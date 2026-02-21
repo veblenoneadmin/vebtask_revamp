@@ -1,12 +1,9 @@
 import { useState, useEffect } from 'react';
 import { useSession } from '../lib/auth-client';
 import { useApiClient } from '../lib/api-client';
-import { Card, CardContent, CardHeader, CardTitle } from '../components/ui/card';
-import { Badge } from '../components/ui/badge';
-import { Progress } from '../components/ui/progress';
-import { 
-  CheckCircle2, 
-  Clock, 
+import {
+  CheckCircle2,
+  Clock,
   Calendar,
   TrendingUp,
   FileText,
@@ -14,6 +11,13 @@ import {
   AlertCircle,
   Loader2
 } from 'lucide-react';
+
+const VS = {
+  bg0: '#1e1e1e', bg1: '#252526', bg2: '#2d2d2d', bg3: '#333333',
+  border: '#3c3c3c', text0: '#f0f0f0', text1: '#c0c0c0', text2: '#909090',
+  blue: '#569cd6', teal: '#4ec9b0', yellow: '#dcdcaa', orange: '#ce9178',
+  purple: '#c586c0', red: '#f44747', green: '#6a9955', accent: '#007acc',
+};
 
 interface TaskSummary {
   id: string;
@@ -51,6 +55,24 @@ interface DashboardStats {
   completionRate: number;
 }
 
+const getPriorityStyle = (priority: string): { color: string; bg: string } => {
+  switch (priority) {
+    case 'Urgent':
+    case 'High': return { color: VS.red, bg: `${VS.red}18` };
+    case 'Medium': return { color: VS.yellow, bg: `${VS.yellow}18` };
+    case 'Low': return { color: VS.blue, bg: `${VS.blue}18` };
+    default: return { color: VS.text2, bg: VS.bg3 };
+  }
+};
+
+const getStatusStyle = (status: string): { color: string } => {
+  switch (status) {
+    case 'completed': return { color: VS.teal };
+    case 'in_progress': return { color: VS.blue };
+    default: return { color: VS.text2 };
+  }
+};
+
 export function ClientDashboard() {
   const { data: session } = useSession();
   const apiClient = useApiClient();
@@ -75,13 +97,11 @@ export function ClientDashboard() {
         setLoading(true);
         setError(null);
 
-        // Fetch tasks
         const tasksResponse = await apiClient.fetch(`/api/tasks/recent?userId=${session.user.id}&limit=50`);
         if (tasksResponse.success) {
           setTasks(tasksResponse.tasks || []);
         }
 
-        // Fetch recent time entries
         const timeResponse = await apiClient.fetch(`/api/timers/recent?userId=${session.user.id}&limit=10`);
         if (timeResponse.entries) {
           setRecentTimeEntries(timeResponse.entries.map((entry: any) => ({
@@ -93,26 +113,24 @@ export function ClientDashboard() {
             duration: entry.duration || 0,
             description: entry.description || '',
             category: entry.category || 'work',
-            isBillable: false // Will be enhanced later
+            isBillable: false
           })));
         }
 
-        // Calculate stats from tasks
         if (tasksResponse.success && tasksResponse.tasks) {
           const allTasks = tasksResponse.tasks;
           const completed = allTasks.filter((t: TaskSummary) => t.status === 'completed').length;
-          const active = allTasks.filter((t: TaskSummary) => 
+          const active = allTasks.filter((t: TaskSummary) =>
             t.status === 'in_progress' || t.status === 'not_started'
           ).length;
           const totalHours = allTasks.reduce((sum: number, t: TaskSummary) => sum + (t.actualHours || 0), 0);
-          
-          // Calculate this week's hours from time entries
+
           const oneWeekAgo = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000);
-          const thisWeekEntries = timeResponse.entries?.filter((entry: any) => 
+          const thisWeekEntries = timeResponse.entries?.filter((entry: any) =>
             new Date(entry.startTime) >= oneWeekAgo
           ) || [];
-          const thisWeekHours = thisWeekEntries.reduce((sum: number, entry: any) => 
-            sum + (entry.duration || 0), 0) / 3600; // Convert seconds to hours
+          const thisWeekHours = thisWeekEntries.reduce((sum: number, entry: any) =>
+            sum + (entry.duration || 0), 0) / 3600;
 
           setStats({
             totalTasks: allTasks.length,
@@ -138,9 +156,7 @@ export function ClientDashboard() {
   const formatDuration = (seconds: number) => {
     const hours = Math.floor(seconds / 3600);
     const minutes = Math.floor((seconds % 3600) / 60);
-    if (hours > 0) {
-      return `${hours}h ${minutes}m`;
-    }
+    if (hours > 0) return `${hours}h ${minutes}m`;
     return `${minutes}m`;
   };
 
@@ -153,209 +169,187 @@ export function ClientDashboard() {
     });
   };
 
-  const getPriorityColor = (priority: string) => {
-    switch (priority) {
-      case 'Urgent': return 'destructive';
-      case 'High': return 'destructive';
-      case 'Medium': return 'secondary';
-      case 'Low': return 'outline';
-      default: return 'secondary';
-    }
-  };
-
-  const getStatusColor = (status: string) => {
-    switch (status) {
-      case 'completed': return 'text-green-600';
-      case 'in_progress': return 'text-blue-600';
-      case 'not_started': return 'text-gray-600';
-      default: return 'text-gray-600';
-    }
-  };
-
   if (loading) {
     return (
-      <div className="container mx-auto p-6">
-        <div className="flex items-center justify-center h-64">
-          <Loader2 className="h-8 w-8 animate-spin text-primary" />
-          <span className="ml-2">Loading dashboard...</span>
-        </div>
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: 256, color: VS.text1 }}>
+        <Loader2 size={28} style={{ animation: 'spin 1s linear infinite', marginRight: 10 }} />
+        <span>Loading dashboard...</span>
       </div>
     );
   }
 
   if (error) {
     return (
-      <div className="container mx-auto p-6">
-        <Card className="border-destructive">
-          <CardContent className="pt-6">
-            <div className="flex items-center space-x-2 text-destructive">
-              <AlertCircle className="h-4 w-4" />
-              <span>{error}</span>
-            </div>
-          </CardContent>
-        </Card>
+      <div style={{ padding: 24 }}>
+        <div style={{ background: VS.bg1, border: `1px solid ${VS.red}40`, borderRadius: 6, padding: 18 }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8, color: VS.red }}>
+            <AlertCircle size={16} />
+            <span style={{ fontSize: 13 }}>{error}</span>
+          </div>
+        </div>
       </div>
     );
   }
 
+  const statCards = [
+    {
+      label: 'Total Tasks',
+      value: stats.totalTasks,
+      sub: `${stats.completedTasks} completed`,
+      icon: <CheckCircle2 size={16} color={VS.text2} />,
+      accent: VS.teal,
+    },
+    {
+      label: 'Completion Rate',
+      value: `${stats.completionRate}%`,
+      sub: null,
+      icon: <TrendingUp size={16} color={VS.text2} />,
+      accent: VS.accent,
+      progress: stats.completionRate,
+    },
+    {
+      label: 'Total Hours',
+      value: `${stats.totalHours.toFixed(1)}h`,
+      sub: 'All time',
+      icon: <Clock size={16} color={VS.text2} />,
+      accent: VS.yellow,
+    },
+    {
+      label: 'This Week',
+      value: `${stats.thisWeekHours}h`,
+      sub: 'Last 7 days',
+      icon: <Calendar size={16} color={VS.text2} />,
+      accent: VS.purple,
+    },
+  ];
+
   return (
-    <div className="container mx-auto p-6 space-y-6">
-      <div className="flex items-center justify-between">
-        <h1 className="text-2xl font-bold">Client Dashboard</h1>
-        <Badge variant="outline">
+    <div style={{ color: VS.text0, fontFamily: 'inherit' }}>
+      {/* Header */}
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 24 }}>
+        <h1 style={{ fontSize: 22, fontWeight: 700, color: VS.text0, margin: 0 }}>Client Dashboard</h1>
+        <span style={{ fontSize: 12, background: `${VS.accent}15`, color: VS.accent, border: `1px solid ${VS.accent}40`, borderRadius: 4, padding: '3px 10px' }}>
           {stats.activeTasks} Active Tasks
-        </Badge>
+        </span>
       </div>
 
       {/* Stats Overview */}
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
-        <Card>
-          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">Total Tasks</CardTitle>
-            <CheckCircle2 className="h-4 w-4 text-muted-foreground" />
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold">{stats.totalTasks}</div>
-            <p className="text-xs text-muted-foreground">
-              {stats.completedTasks} completed
-            </p>
-          </CardContent>
-        </Card>
-
-        <Card>
-          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">Completion Rate</CardTitle>
-            <TrendingUp className="h-4 w-4 text-muted-foreground" />
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold">{stats.completionRate}%</div>
-            <Progress value={stats.completionRate} className="mt-2" />
-          </CardContent>
-        </Card>
-
-        <Card>
-          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">Total Hours</CardTitle>
-            <Clock className="h-4 w-4 text-muted-foreground" />
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold">{stats.totalHours.toFixed(1)}h</div>
-            <p className="text-xs text-muted-foreground">
-              All time
-            </p>
-          </CardContent>
-        </Card>
-
-        <Card>
-          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">This Week</CardTitle>
-            <Calendar className="h-4 w-4 text-muted-foreground" />
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold">{stats.thisWeekHours}h</div>
-            <p className="text-xs text-muted-foreground">
-              Last 7 days
-            </p>
-          </CardContent>
-        </Card>
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 16, marginBottom: 24 }}>
+        {statCards.map((card, i) => (
+          <div key={i} style={{ background: VS.bg1, border: `1px solid ${VS.border}`, borderRadius: 6, padding: 18 }}>
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 10 }}>
+              <span style={{ fontSize: 12, color: VS.text2, fontWeight: 600 }}>{card.label}</span>
+              {card.icon}
+            </div>
+            <div style={{ fontSize: 26, fontWeight: 700, color: card.accent }}>{card.value}</div>
+            {card.sub && <p style={{ fontSize: 11, color: VS.text2, marginTop: 4 }}>{card.sub}</p>}
+            {card.progress !== undefined && (
+              <div style={{ marginTop: 10, height: 4, background: VS.bg3, borderRadius: 2, overflow: 'hidden' }}>
+                <div style={{ height: '100%', width: `${card.progress}%`, background: VS.accent, borderRadius: 2, transition: 'width 0.3s' }} />
+              </div>
+            )}
+          </div>
+        ))}
       </div>
 
       {/* Tasks and Time Entries */}
-      <div className="grid lg:grid-cols-2 gap-6">
+      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 20 }}>
         {/* Recent Tasks */}
-        <Card>
-          <CardHeader>
-            <CardTitle className="flex items-center space-x-2">
-              <FileText className="h-5 w-5" />
-              <span>Recent Tasks</span>
-            </CardTitle>
-          </CardHeader>
-          <CardContent>
-            {tasks.length === 0 ? (
-              <div className="text-center py-8 text-muted-foreground">
-                <FileText className="h-12 w-12 mx-auto mb-4 opacity-50" />
-                <p>No tasks found</p>
-                <p className="text-sm">Tasks will appear here once created</p>
-              </div>
-            ) : (
-              <div className="space-y-4">
-                {tasks.slice(0, 5).map((task) => (
-                  <div key={task.id} className="flex items-center justify-between">
-                    <div className="flex-1 min-w-0">
-                      <h4 className="text-sm font-medium truncate">{task.title}</h4>
-                      <div className="flex items-center space-x-2 mt-1">
-                        <Badge variant={getPriorityColor(task.priority)} className="text-xs">
+        <div style={{ background: VS.bg1, border: `1px solid ${VS.border}`, borderRadius: 6, padding: 20 }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 16 }}>
+            <FileText size={16} color={VS.text2} />
+            <h2 style={{ fontSize: 15, fontWeight: 600, color: VS.text0, margin: 0 }}>Recent Tasks</h2>
+          </div>
+
+          {tasks.length === 0 ? (
+            <div style={{ textAlign: 'center', padding: '40px 0', color: VS.text2 }}>
+              <FileText size={40} style={{ opacity: 0.4, marginBottom: 12, display: 'block', margin: '0 auto 12px' }} />
+              <p style={{ margin: 0 }}>No tasks found</p>
+              <p style={{ fontSize: 12, marginTop: 4 }}>Tasks will appear here once created</p>
+            </div>
+          ) : (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
+              {tasks.slice(0, 5).map((task) => {
+                const ps = getPriorityStyle(task.priority);
+                const ss = getStatusStyle(task.status);
+                return (
+                  <div key={task.id} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                    <div style={{ flex: 1, minWidth: 0 }}>
+                      <h4 style={{ fontSize: 13, fontWeight: 600, color: VS.text0, margin: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                        {task.title}
+                      </h4>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginTop: 4 }}>
+                        <span style={{ fontSize: 11, background: ps.bg, color: ps.color, padding: '2px 7px', borderRadius: 4 }}>
                           {task.priority}
-                        </Badge>
-                        <span className={`text-xs ${getStatusColor(task.status)}`}>
+                        </span>
+                        <span style={{ fontSize: 11, color: ss.color }}>
                           {task.status.replace('_', ' ')}
                         </span>
                       </div>
                     </div>
-                    <div className="text-right">
-                      <div className="text-sm font-medium">
+                    <div style={{ textAlign: 'right', flexShrink: 0, marginLeft: 12 }}>
+                      <div style={{ fontSize: 13, fontWeight: 600, color: VS.text0 }}>
                         {task.actualHours || 0}h / {task.estimatedHours || 0}h
                       </div>
-                      <div className="text-xs text-muted-foreground">
+                      <div style={{ fontSize: 11, color: VS.text2, marginTop: 2 }}>
                         {formatDate(task.updatedAt)}
                       </div>
                     </div>
                   </div>
-                ))}
-              </div>
-            )}
-          </CardContent>
-        </Card>
+                );
+              })}
+            </div>
+          )}
+        </div>
 
         {/* Recent Time Entries */}
-        <Card>
-          <CardHeader>
-            <CardTitle className="flex items-center space-x-2">
-              <BarChart3 className="h-5 w-5" />
-              <span>Recent Time Entries</span>
-            </CardTitle>
-          </CardHeader>
-          <CardContent>
-            {recentTimeEntries.length === 0 ? (
-              <div className="text-center py-8 text-muted-foreground">
-                <Clock className="h-12 w-12 mx-auto mb-4 opacity-50" />
-                <p>No time entries found</p>
-                <p className="text-sm">Time tracking data will appear here</p>
-              </div>
-            ) : (
-              <div className="space-y-4">
-                {recentTimeEntries.map((entry) => (
-                  <div key={entry.id} className="flex items-center justify-between">
-                    <div className="flex-1 min-w-0">
-                      <h4 className="text-sm font-medium truncate">{entry.taskTitle}</h4>
-                      <div className="flex items-center space-x-2 mt-1">
-                        <Badge variant="outline" className="text-xs">
-                          {entry.category}
-                        </Badge>
-                        <span className="text-xs text-muted-foreground">
-                          {formatDate(entry.begin)}
-                        </span>
-                      </div>
-                      {entry.description && (
-                        <p className="text-xs text-muted-foreground mt-1 truncate">
-                          {entry.description}
-                        </p>
-                      )}
+        <div style={{ background: VS.bg1, border: `1px solid ${VS.border}`, borderRadius: 6, padding: 20 }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 16 }}>
+            <BarChart3 size={16} color={VS.text2} />
+            <h2 style={{ fontSize: 15, fontWeight: 600, color: VS.text0, margin: 0 }}>Recent Time Entries</h2>
+          </div>
+
+          {recentTimeEntries.length === 0 ? (
+            <div style={{ textAlign: 'center', padding: '40px 0', color: VS.text2 }}>
+              <Clock size={40} style={{ opacity: 0.4, marginBottom: 12, display: 'block', margin: '0 auto 12px' }} />
+              <p style={{ margin: 0 }}>No time entries found</p>
+              <p style={{ fontSize: 12, marginTop: 4 }}>Time tracking data will appear here</p>
+            </div>
+          ) : (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
+              {recentTimeEntries.map((entry) => (
+                <div key={entry.id} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                  <div style={{ flex: 1, minWidth: 0 }}>
+                    <h4 style={{ fontSize: 13, fontWeight: 600, color: VS.text0, margin: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                      {entry.taskTitle}
+                    </h4>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginTop: 4 }}>
+                      <span style={{ fontSize: 11, background: VS.bg3, color: VS.text2, border: `1px solid ${VS.border}`, padding: '2px 7px', borderRadius: 4 }}>
+                        {entry.category}
+                      </span>
+                      <span style={{ fontSize: 11, color: VS.text2 }}>
+                        {formatDate(entry.begin)}
+                      </span>
                     </div>
-                    <div className="text-right">
-                      <div className="text-sm font-medium">
-                        {formatDuration(entry.duration)}
-                      </div>
-                      <div className="text-xs text-muted-foreground">
-                        {entry.end ? 'Completed' : 'Running'}
-                      </div>
+                    {entry.description && (
+                      <p style={{ fontSize: 11, color: VS.text2, marginTop: 4, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                        {entry.description}
+                      </p>
+                    )}
+                  </div>
+                  <div style={{ textAlign: 'right', flexShrink: 0, marginLeft: 12 }}>
+                    <div style={{ fontSize: 13, fontWeight: 600, color: VS.text0 }}>
+                      {formatDuration(entry.duration)}
+                    </div>
+                    <div style={{ fontSize: 11, color: entry.end ? VS.text2 : VS.teal, marginTop: 2 }}>
+                      {entry.end ? 'Completed' : 'Running'}
                     </div>
                   </div>
-                ))}
-              </div>
-            )}
-          </CardContent>
-        </Card>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
       </div>
     </div>
   );

@@ -2,10 +2,7 @@ import { useState, useEffect } from 'react';
 import { useSession } from '../lib/auth-client';
 import { useApiClient } from '../lib/api-client';
 import { useOrganization } from '../contexts/OrganizationContext';
-import { Card, CardContent, CardHeader } from '../components/ui/card';
-import { Button } from '../components/ui/button';
-import { Badge } from '../components/ui/badge';
-import { 
+import {
   Building2,
   Mail,
   Phone,
@@ -21,7 +18,13 @@ import {
   TrendingUp,
   Users
 } from 'lucide-react';
-import { cn } from '../lib/utils';
+
+const VS = {
+  bg0: '#1e1e1e', bg1: '#252526', bg2: '#2d2d2d', bg3: '#333333',
+  border: '#3c3c3c', text0: '#f0f0f0', text1: '#c0c0c0', text2: '#909090',
+  blue: '#569cd6', teal: '#4ec9b0', yellow: '#dcdcaa', orange: '#ce9178',
+  purple: '#c586c0', red: '#f44747', green: '#6a9955', accent: '#007acc',
+};
 
 interface Client {
   id: string;
@@ -42,7 +45,6 @@ interface Client {
   notes: string;
   priority: 'high' | 'medium' | 'low';
 }
-
 
 export function Clients() {
   const { data: session } = useSession();
@@ -70,15 +72,14 @@ export function Clients() {
     notes: ''
   });
 
-  // Fetch clients from server
   const fetchClients = async () => {
     if (!session?.user?.id) return;
-    
+
     try {
       setLoading(true);
       setError(null);
       const data = await apiClient.fetch(`/api/clients?userId=${session.user.id}&orgId=${currentOrg?.id || ''}&limit=100`);
-      
+
       if (data.success) {
         setClients(data.clients || []);
       } else {
@@ -93,37 +94,45 @@ export function Clients() {
     }
   };
 
-  // Fetch clients on component mount and when session changes
   useEffect(() => {
     fetchClients();
   }, [session?.user?.id, currentOrg?.id]);
 
   const filteredClients = clients.filter(client => {
-    const matchesSearch = client.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-                         client.company.toLowerCase().includes(searchTerm.toLowerCase()) ||
-                         client.contactPerson.toLowerCase().includes(searchTerm.toLowerCase()) ||
-                         client.industry.toLowerCase().includes(searchTerm.toLowerCase());
+    const matchesSearch =
+      client.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      client.company.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      client.contactPerson.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      client.industry.toLowerCase().includes(searchTerm.toLowerCase());
     const matchesStatus = filterStatus === 'all' || client.status === filterStatus;
     const matchesPriority = filterPriority === 'all' || client.priority === filterPriority;
-    
+
     return matchesSearch && matchesStatus && matchesPriority;
   });
 
-  const getStatusColor = (status: string) => {
+  const getStatusBadgeStyle = (status: string): React.CSSProperties => {
     switch (status) {
-      case 'active': return 'text-success bg-success/10 border-success/20';
-      case 'inactive': return 'text-muted-foreground bg-muted/10 border-border';
-      case 'potential': return 'text-warning bg-warning/10 border-warning/20';
-      default: return 'text-muted-foreground bg-muted/10 border-border';
+      case 'active':
+        return { background: `${VS.teal}18`, border: `1px solid ${VS.teal}33`, color: VS.teal };
+      case 'inactive':
+        return { background: `${VS.text2}18`, border: `1px solid ${VS.text2}33`, color: VS.text2 };
+      case 'potential':
+        return { background: `${VS.yellow}18`, border: `1px solid ${VS.yellow}33`, color: VS.yellow };
+      default:
+        return { background: `${VS.text2}18`, border: `1px solid ${VS.text2}33`, color: VS.text2 };
     }
   };
 
-  const getPriorityColor = (priority: string) => {
+  const getPriorityBadgeStyle = (priority: string): React.CSSProperties => {
     switch (priority) {
-      case 'high': return 'text-error bg-error/10 border-error/20';
-      case 'medium': return 'text-warning bg-warning/10 border-warning/20';
-      case 'low': return 'text-info bg-info/10 border-info/20';
-      default: return 'text-muted-foreground bg-muted/10 border-border';
+      case 'high':
+        return { background: `${VS.red}18`, border: `1px solid ${VS.red}33`, color: VS.red };
+      case 'medium':
+        return { background: `${VS.yellow}18`, border: `1px solid ${VS.yellow}33`, color: VS.yellow };
+      case 'low':
+        return { background: `${VS.blue}18`, border: `1px solid ${VS.blue}33`, color: VS.blue };
+      default:
+        return { background: `${VS.text2}18`, border: `1px solid ${VS.text2}33`, color: VS.text2 };
     }
   };
 
@@ -133,7 +142,7 @@ export function Clients() {
 
     try {
       setNewClientLoading(true);
-      
+
       const data = await apiClient.fetch('/api/clients', {
         method: 'POST',
         body: JSON.stringify({
@@ -153,7 +162,6 @@ export function Clients() {
       });
 
       if (data.success) {
-        // Refresh the entire client list from server
         await fetchClients();
       } else {
         throw new Error('Failed to create client');
@@ -182,439 +190,744 @@ export function Clients() {
     totalClients: clients.length,
     activeClients: clients.filter(c => c.status === 'active').length,
     totalRevenue: clients.reduce((sum, client) => sum + client.totalEarnings, 0),
-    avgHourlyRate: clients.length > 0 
-      ? Math.round(clients.reduce((sum, client) => sum + client.hourlyRate, 0) / clients.length)
-      : 0
+    avgHourlyRate:
+      clients.length > 0
+        ? Math.round(clients.reduce((sum, client) => sum + client.hourlyRate, 0) / clients.length)
+        : 0
   };
 
+  const inputStyle: React.CSSProperties = {
+    background: VS.bg2,
+    border: `1px solid ${VS.border}`,
+    borderRadius: 8,
+    color: VS.text0,
+    padding: '8px 12px',
+    outline: 'none',
+    width: '100%',
+    fontSize: 14,
+  };
+
+  const statsCards = [
+    { icon: Users, color: VS.blue, label: 'Total Clients', value: clientStats.totalClients.toString() },
+    { icon: TrendingUp, color: VS.teal, label: 'Active Clients', value: clientStats.activeClients.toString() },
+    { icon: DollarSign, color: VS.accent, label: 'Total Revenue', value: `$${clientStats.totalRevenue.toLocaleString()}` },
+    { icon: Clock, color: VS.yellow, label: 'Avg. Rate/Hour', value: `$${clientStats.avgHourlyRate}` },
+  ];
+
   return (
-    <div className="space-y-8">
+    <div className="space-y-6">
       {/* Header */}
-      <div className="flex items-center justify-between">
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
         <div>
-          <h1 className="text-3xl font-bold gradient-text">Clients</h1>
-          <p className="text-muted-foreground mt-2">Manage your client relationships and contacts</p>
+          <h1 style={{ fontSize: 28, fontWeight: 700, color: VS.text0, margin: 0 }}>Clients</h1>
+          <p style={{ color: VS.text2, marginTop: 4, fontSize: 14 }}>Manage your client relationships and contacts</p>
         </div>
-        <div className="flex items-center space-x-2">
-          <div className="flex items-center bg-surface-elevated rounded-lg p-1">
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+          {/* Grid/List Toggle */}
+          <div style={{ background: VS.bg2, borderRadius: 8, padding: 4, display: 'flex', gap: 2 }}>
             <button
               onClick={() => setViewMode('grid')}
-              className={cn(
-                "px-3 py-1 rounded text-sm font-medium transition-colors",
-                viewMode === 'grid' 
-                  ? "bg-primary text-white shadow-sm" 
-                  : "text-muted-foreground hover:text-foreground"
-              )}
+              style={{
+                padding: '4px 14px',
+                borderRadius: 6,
+                border: 'none',
+                cursor: 'pointer',
+                fontSize: 13,
+                fontWeight: 500,
+                transition: 'background 0.15s, color 0.15s',
+                background: viewMode === 'grid' ? VS.bg3 : 'transparent',
+                color: viewMode === 'grid' ? VS.text0 : VS.text2,
+              }}
             >
               Grid
             </button>
             <button
               onClick={() => setViewMode('list')}
-              className={cn(
-                "px-3 py-1 rounded text-sm font-medium transition-colors",
-                viewMode === 'list' 
-                  ? "bg-primary text-white shadow-sm" 
-                  : "text-muted-foreground hover:text-foreground"
-              )}
+              style={{
+                padding: '4px 14px',
+                borderRadius: 6,
+                border: 'none',
+                cursor: 'pointer',
+                fontSize: 13,
+                fontWeight: 500,
+                transition: 'background 0.15s, color 0.15s',
+                background: viewMode === 'list' ? VS.bg3 : 'transparent',
+                color: viewMode === 'list' ? VS.text0 : VS.text2,
+              }}
             >
               List
             </button>
           </div>
-          <Button 
+          {/* Add Client Button */}
+          <button
             onClick={() => setShowNewClientModal(true)}
-            className="bg-gradient-primary hover:bg-gradient-primary/90 text-white shadow-glow"
+            style={{
+              background: VS.accent,
+              color: 'white',
+              border: 'none',
+              borderRadius: 8,
+              padding: '8px 16px',
+              cursor: 'pointer',
+              fontSize: 14,
+              fontWeight: 500,
+              display: 'flex',
+              alignItems: 'center',
+              gap: 6,
+            }}
           >
-            <Plus className="h-4 w-4 mr-2" />
+            <Plus size={16} />
             Add Client
-          </Button>
+          </button>
         </div>
       </div>
 
       {/* Stats Cards */}
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
-        <Card className="glass shadow-elevation">
-          <CardContent className="p-6">
-            <div className="flex items-center">
-              <div className="h-12 w-12 rounded-xl bg-gradient-primary flex items-center justify-center shadow-glow mr-4">
-                <Users className="h-6 w-6 text-white" />
-              </div>
-              <div>
-                <p className="text-2xl font-bold">{clientStats.totalClients}</p>
-                <p className="text-sm text-muted-foreground">Total Clients</p>
-              </div>
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 16 }}>
+        {statsCards.map(({ icon: Icon, color, label, value }) => (
+          <div
+            key={label}
+            style={{
+              background: VS.bg1,
+              border: `1px solid ${VS.border}`,
+              borderRadius: 12,
+              padding: 20,
+              display: 'flex',
+              alignItems: 'center',
+              gap: 16,
+            }}
+          >
+            <div
+              style={{
+                width: 40,
+                height: 40,
+                borderRadius: 10,
+                background: `${color}18`,
+                border: `1px solid ${color}33`,
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                flexShrink: 0,
+              }}
+            >
+              <Icon size={20} color={color} />
             </div>
-          </CardContent>
-        </Card>
-
-        <Card className="glass shadow-elevation">
-          <CardContent className="p-6">
-            <div className="flex items-center">
-              <div className="h-12 w-12 rounded-xl bg-gradient-success flex items-center justify-center shadow-glow mr-4">
-                <TrendingUp className="h-6 w-6 text-white" />
-              </div>
-              <div>
-                <p className="text-2xl font-bold">{clientStats.activeClients}</p>
-                <p className="text-sm text-muted-foreground">Active Clients</p>
-              </div>
+            <div>
+              <p style={{ fontSize: 22, fontWeight: 700, color: VS.text0, margin: 0 }}>{value}</p>
+              <p style={{ fontSize: 12, color: VS.text2, margin: 0 }}>{label}</p>
             </div>
-          </CardContent>
-        </Card>
-
-        <Card className="glass shadow-elevation">
-          <CardContent className="p-6">
-            <div className="flex items-center">
-              <div className="h-12 w-12 rounded-xl bg-gradient-info flex items-center justify-center shadow-glow mr-4">
-                <DollarSign className="h-6 w-6 text-white" />
-              </div>
-              <div>
-                <p className="text-2xl font-bold">${clientStats.totalRevenue.toLocaleString()}</p>
-                <p className="text-sm text-muted-foreground">Total Revenue</p>
-              </div>
-            </div>
-          </CardContent>
-        </Card>
-
-        <Card className="glass shadow-elevation">
-          <CardContent className="p-6">
-            <div className="flex items-center">
-              <div className="h-12 w-12 rounded-xl bg-gradient-warning flex items-center justify-center shadow-glow mr-4">
-                <Clock className="h-6 w-6 text-white" />
-              </div>
-              <div>
-                <p className="text-2xl font-bold">${clientStats.avgHourlyRate}</p>
-                <p className="text-sm text-muted-foreground">Avg. Rate/Hour</p>
-              </div>
-            </div>
-          </CardContent>
-        </Card>
+          </div>
+        ))}
       </div>
 
-      {/* Filters */}
-      <Card className="glass shadow-elevation">
-        <CardContent className="p-6">
-          <div className="flex flex-col md:flex-row gap-4 items-center">
-            {/* Search */}
-            <div className="relative flex-1">
-              <Search className="absolute left-3 top-3 h-4 w-4 text-muted-foreground" />
-              <input
-                type="text"
-                placeholder="Search clients..."
-                value={searchTerm}
-                onChange={(e) => setSearchTerm(e.target.value)}
-                className="w-full pl-10 pr-4 py-2 glass-surface border border-border rounded-lg focus:outline-none focus:ring-2 focus:ring-primary"
-              />
-            </div>
-
-            {/* Status Filter */}
-            <select
-              value={filterStatus}
-              onChange={(e) => setFilterStatus(e.target.value)}
-              className="px-4 py-2 glass-surface border border-border rounded-lg focus:outline-none focus:ring-2 focus:ring-primary"
-            >
-              <option value="all">All Status</option>
-              <option value="active">Active</option>
-              <option value="inactive">Inactive</option>
-              <option value="potential">Potential</option>
-            </select>
-
-            {/* Priority Filter */}
-            <select
-              value={filterPriority}
-              onChange={(e) => setFilterPriority(e.target.value)}
-              className="px-4 py-2 glass-surface border border-border rounded-lg focus:outline-none focus:ring-2 focus:ring-primary"
-            >
-              <option value="all">All Priority</option>
-              <option value="high">High</option>
-              <option value="medium">Medium</option>
-              <option value="low">Low</option>
-            </select>
-
-            <Button size="sm" variant="outline" className="glass-surface">
-              <Filter className="h-4 w-4 mr-2" />
-              More Filters
-            </Button>
+      {/* Filter Bar */}
+      <div
+        style={{
+          background: VS.bg1,
+          border: `1px solid ${VS.border}`,
+          borderRadius: 12,
+          padding: 16,
+        }}
+      >
+        <div style={{ display: 'flex', gap: 12, alignItems: 'center', flexWrap: 'wrap' }}>
+          {/* Search */}
+          <div style={{ position: 'relative', flex: 1, minWidth: 200 }}>
+            <Search
+              size={15}
+              color={VS.text2}
+              style={{ position: 'absolute', left: 10, top: '50%', transform: 'translateY(-50%)', pointerEvents: 'none' }}
+            />
+            <input
+              type="text"
+              placeholder="Search clients..."
+              value={searchTerm}
+              onChange={e => setSearchTerm(e.target.value)}
+              style={{ ...inputStyle, paddingLeft: 32 }}
+            />
           </div>
-        </CardContent>
-      </Card>
+
+          {/* Status Filter */}
+          <select
+            value={filterStatus}
+            onChange={e => setFilterStatus(e.target.value)}
+            style={{ ...inputStyle, width: 'auto', cursor: 'pointer' }}
+          >
+            <option value="all">All Status</option>
+            <option value="active">Active</option>
+            <option value="inactive">Inactive</option>
+            <option value="potential">Potential</option>
+          </select>
+
+          {/* Priority Filter */}
+          <select
+            value={filterPriority}
+            onChange={e => setFilterPriority(e.target.value)}
+            style={{ ...inputStyle, width: 'auto', cursor: 'pointer' }}
+          >
+            <option value="all">All Priority</option>
+            <option value="high">High</option>
+            <option value="medium">Medium</option>
+            <option value="low">Low</option>
+          </select>
+
+          <button
+            style={{
+              background: VS.bg2,
+              border: `1px solid ${VS.border}`,
+              borderRadius: 8,
+              color: VS.text1,
+              padding: '8px 14px',
+              cursor: 'pointer',
+              fontSize: 13,
+              display: 'flex',
+              alignItems: 'center',
+              gap: 6,
+            }}
+          >
+            <Filter size={14} />
+            More Filters
+          </button>
+        </div>
+      </div>
 
       {/* Clients Display */}
       {viewMode === 'grid' ? (
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-          {filteredClients.map((client) => (
-            <Card key={client.id} className="glass shadow-elevation hover:shadow-elevation-hover transition-all duration-200">
-              <CardContent className="p-6">
-                <div className="flex items-start justify-between mb-4">
-                  <div className="flex items-center space-x-3">
-                    <div className="h-12 w-12 rounded-xl bg-gradient-primary flex items-center justify-center shadow-glow">
-                      <Building2 className="h-6 w-6 text-white" />
-                    </div>
-                    <div>
-                      <h3 className="font-semibold text-lg">{client.name}</h3>
-                      <p className="text-sm text-muted-foreground">{client.contactPerson}</p>
-                    </div>
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 16 }}>
+          {filteredClients.map(client => (
+            <div
+              key={client.id}
+              style={{
+                background: VS.bg1,
+                border: `1px solid ${VS.border}`,
+                borderRadius: 12,
+                padding: 20,
+              }}
+            >
+              {/* Card Header */}
+              <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', marginBottom: 16 }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+                  <div
+                    style={{
+                      width: 44,
+                      height: 44,
+                      borderRadius: 10,
+                      background: `${VS.accent}22`,
+                      border: `1px solid ${VS.accent}44`,
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      flexShrink: 0,
+                    }}
+                  >
+                    <Building2 size={22} color={VS.accent} />
                   </div>
-                  <div className="flex items-center space-x-2">
-                    <Badge className={cn("text-xs capitalize", getStatusColor(client.status))}>
-                      {client.status}
-                    </Badge>
-                    <Badge className={cn("text-xs capitalize", getPriorityColor(client.priority))}>
-                      {client.priority}
-                    </Badge>
-                  </div>
-                </div>
-
-                <div className="space-y-3 mb-4">
-                  <div className="flex items-center space-x-2 text-sm">
-                    <Mail className="h-4 w-4 text-muted-foreground" />
-                    <span className="truncate">{client.email}</span>
-                  </div>
-                  <div className="flex items-center space-x-2 text-sm">
-                    <Phone className="h-4 w-4 text-muted-foreground" />
-                    <span>{client.phone}</span>
-                  </div>
-                  <div className="flex items-center space-x-2 text-sm">
-                    <MapPin className="h-4 w-4 text-muted-foreground" />
-                    <span className="truncate">{client.address}</span>
+                  <div>
+                    <h3 style={{ fontSize: 15, fontWeight: 600, color: VS.text0, margin: 0 }}>{client.name}</h3>
+                    <p style={{ fontSize: 12, color: VS.text2, margin: 0 }}>{client.contactPerson}</p>
                   </div>
                 </div>
-
-                <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 py-4 border-t border-border">
-                  <div className="text-center">
-                    <p className="text-sm font-semibold">{client.totalProjects}</p>
-                    <p className="text-xs text-muted-foreground">Projects</p>
-                  </div>
-                  <div className="text-center">
-                    <p className="text-sm font-semibold">{client.totalHours}h</p>
-                    <p className="text-xs text-muted-foreground">Hours</p>
-                  </div>
-                  <div className="text-center">
-                    <p className="text-sm font-semibold text-success">${client.totalEarnings.toLocaleString()}</p>
-                    <p className="text-xs text-muted-foreground">Revenue</p>
-                  </div>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 4, alignItems: 'flex-end' }}>
+                  <span
+                    style={{
+                      fontSize: 11,
+                      fontWeight: 500,
+                      padding: '2px 8px',
+                      borderRadius: 4,
+                      textTransform: 'capitalize',
+                      ...getStatusBadgeStyle(client.status),
+                    }}
+                  >
+                    {client.status}
+                  </span>
+                  <span
+                    style={{
+                      fontSize: 11,
+                      fontWeight: 500,
+                      padding: '2px 8px',
+                      borderRadius: 4,
+                      textTransform: 'capitalize',
+                      ...getPriorityBadgeStyle(client.priority),
+                    }}
+                  >
+                    {client.priority}
+                  </span>
                 </div>
-
-                <div className="flex items-center justify-between pt-4 border-t border-border">
-                  <div className="text-sm text-muted-foreground">
-                    Last activity: {new Date(client.lastActivity).toLocaleDateString()}
-                  </div>
-                  <div className="flex items-center space-x-2">
-                    <Button size="sm" variant="outline" className="glass-surface">
-                      <Edit className="h-4 w-4" />
-                    </Button>
-                    <Button size="sm" variant="outline" className="glass-surface text-error hover:bg-error/10">
-                      <Trash2 className="h-4 w-4" />
-                    </Button>
-                  </div>
-                </div>
-              </CardContent>
-            </Card>
-          ))}
-        </div>
-      ) : (
-        <Card className="glass shadow-elevation">
-          <CardHeader>
-            <div className="flex items-center justify-between">
-              <h2 className="text-xl font-semibold">All Clients ({filteredClients.length})</h2>
-            </div>
-          </CardHeader>
-          <CardContent className="p-0">
-            <div className="overflow-x-auto">
-              <table className="w-full">
-                <thead>
-                  <tr className="border-b border-border">
-                    <th className="text-left p-4 font-medium text-muted-foreground">Client</th>
-                    <th className="text-left p-4 font-medium text-muted-foreground">Contact</th>
-                    <th className="text-left p-4 font-medium text-muted-foreground">Industry</th>
-                    <th className="text-left p-4 font-medium text-muted-foreground">Projects</th>
-                    <th className="text-left p-4 font-medium text-muted-foreground">Revenue</th>
-                    <th className="text-left p-4 font-medium text-muted-foreground">Rate</th>
-                    <th className="text-left p-4 font-medium text-muted-foreground">Status</th>
-                    <th className="text-left p-4 font-medium text-muted-foreground">Actions</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {filteredClients.map((client) => (
-                    <tr key={client.id} className="border-b border-border hover:bg-surface-elevated/50 transition-colors">
-                      <td className="p-4">
-                        <div className="flex items-center space-x-3">
-                          <div className="h-10 w-10 rounded-lg bg-gradient-primary flex items-center justify-center shadow-glow">
-                            <Building2 className="h-5 w-5 text-white" />
-                          </div>
-                          <div>
-                            <p className="font-medium">{client.name}</p>
-                            <p className="text-sm text-muted-foreground">{client.company}</p>
-                          </div>
-                        </div>
-                      </td>
-                      <td className="p-4">
-                        <div>
-                          <p className="font-medium">{client.contactPerson}</p>
-                          <p className="text-sm text-muted-foreground">{client.email}</p>
-                        </div>
-                      </td>
-                      <td className="p-4">
-                        <span className="text-sm">{client.industry}</span>
-                      </td>
-                      <td className="p-4">
-                        <div className="flex items-center space-x-2">
-                          <FileText className="h-4 w-4 text-muted-foreground" />
-                          <span className="font-medium">{client.totalProjects}</span>
-                        </div>
-                      </td>
-                      <td className="p-4">
-                        <span className="font-bold text-success">
-                          ${client.totalEarnings.toLocaleString()}
-                        </span>
-                      </td>
-                      <td className="p-4">
-                        <span className="text-sm font-medium">${client.hourlyRate}/hr</span>
-                      </td>
-                      <td className="p-4">
-                        <Badge className={cn("text-xs capitalize", getStatusColor(client.status))}>
-                          {client.status}
-                        </Badge>
-                      </td>
-                      <td className="p-4">
-                        <div className="flex items-center space-x-2">
-                          <Button size="sm" variant="outline" className="glass-surface">
-                            <Edit className="h-4 w-4" />
-                          </Button>
-                          <Button size="sm" variant="outline" className="glass-surface text-error hover:bg-error/10">
-                            <Trash2 className="h-4 w-4" />
-                          </Button>
-                        </div>
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-            
-            {filteredClients.length === 0 && (
-              <div className="text-center py-12">
-                <Building2 className="h-12 w-12 text-muted-foreground mx-auto mb-4" />
-                <h3 className="text-lg font-semibold mb-2">No clients found</h3>
-                <p className="text-muted-foreground mb-4">
-                  {searchTerm || filterStatus !== 'all' || filterPriority !== 'all' 
-                    ? 'Try adjusting your filters or search term'
-                    : 'Add your first client to get started'
-                  }
-                </p>
-                <Button onClick={() => setShowNewClientModal(true)}>
-                  <Plus className="h-4 w-4 mr-2" />
-                  Add Client
-                </Button>
               </div>
-            )}
-          </CardContent>
-        </Card>
-      )}
 
-      {/* New Client Modal */}
-      {showNewClientModal && (
-        <div className="modal-overlay">
-          <div className="modal-content">
-            <div className="modal-header">
-              <h2>Add New Client</h2>
-              <button className="modal-close" onClick={() => setShowNewClientModal(false)}>
-                <Plus className="rotate-45" size={20} />
+              {/* Contact Details */}
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 8, marginBottom: 16 }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 13, color: VS.text1 }}>
+                  <Mail size={14} color={VS.text2} />
+                  <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{client.email}</span>
+                </div>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 13, color: VS.text1 }}>
+                  <Phone size={14} color={VS.text2} />
+                  <span>{client.phone}</span>
+                </div>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 13, color: VS.text1 }}>
+                  <MapPin size={14} color={VS.text2} />
+                  <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{client.address}</span>
+                </div>
+              </div>
+
+              {/* Stats Row */}
+              <div
+                style={{
+                  display: 'grid',
+                  gridTemplateColumns: '1fr 1fr 1fr',
+                  gap: 8,
+                  paddingTop: 14,
+                  marginTop: 4,
+                  borderTop: `1px solid ${VS.border}`,
+                  marginBottom: 14,
+                }}
+              >
+                <div style={{ textAlign: 'center' }}>
+                  <p style={{ fontSize: 14, fontWeight: 600, color: VS.text0, margin: 0 }}>{client.totalProjects}</p>
+                  <p style={{ fontSize: 11, color: VS.text2, margin: 0 }}>Projects</p>
+                </div>
+                <div style={{ textAlign: 'center' }}>
+                  <p style={{ fontSize: 14, fontWeight: 600, color: VS.text0, margin: 0 }}>{client.totalHours}h</p>
+                  <p style={{ fontSize: 11, color: VS.text2, margin: 0 }}>Hours</p>
+                </div>
+                <div style={{ textAlign: 'center' }}>
+                  <p style={{ fontSize: 14, fontWeight: 600, color: VS.teal, margin: 0 }}>${client.totalEarnings.toLocaleString()}</p>
+                  <p style={{ fontSize: 11, color: VS.text2, margin: 0 }}>Revenue</p>
+                </div>
+              </div>
+
+              {/* Card Footer */}
+              <div
+                style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'space-between',
+                  paddingTop: 12,
+                  borderTop: `1px solid ${VS.border}`,
+                }}
+              >
+                <span style={{ fontSize: 12, color: VS.text2 }}>
+                  Last activity: {new Date(client.lastActivity).toLocaleDateString()}
+                </span>
+                <div style={{ display: 'flex', gap: 6 }}>
+                  <button
+                    style={{
+                      background: VS.bg2,
+                      border: `1px solid ${VS.border}`,
+                      borderRadius: 6,
+                      color: VS.text1,
+                      padding: '5px 8px',
+                      cursor: 'pointer',
+                      display: 'flex',
+                      alignItems: 'center',
+                    }}
+                  >
+                    <Edit size={14} />
+                  </button>
+                  <button
+                    style={{
+                      background: VS.bg2,
+                      border: `1px solid ${VS.border}`,
+                      borderRadius: 6,
+                      color: VS.red,
+                      padding: '5px 8px',
+                      cursor: 'pointer',
+                      display: 'flex',
+                      alignItems: 'center',
+                    }}
+                  >
+                    <Trash2 size={14} />
+                  </button>
+                </div>
+              </div>
+            </div>
+          ))}
+
+          {filteredClients.length === 0 && (
+            <div
+              style={{
+                gridColumn: '1 / -1',
+                textAlign: 'center',
+                padding: '48px 0',
+              }}
+            >
+              <Building2 size={48} color={VS.text2} style={{ margin: '0 auto 16px' }} />
+              <h3 style={{ fontSize: 18, fontWeight: 600, color: VS.text0, marginBottom: 8 }}>No clients found</h3>
+              <p style={{ color: VS.text2, marginBottom: 16 }}>
+                {searchTerm || filterStatus !== 'all' || filterPriority !== 'all'
+                  ? 'Try adjusting your filters or search term'
+                  : 'Add your first client to get started'}
+              </p>
+              <button
+                onClick={() => setShowNewClientModal(true)}
+                style={{
+                  background: VS.accent,
+                  color: 'white',
+                  border: 'none',
+                  borderRadius: 8,
+                  padding: '8px 16px',
+                  cursor: 'pointer',
+                  fontSize: 14,
+                  display: 'inline-flex',
+                  alignItems: 'center',
+                  gap: 6,
+                }}
+              >
+                <Plus size={16} />
+                Add Client
               </button>
             </div>
-            
-            <form onSubmit={handleCreateClient} className="modal-form">
-              <div className="form-row">
-                <div className="form-group">
-                  <label>Client Name *</label>
+          )}
+        </div>
+      ) : (
+        /* List View */
+        <div
+          style={{
+            background: VS.bg1,
+            border: `1px solid ${VS.border}`,
+            borderRadius: 12,
+            overflow: 'hidden',
+          }}
+        >
+          <div
+            style={{
+              padding: '16px 20px',
+              borderBottom: `1px solid ${VS.border}`,
+            }}
+          >
+            <h2 style={{ fontSize: 16, fontWeight: 600, color: VS.text0, margin: 0 }}>
+              All Clients ({filteredClients.length})
+            </h2>
+          </div>
+          <div style={{ overflowX: 'auto' }}>
+            <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+              <thead>
+                <tr style={{ borderBottom: `1px solid ${VS.border}` }}>
+                  {['Client', 'Contact', 'Industry', 'Projects', 'Revenue', 'Rate', 'Status', 'Actions'].map(col => (
+                    <th
+                      key={col}
+                      style={{
+                        textAlign: 'left',
+                        padding: '12px 16px',
+                        fontSize: 12,
+                        fontWeight: 500,
+                        color: VS.text2,
+                        whiteSpace: 'nowrap',
+                      }}
+                    >
+                      {col}
+                    </th>
+                  ))}
+                </tr>
+              </thead>
+              <tbody>
+                {filteredClients.map(client => (
+                  <tr
+                    key={client.id}
+                    style={{ borderBottom: `1px solid ${VS.border}` }}
+                    onMouseEnter={e => (e.currentTarget.style.background = VS.bg2)}
+                    onMouseLeave={e => (e.currentTarget.style.background = 'transparent')}
+                  >
+                    <td style={{ padding: '12px 16px' }}>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                        <div
+                          style={{
+                            width: 36,
+                            height: 36,
+                            borderRadius: 8,
+                            background: `${VS.accent}22`,
+                            border: `1px solid ${VS.accent}44`,
+                            display: 'flex',
+                            alignItems: 'center',
+                            justifyContent: 'center',
+                            flexShrink: 0,
+                          }}
+                        >
+                          <Building2 size={18} color={VS.accent} />
+                        </div>
+                        <div>
+                          <p style={{ fontSize: 14, fontWeight: 500, color: VS.text0, margin: 0 }}>{client.name}</p>
+                          <p style={{ fontSize: 12, color: VS.text2, margin: 0 }}>{client.company}</p>
+                        </div>
+                      </div>
+                    </td>
+                    <td style={{ padding: '12px 16px' }}>
+                      <p style={{ fontSize: 14, fontWeight: 500, color: VS.text0, margin: 0 }}>{client.contactPerson}</p>
+                      <p style={{ fontSize: 12, color: VS.text2, margin: 0 }}>{client.email}</p>
+                    </td>
+                    <td style={{ padding: '12px 16px', fontSize: 13, color: VS.text1 }}>{client.industry}</td>
+                    <td style={{ padding: '12px 16px' }}>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 14, color: VS.text0 }}>
+                        <FileText size={14} color={VS.text2} />
+                        <span style={{ fontWeight: 500 }}>{client.totalProjects}</span>
+                      </div>
+                    </td>
+                    <td style={{ padding: '12px 16px' }}>
+                      <span style={{ fontSize: 14, fontWeight: 700, color: VS.teal }}>${client.totalEarnings.toLocaleString()}</span>
+                    </td>
+                    <td style={{ padding: '12px 16px', fontSize: 13, color: VS.text1 }}>${client.hourlyRate}/hr</td>
+                    <td style={{ padding: '12px 16px' }}>
+                      <span
+                        style={{
+                          fontSize: 11,
+                          fontWeight: 500,
+                          padding: '3px 8px',
+                          borderRadius: 4,
+                          textTransform: 'capitalize',
+                          ...getStatusBadgeStyle(client.status),
+                        }}
+                      >
+                        {client.status}
+                      </span>
+                    </td>
+                    <td style={{ padding: '12px 16px' }}>
+                      <div style={{ display: 'flex', gap: 6 }}>
+                        <button
+                          style={{
+                            background: VS.bg2,
+                            border: `1px solid ${VS.border}`,
+                            borderRadius: 6,
+                            color: VS.text1,
+                            padding: '5px 8px',
+                            cursor: 'pointer',
+                            display: 'flex',
+                            alignItems: 'center',
+                          }}
+                        >
+                          <Edit size={14} />
+                        </button>
+                        <button
+                          style={{
+                            background: VS.bg2,
+                            border: `1px solid ${VS.border}`,
+                            borderRadius: 6,
+                            color: VS.red,
+                            padding: '5px 8px',
+                            cursor: 'pointer',
+                            display: 'flex',
+                            alignItems: 'center',
+                          }}
+                        >
+                          <Trash2 size={14} />
+                        </button>
+                      </div>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+
+            {filteredClients.length === 0 && (
+              <div style={{ textAlign: 'center', padding: '48px 0' }}>
+                <Building2 size={48} color={VS.text2} style={{ margin: '0 auto 16px' }} />
+                <h3 style={{ fontSize: 18, fontWeight: 600, color: VS.text0, marginBottom: 8 }}>No clients found</h3>
+                <p style={{ color: VS.text2, marginBottom: 16 }}>
+                  {searchTerm || filterStatus !== 'all' || filterPriority !== 'all'
+                    ? 'Try adjusting your filters or search term'
+                    : 'Add your first client to get started'}
+                </p>
+                <button
+                  onClick={() => setShowNewClientModal(true)}
+                  style={{
+                    background: VS.accent,
+                    color: 'white',
+                    border: 'none',
+                    borderRadius: 8,
+                    padding: '8px 16px',
+                    cursor: 'pointer',
+                    fontSize: 14,
+                    display: 'inline-flex',
+                    alignItems: 'center',
+                    gap: 6,
+                  }}
+                >
+                  <Plus size={16} />
+                  Add Client
+                </button>
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+
+      {/* Add Client Modal */}
+      {showNewClientModal && (
+        <div
+          style={{
+            position: 'fixed',
+            inset: 0,
+            background: 'rgba(0,0,0,0.75)',
+            zIndex: 9999,
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            padding: 16,
+          }}
+          onClick={e => { if (e.target === e.currentTarget) setShowNewClientModal(false); }}
+        >
+          <div
+            style={{
+              background: VS.bg1,
+              border: `1px solid ${VS.border}`,
+              borderRadius: 12,
+              width: '95%',
+              maxWidth: 640,
+              maxHeight: '90vh',
+              overflowY: 'auto',
+            }}
+          >
+            {/* Modal Header */}
+            <div
+              style={{
+                background: VS.bg2,
+                borderBottom: `1px solid ${VS.border}`,
+                padding: '20px 24px',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'space-between',
+                borderRadius: '12px 12px 0 0',
+              }}
+            >
+              <h2 style={{ fontSize: 18, fontWeight: 600, color: VS.text0, margin: 0 }}>Add New Client</h2>
+              <button
+                onClick={() => setShowNewClientModal(false)}
+                style={{
+                  background: 'transparent',
+                  border: 'none',
+                  color: VS.text2,
+                  cursor: 'pointer',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  padding: 4,
+                  borderRadius: 4,
+                }}
+              >
+                <Plus size={20} style={{ transform: 'rotate(45deg)' }} />
+              </button>
+            </div>
+
+            {/* Modal Body */}
+            <form onSubmit={handleCreateClient} style={{ padding: 24 }}>
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16, marginBottom: 16 }}>
+                <div>
+                  <label style={{ display: 'block', fontSize: 13, fontWeight: 500, color: VS.text1, marginBottom: 6 }}>
+                    Client Name *
+                  </label>
                   <input
                     type="text"
                     value={newClientForm.name}
-                    onChange={(e) => setNewClientForm(prev => ({ ...prev, name: e.target.value }))}
+                    onChange={e => setNewClientForm(prev => ({ ...prev, name: e.target.value }))}
                     required
                     placeholder="Enter client name"
+                    style={inputStyle}
                   />
                 </div>
-                <div className="form-group">
-                  <label>Company</label>
+                <div>
+                  <label style={{ display: 'block', fontSize: 13, fontWeight: 500, color: VS.text1, marginBottom: 6 }}>
+                    Company
+                  </label>
                   <input
                     type="text"
                     value={newClientForm.company}
-                    onChange={(e) => setNewClientForm(prev => ({ ...prev, company: e.target.value }))}
+                    onChange={e => setNewClientForm(prev => ({ ...prev, company: e.target.value }))}
                     placeholder="Company name"
+                    style={inputStyle}
                   />
                 </div>
               </div>
 
-              <div className="form-row">
-                <div className="form-group">
-                  <label>Email *</label>
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16, marginBottom: 16 }}>
+                <div>
+                  <label style={{ display: 'block', fontSize: 13, fontWeight: 500, color: VS.text1, marginBottom: 6 }}>
+                    Email *
+                  </label>
                   <input
                     type="email"
                     value={newClientForm.email}
-                    onChange={(e) => setNewClientForm(prev => ({ ...prev, email: e.target.value }))}
+                    onChange={e => setNewClientForm(prev => ({ ...prev, email: e.target.value }))}
                     required
                     placeholder="client@company.com"
+                    style={inputStyle}
                   />
                 </div>
-                <div className="form-group">
-                  <label>Phone</label>
+                <div>
+                  <label style={{ display: 'block', fontSize: 13, fontWeight: 500, color: VS.text1, marginBottom: 6 }}>
+                    Phone
+                  </label>
                   <input
                     type="tel"
                     value={newClientForm.phone}
-                    onChange={(e) => setNewClientForm(prev => ({ ...prev, phone: e.target.value }))}
+                    onChange={e => setNewClientForm(prev => ({ ...prev, phone: e.target.value }))}
                     placeholder="+1 (555) 123-4567"
+                    style={inputStyle}
                   />
                 </div>
               </div>
 
-              <div className="form-group">
-                <label>Address</label>
+              <div style={{ marginBottom: 16 }}>
+                <label style={{ display: 'block', fontSize: 13, fontWeight: 500, color: VS.text1, marginBottom: 6 }}>
+                  Address
+                </label>
                 <input
                   type="text"
                   value={newClientForm.address}
-                  onChange={(e) => setNewClientForm(prev => ({ ...prev, address: e.target.value }))}
+                  onChange={e => setNewClientForm(prev => ({ ...prev, address: e.target.value }))}
                   placeholder="Client address"
+                  style={inputStyle}
                 />
               </div>
 
-              <div className="form-row">
-                <div className="form-group">
-                  <label>Contact Person *</label>
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16, marginBottom: 16 }}>
+                <div>
+                  <label style={{ display: 'block', fontSize: 13, fontWeight: 500, color: VS.text1, marginBottom: 6 }}>
+                    Contact Person *
+                  </label>
                   <input
                     type="text"
                     value={newClientForm.contactPerson}
-                    onChange={(e) => setNewClientForm(prev => ({ ...prev, contactPerson: e.target.value }))}
+                    onChange={e => setNewClientForm(prev => ({ ...prev, contactPerson: e.target.value }))}
                     required
                     placeholder="John Smith"
+                    style={inputStyle}
                   />
                 </div>
-                <div className="form-group">
-                  <label>Industry</label>
+                <div>
+                  <label style={{ display: 'block', fontSize: 13, fontWeight: 500, color: VS.text1, marginBottom: 6 }}>
+                    Industry
+                  </label>
                   <input
                     type="text"
                     value={newClientForm.industry}
-                    onChange={(e) => setNewClientForm(prev => ({ ...prev, industry: e.target.value }))}
+                    onChange={e => setNewClientForm(prev => ({ ...prev, industry: e.target.value }))}
                     placeholder="Technology, Finance, etc."
+                    style={inputStyle}
                   />
                 </div>
               </div>
 
-              <div className="form-row">
-                <div className="form-group">
-                  <label>Hourly Rate ($)</label>
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16, marginBottom: 16 }}>
+                <div>
+                  <label style={{ display: 'block', fontSize: 13, fontWeight: 500, color: VS.text1, marginBottom: 6 }}>
+                    Hourly Rate ($)
+                  </label>
                   <input
                     type="number"
                     value={newClientForm.hourlyRate}
-                    onChange={(e) => setNewClientForm(prev => ({ ...prev, hourlyRate: parseFloat(e.target.value) || 0 }))}
+                    onChange={e => setNewClientForm(prev => ({ ...prev, hourlyRate: parseFloat(e.target.value) || 0 }))}
                     min="0"
                     step="5"
                     placeholder="95"
+                    style={inputStyle}
                   />
                 </div>
-                <div className="form-group">
-                  <label>Priority</label>
+                <div>
+                  <label style={{ display: 'block', fontSize: 13, fontWeight: 500, color: VS.text1, marginBottom: 6 }}>
+                    Priority
+                  </label>
                   <select
                     value={newClientForm.priority}
-                    onChange={(e) => setNewClientForm(prev => ({ ...prev, priority: e.target.value as 'low' | 'medium' | 'high' }))}
+                    onChange={e => setNewClientForm(prev => ({ ...prev, priority: e.target.value as 'low' | 'medium' | 'high' }))}
+                    style={{ ...inputStyle, cursor: 'pointer' }}
                   >
                     <option value="low">Low</option>
                     <option value="medium">Medium</option>
@@ -623,21 +936,52 @@ export function Clients() {
                 </div>
               </div>
 
-              <div className="form-group">
-                <label>Notes</label>
+              <div style={{ marginBottom: 24 }}>
+                <label style={{ display: 'block', fontSize: 13, fontWeight: 500, color: VS.text1, marginBottom: 6 }}>
+                  Notes
+                </label>
                 <textarea
                   value={newClientForm.notes}
-                  onChange={(e) => setNewClientForm(prev => ({ ...prev, notes: e.target.value }))}
+                  onChange={e => setNewClientForm(prev => ({ ...prev, notes: e.target.value }))}
                   rows={3}
                   placeholder="Additional notes about the client..."
+                  style={{ ...inputStyle, resize: 'vertical' }}
                 />
               </div>
 
-              <div className="modal-actions">
-                <button type="button" className="secondary-btn" onClick={() => setShowNewClientModal(false)}>
+              {/* Modal Actions */}
+              <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 10 }}>
+                <button
+                  type="button"
+                  onClick={() => setShowNewClientModal(false)}
+                  style={{
+                    background: VS.bg2,
+                    border: `1px solid ${VS.border}`,
+                    borderRadius: 8,
+                    color: VS.text1,
+                    padding: '8px 20px',
+                    cursor: 'pointer',
+                    fontSize: 14,
+                    fontWeight: 500,
+                  }}
+                >
                   Cancel
                 </button>
-                <button type="submit" className="primary-btn" disabled={newClientLoading}>
+                <button
+                  type="submit"
+                  disabled={newClientLoading}
+                  style={{
+                    background: newClientLoading ? VS.bg3 : VS.accent,
+                    border: 'none',
+                    borderRadius: 8,
+                    color: 'white',
+                    padding: '8px 20px',
+                    cursor: newClientLoading ? 'not-allowed' : 'pointer',
+                    fontSize: 14,
+                    fontWeight: 500,
+                    opacity: newClientLoading ? 0.7 : 1,
+                  }}
+                >
                   {newClientLoading ? 'Adding...' : 'Add Client'}
                 </button>
               </div>

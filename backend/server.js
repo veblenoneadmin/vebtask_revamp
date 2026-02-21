@@ -120,6 +120,24 @@ async function runDatabaseMigrations() {
   } catch (err) {
     console.warn('⚠️  task_attachments table ensure failed:', err.message);
   }
+
+  // Add break columns to attendance_logs if they don't exist yet
+  try {
+    await prisma.$executeRawUnsafe(
+      `ALTER TABLE attendance_logs ADD COLUMN IF NOT EXISTS breakStart DATETIME(3) NULL`
+    );
+    console.log('✅ attendance_logs.breakStart column ensured');
+  } catch (err) {
+    console.warn('⚠️  attendance_logs.breakStart column ensure failed:', err.message);
+  }
+  try {
+    await prisma.$executeRawUnsafe(
+      `ALTER TABLE attendance_logs ADD COLUMN IF NOT EXISTS breakDuration INT NOT NULL DEFAULT 0`
+    );
+    console.log('✅ attendance_logs.breakDuration column ensured');
+  } catch (err) {
+    console.warn('⚠️  attendance_logs.breakDuration column ensure failed:', err.message);
+  }
 }
 
 // Auto-seed initial test account if database is empty

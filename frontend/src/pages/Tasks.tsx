@@ -849,12 +849,19 @@ export function Tasks() {
                           <div className="flex items-center justify-between">
                             <div className="flex -space-x-2">
                               {task.assignee ? (
-                                <div
-                                  className="h-8 w-8 rounded-full flex items-center justify-center text-[10px] font-bold text-white ring-2 ring-[#2d2d2d]"
-                                  title={task.assignee}
-                                  style={{ background: avatarGradient(task.assignee) }}
-                                >
-                                  {getInitials(task.assignee)}
+                                <div className="relative group/avatar">
+                                  <div
+                                    className="h-8 w-8 rounded-full flex items-center justify-center text-[10px] font-bold text-white ring-2 ring-[#2d2d2d]"
+                                    style={{ background: avatarGradient(task.assignee) }}
+                                  >
+                                    {getInitials(task.assignee)}
+                                  </div>
+                                  <div
+                                    className="absolute bottom-full left-1/2 -translate-x-1/2 mb-1.5 px-2 py-1 rounded-md text-[11px] whitespace-nowrap pointer-events-none opacity-0 group-hover/avatar:opacity-100 transition-opacity duration-150 z-50"
+                                    style={{ background: VS.bg1, color: VS.text0, border: `1px solid ${VS.border}`, boxShadow: '0 4px 12px rgba(0,0,0,0.4)' }}
+                                  >
+                                    {task.assignee}
+                                  </div>
                                 </div>
                               ) : (
                                 <div
@@ -882,11 +889,11 @@ export function Tasks() {
                               e.stopPropagation();
                               timerTaskId === task.id ? handleStopTimer(task.id) : handleStartTimer(task.id);
                             }}
-                            className="absolute inset-0 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity duration-200 z-10"
+                            className="absolute inset-0 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity duration-200 z-10 pointer-events-none"
                             title={timerTaskId === task.id ? 'Stop timer' : 'Start timer'}
                           >
                             <span
-                              className="flex items-center justify-center h-10 w-10 rounded-full backdrop-blur-sm transition-transform duration-150 hover:scale-110"
+                              className="flex items-center justify-center h-10 w-10 rounded-full backdrop-blur-sm transition-transform duration-150 hover:scale-110 pointer-events-auto"
                               style={{
                                 background: timerTaskId === task.id ? `${VS.teal}cc` : 'rgba(0,0,0,0.55)',
                                 border: `2px solid ${timerTaskId === task.id ? VS.teal : 'rgba(255,255,255,0.2)'}`,

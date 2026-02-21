@@ -130,6 +130,8 @@ export function Dashboard() {
   const [attendanceLoading, setAttendanceLoading] = useState(false);
   const [onBreak, setOnBreak] = useState(() => !!localStorage.getItem('att_break_start'));
   const [breakAccum, setBreakAccum] = useState(() => Number(localStorage.getItem('att_break_accum') || 0));
+  const todayStr = () => new Date().toISOString().slice(0, 10);
+  const [breakUsed, setBreakUsed] = useState(() => localStorage.getItem('att_break_used') === new Date().toISOString().slice(0, 10));
 
   // ── Fetch everything in parallel ──────────────────────────────────────────
   const fetchDashboard = useCallback(async () => {
@@ -242,6 +244,7 @@ export function Dashboard() {
     }
     localStorage.removeItem('att_break_start');
     localStorage.removeItem('att_break_accum');
+    // keep att_break_used so the 1-per-day limit persists if they clock back in today
     setOnBreak(false);
     setBreakAccum(0);
     try {
@@ -260,9 +263,12 @@ export function Dashboard() {
 
   const handleBreak = () => {
     if (!attendanceActive) return;
+    if (breakUsed && !onBreak) return; // already used today
     if (!onBreak) {
       localStorage.setItem('att_break_start', String(Date.now()));
+      localStorage.setItem('att_break_used', todayStr());
       setOnBreak(true);
+      setBreakUsed(true);
     } else {
       const started = Number(localStorage.getItem('att_break_start') || Date.now());
       const secs = Math.floor((Date.now() - started) / 1000);
@@ -382,17 +388,23 @@ export function Dashboard() {
             </div>
           )}
           {attendanceActive && (
-            <button
-              onClick={handleBreak}
-              disabled={attendanceLoading}
-              className="flex items-center gap-2 px-4 py-2 rounded-lg text-[13px] font-semibold transition-all shrink-0 disabled:opacity-50"
-              style={onBreak
-                ? { background: 'rgba(78,201,176,0.12)', color: VS.teal, border: `1px solid rgba(78,201,176,0.25)` }
-                : { background: 'rgba(255,180,0,0.10)', color: '#f0b429', border: '1px solid rgba(255,180,0,0.25)' }
-              }
-            >
-              {onBreak ? '▶ Resume' : '⏸ Break'}
-            </button>
+            <div className="flex flex-col items-end gap-1">
+              <button
+                onClick={handleBreak}
+                disabled={attendanceLoading || (breakUsed && !onBreak)}
+                title={breakUsed && !onBreak ? 'You can only take 1 break per day' : undefined}
+                className="flex items-center gap-2 px-4 py-2 rounded-lg text-[13px] font-semibold transition-all shrink-0 disabled:opacity-40 disabled:cursor-not-allowed"
+                style={onBreak
+                  ? { background: 'rgba(78,201,176,0.12)', color: VS.teal, border: `1px solid rgba(78,201,176,0.25)` }
+                  : { background: 'rgba(255,180,0,0.10)', color: '#f0b429', border: '1px solid rgba(255,180,0,0.25)' }
+                }
+              >
+                {onBreak ? '▶ Resume' : '⏸ Break'}
+              </button>
+              {breakUsed && !onBreak && (
+                <span className="text-[10px]" style={{ color: VS.red }}>1 break per day limit reached</span>
+              )}
+            </div>
           )}
           <button
             onClick={attendanceActive ? handleTimeOut : handleTimeIn}

@@ -114,6 +114,8 @@ export function Attendance() {
   const [liveTime, setLiveTime] = useState(nowTimeString());
   const [onBreak, setOnBreak] = useState(() => !!localStorage.getItem('att_break_start'));
   const [breakAccum, setBreakAccum] = useState(() => Number(localStorage.getItem('att_break_accum') || 0));
+  const todayStr = () => new Date().toISOString().slice(0, 10);
+  const [breakUsed, setBreakUsed] = useState(() => localStorage.getItem('att_break_used') === new Date().toISOString().slice(0, 10));
 
   const userId = session?.user?.id;
   const orgId = currentOrg?.id;
@@ -195,6 +197,7 @@ export function Attendance() {
     }
     localStorage.removeItem('att_break_start');
     localStorage.removeItem('att_break_accum');
+    // keep att_break_used so the 1-per-day limit persists if they clock back in today
     setOnBreak(false);
     setBreakAccum(0);
     try {
@@ -214,9 +217,12 @@ export function Attendance() {
 
   const handleBreak = () => {
     if (!active) return;
+    if (breakUsed && !onBreak) return; // already used today
     if (!onBreak) {
       localStorage.setItem('att_break_start', String(Date.now()));
+      localStorage.setItem('att_break_used', todayStr());
       setOnBreak(true);
+      setBreakUsed(true);
     } else {
       const started = Number(localStorage.getItem('att_break_start') || Date.now());
       const secs = Math.floor((Date.now() - started) / 1000);
@@ -421,34 +427,42 @@ export function Attendance() {
             ) : (
               <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
                 {/* Break / Resume */}
-                <button
-                  onClick={handleBreak}
-                  disabled={actionLoading}
-                  style={{
-                    width: '100%',
-                    padding: '12px 0',
-                    background: onBreak
-                      ? 'linear-gradient(135deg, hsl(142 76% 36%) 0%, hsl(158 64% 46%) 100%)'
-                      : 'linear-gradient(135deg, hsl(40 96% 40%) 0%, hsl(35 92% 52%) 100%)',
-                    border: 'none',
-                    borderRadius: 12,
-                    color: '#fff',
-                    fontSize: 14,
-                    fontWeight: 700,
-                    cursor: actionLoading ? 'not-allowed' : 'pointer',
-                    opacity: actionLoading ? 0.7 : 1,
-                    display: 'flex',
-                    alignItems: 'center',
-                    justifyContent: 'center',
-                    gap: 8,
-                    transition: 'opacity 0.2s, transform 0.1s',
-                    fontFamily: 'Inter, sans-serif',
-                  }}
-                  onMouseOver={e => { if (!actionLoading) (e.currentTarget.style.transform = 'translateY(-1px)'); }}
-                  onMouseOut={e => (e.currentTarget.style.transform = 'translateY(0)')}
-                >
-                  {onBreak ? '▶ Resume' : '⏸ Take Break'}
-                </button>
+                <div>
+                  <button
+                    onClick={handleBreak}
+                    disabled={actionLoading || (breakUsed && !onBreak)}
+                    title={breakUsed && !onBreak ? 'You can only take 1 break per day' : undefined}
+                    style={{
+                      width: '100%',
+                      padding: '12px 0',
+                      background: onBreak
+                        ? 'linear-gradient(135deg, hsl(142 76% 36%) 0%, hsl(158 64% 46%) 100%)'
+                        : 'linear-gradient(135deg, hsl(40 96% 40%) 0%, hsl(35 92% 52%) 100%)',
+                      border: 'none',
+                      borderRadius: 12,
+                      color: '#fff',
+                      fontSize: 14,
+                      fontWeight: 700,
+                      cursor: (actionLoading || (breakUsed && !onBreak)) ? 'not-allowed' : 'pointer',
+                      opacity: (actionLoading || (breakUsed && !onBreak)) ? 0.4 : 1,
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      gap: 8,
+                      transition: 'opacity 0.2s, transform 0.1s',
+                      fontFamily: 'Inter, sans-serif',
+                    }}
+                    onMouseOver={e => { if (!actionLoading && !(breakUsed && !onBreak)) (e.currentTarget.style.transform = 'translateY(-1px)'); }}
+                    onMouseOut={e => (e.currentTarget.style.transform = 'translateY(0)')}
+                  >
+                    {onBreak ? '▶ Resume' : '⏸ Take Break'}
+                  </button>
+                  {breakUsed && !onBreak && (
+                    <p style={{ fontSize: 11, color: 'hsl(0 84% 65%)', margin: '6px 0 0', textAlign: 'center' }}>
+                      You can only take 1 break per day
+                    </p>
+                  )}
+                </div>
                 {/* Time Out */}
                 <button
                   onClick={handleTimeOut}

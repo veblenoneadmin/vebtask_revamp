@@ -174,6 +174,7 @@ export function Attendance() {
       if (!res.ok) throw new Error(data.error || 'Failed to clock in');
       setNotes('');
       await loadAll();
+      window.dispatchEvent(new CustomEvent('attendance-change'));
     } catch (e: any) { setError(e.message); }
     finally { setActionLoading(false); }
   };
@@ -190,6 +191,7 @@ export function Attendance() {
       if (!res.ok) throw new Error(data.error || 'Failed to clock out');
       setNotes('');
       await loadAll();
+      window.dispatchEvent(new CustomEvent('attendance-change'));
     } catch (e: any) { setError(e.message); }
     finally { setActionLoading(false); }
   };

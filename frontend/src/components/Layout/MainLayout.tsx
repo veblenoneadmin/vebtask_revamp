@@ -93,7 +93,11 @@ const MainLayout: React.FC = () => {
     };
     fetchStatus();
     const poll = setInterval(fetchStatus, 30_000);
-    return () => clearInterval(poll);
+    window.addEventListener('attendance-change', fetchStatus);
+    return () => {
+      clearInterval(poll);
+      window.removeEventListener('attendance-change', fetchStatus);
+    };
   }, [session?.user?.id, orgId]);
 
   // Live elapsed tick

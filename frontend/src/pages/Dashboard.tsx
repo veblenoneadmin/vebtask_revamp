@@ -215,7 +215,10 @@ export function Dashboard() {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ userId: session.user.id, orgId: currentOrg.id }),
       });
-      if (res.ok) setAttendanceActive((await res.json()).log);
+      if (res.ok) {
+        setAttendanceActive((await res.json()).log);
+        window.dispatchEvent(new CustomEvent('attendance-change'));
+      }
     } catch { /* ignore */ }
     finally { setAttendanceLoading(false); }
   };
@@ -228,7 +231,11 @@ export function Dashboard() {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ userId: session.user.id, orgId: currentOrg.id }),
       });
-      if (res.ok) { setAttendanceActive(null); fetchDashboard(); }
+      if (res.ok) {
+        setAttendanceActive(null);
+        fetchDashboard();
+        window.dispatchEvent(new CustomEvent('attendance-change'));
+      }
     } catch { /* ignore */ }
     finally { setAttendanceLoading(false); }
   };

@@ -25,6 +25,7 @@ import adminRoutes from './api/admin.js';
 import passwordResetRoutes from './routes/password-reset.js';
 import invitationRoutes from './api/invitations.js';
 import attendanceRoutes from './api/attendance.js';
+import kpiRoutes from './api/kpi.js';
 import { 
   blockPublicRegistration, 
   addInternalBranding, 
@@ -443,6 +444,7 @@ app.use('/api/admin', adminRoutes);
 app.use('/api/auth', passwordResetRoutes);
 app.use('/api/invitations', invitationRoutes);
 app.use('/api/attendance', attendanceRoutes);
+app.use('/api/kpi', kpiRoutes);
 
 // Test routes for debugging (NO AUTH - REMOVE IN PRODUCTION)
 import testProjectsRoutes from './api/test-projects.js';

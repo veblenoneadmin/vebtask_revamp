@@ -123,8 +123,18 @@ const MainLayout: React.FC = () => {
   }, [attendanceActive, navOnBreak]);
 
   const handleSignOut = async () => {
-    try { await signOut(); } catch { /* ignore */ }
-    window.location.href = '/login';
+    try {
+      await signOut({
+        fetchOptions: {
+          credentials: 'include'
+        }
+      });
+    } catch (error) {
+      console.error('Sign out error:', error);
+    } finally {
+      // Force redirect to login page
+      window.location.href = '/login';
+    }
   };
 
   const getInitials = (email: string) =>

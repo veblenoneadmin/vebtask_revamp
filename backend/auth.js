@@ -88,7 +88,8 @@ export const auth = betterAuth({
     "http://localhost:3000",
     "https://vebtask.com",
     "https://www.vebtask.com",
-    "https://vebtask-production.up.railway.app"
+    "https://vebtask-production.up.railway.app",
+    "https://vebtaskrevamp-production.up.railway.app"
   ],
   
   // Advanced configuration

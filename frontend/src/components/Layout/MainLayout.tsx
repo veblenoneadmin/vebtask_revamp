@@ -38,6 +38,7 @@ const pageTitles: Record<string, string> = {
   '/timesheets':  'Time Logs',
   '/clients':     'Clients',
   '/reports':     'Reports',
+  '/kpi-reports': 'KPI Reports',
   '/admin':       'Administration',
   '/settings':    'Settings',
 };

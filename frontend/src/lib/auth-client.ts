@@ -36,7 +36,36 @@ export const authClient = createAuthClient({
 // Export the hooks and methods we'll use
 export const {
   signIn,
-  signOut, 
   signUp,
   useSession,
 } = authClient;
+
+// Custom sign out with explicit session clearing
+export const signOut = async () => {
+  try {
+    // Call the sign-out endpoint
+    const response = await fetch(`${baseURL}/api/auth/sign-out`, {
+      method: 'POST',
+      credentials: 'include',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+    });
+    
+    if (!response.ok) {
+      console.error('Sign out response error:', response.status, response.statusText);
+    }
+    
+    // Clear any client-side session data
+    localStorage.clear();
+    sessionStorage.clear();
+    
+    return response;
+  } catch (error) {
+    console.error('Sign out error:', error);
+    // Clear client data even if request fails
+    localStorage.clear();
+    sessionStorage.clear();
+    throw error;
+  }
+};

@@ -124,15 +124,12 @@ const MainLayout: React.FC = () => {
 
   const handleSignOut = async () => {
     try {
-      await signOut({
-        fetchOptions: {
-          credentials: 'include'
-        }
-      });
+      await signOut();
+      // Redirect to login after logout
+      window.location.href = '/login';
     } catch (error) {
-      console.error('Sign out error:', error);
-    } finally {
-      // Force redirect to login page
+      console.error('Logout error:', error);
+      // Redirect anyway even if there's an error
       window.location.href = '/login';
     }
   };

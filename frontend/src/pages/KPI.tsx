@@ -126,7 +126,6 @@ function defaultInputVal(period: Period) {
 
 function ChangePill({ value }: { value: number | null }) {
   if (value === null) return <span style={{ fontSize: 11, color: VS.text2 }}>N/A</span>;
-  const positive = value >= 0;
   const color = value > 0 ? VS.teal : value < 0 ? VS.red : VS.text2;
   const Icon = value > 0 ? TrendingUp : value < 0 ? TrendingDown : Minus;
   return (

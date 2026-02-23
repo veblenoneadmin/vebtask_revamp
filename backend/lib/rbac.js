@@ -218,6 +218,7 @@ export function requireRole(minRole) {
       });
 
       if (!membership) {
+        console.warn(`⛔ User ${req.user.email} (${req.user.id}) is not a member of org ${req.orgId}`);
         return res.status(403).json({ 
           error: 'Access denied',
           code: 'NOT_MEMBER',
@@ -229,6 +230,7 @@ export function requireRole(minRole) {
       const requiredRoleLevel = RoleOrder[minRole];
 
       if (userRoleLevel < requiredRoleLevel) {
+        console.warn(`⛔ User ${req.user.email} has role ${membership.role} but ${minRole} required for ${req.method} ${req.path}`);
         return res.status(403).json({ 
           error: 'Insufficient permissions',
           code: 'INSUFFICIENT_ROLE',
@@ -237,6 +239,8 @@ export function requireRole(minRole) {
           current: membership.role
         });
       }
+
+      console.log(`✅ User ${req.user.email} authorized as ${membership.role} for ${req.method} ${req.path}`);
 
       // Add membership to request for use in route handlers
       req.membership = membership;

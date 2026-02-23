@@ -97,6 +97,9 @@ router.get('/users', requireAuth, withOrgScope, requireAdmin, async (req, res) =
     if (!(await checkDatabaseConnection(res))) {
       return; // Response already sent by checkDatabaseConnection
     }
+    
+    console.log(`📋 Fetching admin users for org ${req.orgId}, user ${req.user.id}`);
+    
     const users = await prisma.user.findMany({
       where: {
         memberships: {
@@ -130,12 +133,15 @@ router.get('/users', requireAuth, withOrgScope, requireAdmin, async (req, res) =
       }
     });
 
+    console.log(`✅ Fetched ${users.length} users for org ${req.orgId}`);
+
     res.json({
       success: true,
       users,
       count: users.length
     });
   } catch (error) {
+    console.error(`❌ Failed to fetch admin users for org ${req.orgId}:`, error.message);
     return handleDatabaseError(error, res, 'fetch admin users');
   }
 });

@@ -105,9 +105,21 @@ export function Admin() {
         fetch('/api/admin/users', { credentials: 'include' }),
         fetch('/api/admin/invites', { credentials: 'include' }),
       ]);
-      if (uRes.ok) setUsers((await uRes.json()).users ?? []);
-      if (iRes.ok) setInvites((await iRes.json()).invites ?? []);
-    } catch { /* ignore */ }
+      if (uRes.ok) {
+        setUsers((await uRes.json()).users ?? []);
+      } else {
+        const errData = await uRes.json().catch(() => ({}));
+        console.error('❌ Failed to fetch users:', uRes.status, errData);
+      }
+      if (iRes.ok) {
+        setInvites((await iRes.json()).invites ?? []);
+      } else {
+        const errData = await iRes.json().catch(() => ({}));
+        console.error('❌ Failed to fetch invites:', iRes.status, errData);
+      }
+    } catch (error) {
+      console.error('❌ Error in fetchData:', error);
+    }
     finally { setLoading(false); }
   };
 

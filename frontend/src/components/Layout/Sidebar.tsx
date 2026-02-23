@@ -30,7 +30,6 @@ const getAllNavigationItems = () => [
   { name: 'Time Logs',      href: '/timesheets',  icon: Clock,           roles: ['OWNER', 'ADMIN', 'STAFF', 'CLIENT'] },
   { name: 'Clients',        href: '/clients',     icon: Users,           roles: ['OWNER', 'ADMIN', 'STAFF'] },
   { name: 'Reports',        href: '/reports',     icon: BarChart3,       roles: ['OWNER', 'ADMIN', 'STAFF'] },
-  { name: 'Members',        href: '/members',     icon: Users,           roles: ['OWNER', 'ADMIN'] },
   { name: 'KPI Reports',    href: '/kpi-reports', icon: TrendingUp,      roles: ['OWNER', 'ADMIN', 'STAFF'] },
   { name: 'User Management', href: '/admin',       icon: Users,           roles: ['OWNER', 'ADMIN'] },
   { name: 'Settings',       href: '/settings',    icon: Settings,        roles: ['OWNER', 'ADMIN', 'STAFF', 'CLIENT'] },

@@ -80,8 +80,8 @@ export function OrgMembers() {
     try {
       setLoading(true);
       const [membersRes, invitesRes] = await Promise.all([
-        fetch('/api/admin/users'),
-        fetch('/api/admin/invites'),
+        fetch('/api/admin/users', { credentials: 'include' }),
+        fetch('/api/admin/invites', { credentials: 'include' }),
       ]);
 
       if (membersRes.ok) {

@@ -101,8 +101,8 @@ export function Admin() {
     try {
       setLoading(true);
       const [uRes, iRes] = await Promise.all([
-        fetch('/api/admin/users'),
-        fetch('/api/admin/invites'),
+        fetch('/api/admin/users', { credentials: 'include' }),
+        fetch('/api/admin/invites', { credentials: 'include' }),
       ]);
       if (uRes.ok) setUsers((await uRes.json()).users ?? []);
       if (iRes.ok) setInvites((await iRes.json()).invites ?? []);
@@ -184,6 +184,7 @@ export function Admin() {
     try {
       const res = await fetch('/api/admin/users/create', {
         method: 'POST',
+        credentials: 'include',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ name: addName, email: addEmail, password: addPassword, role: addRole }),
       });

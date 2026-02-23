@@ -83,6 +83,7 @@ export function Admin() {
 
   // Remove member
   const [removingId, setRemovingId] = useState<string | null>(null);
+  const [syncing, setSyncing] = useState(false);
 
   // Add user form
   const [showAddUser, setShowAddUser]       = useState(false);
@@ -197,6 +198,29 @@ export function Admin() {
     } catch { showToast('Failed to revoke invitation.', false); }
   };
 
+  const handleSyncAdmins = async () => {
+    setSyncing(true);
+    try {
+      const res = await fetch('/api/admin/sync-admins', {
+        method: 'POST',
+        credentials: 'include',
+        headers: { 'Content-Type': 'application/json' },
+      });
+      const data = await res.json();
+      if (res.ok) {
+        fetchData();
+        showToast(`✅ Synced! Added ${data.stats.added} admin(s), ${data.stats.skipped} already in org`);
+      } else {
+        showToast(data.error || 'Failed to sync admins', false);
+      }
+    } catch (error) {
+      console.error('Sync error:', error);
+      showToast('Failed to sync admins', false);
+    } finally {
+      setSyncing(false);
+    }
+  };
+
   const handleAddUser = async (e: React.FormEvent) => {
     e.preventDefault();
     setAddingUser(true);
@@ -265,6 +289,16 @@ export function Admin() {
           </p>
         </div>
         <div className="flex items-center gap-2">
+          <button
+            onClick={handleSyncAdmins}
+            disabled={syncing}
+            title="Add all ADMIN/OWNER users from other orgs to this organization"
+            className="flex items-center gap-2 px-4 py-2 rounded-lg text-[13px] font-semibold transition-all hover:opacity-90 disabled:opacity-40"
+            style={{ background: VS.bg2, border: `1px solid ${VS.border2}`, color: VS.blue }}
+          >
+            <Users className="h-4 w-4" />
+            {syncing ? 'Syncing...' : 'Sync Admins'}
+          </button>
           <button
             onClick={() => setShowAddUser(true)}
             className="flex items-center gap-2 px-4 py-2 rounded-lg text-[13px] font-semibold transition-all hover:opacity-90"

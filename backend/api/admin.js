@@ -593,4 +593,82 @@ router.get('/system/status', requireAuth, withOrgScope, requireAdmin, async (req
   }
 });
 
+/**
+ * POST /api/admin/sync-admins
+ * Sync all ADMIN/OWNER users to the current organization
+ * Finds users with admin roles in any org and adds them to this org if missing
+ */
+router.post('/sync-admins', requireAuth, withOrgScope, requireRole('ADMIN'), async (req, res) => {
+  try {
+    if (!(await checkDatabaseConnection(res))) {
+      return;
+    }
+
+    console.log(`🔄 Syncing admin users for org ${req.orgId}...`);
+
+    // Find all users with ADMIN or OWNER role (distinct by userId)
+    const adminMemberships = await prisma.membership.findMany({
+      where: {
+        role: { in: ['ADMIN', 'OWNER'] }
+      },
+      include: {
+        user: { select: { id: true, email: true, name: true } }
+      },
+      distinct: ['userId']
+    });
+
+    let added = 0;
+    let skipped = 0;
+    const results = [];
+
+    for (const membership of adminMemberships) {
+      const userId = membership.user.id;
+      
+      // Check if this user already has a membership in this org
+      const existing = await prisma.membership.findUnique({
+        where: {
+          userId_orgId: { userId, orgId: req.orgId }
+        }
+      });
+
+      if (existing) {
+        skipped++;
+        results.push({
+          email: membership.user.email,
+          status: 'skipped',
+          reason: 'Already in organization'
+        });
+      } else {
+        // Add the user to this org with their existing role
+        await prisma.membership.create({
+          data: {
+            userId,
+            orgId: req.orgId,
+            role: membership.role
+          }
+        });
+        added++;
+        results.push({
+          email: membership.user.email,
+          status: 'added',
+          role: membership.role
+        });
+        console.log(`✅ Added ${membership.user.email} as ${membership.role}`);
+      }
+    }
+
+    console.log(`📊 Sync complete: ${added} added, ${skipped} already members`);
+
+    res.json({
+      success: true,
+      message: `Admin sync complete: ${added} users added, ${skipped} already members`,
+      stats: { added, skipped, total: adminMemberships.length },
+      results
+    });
+  } catch (error) {
+    console.error('❌ Error syncing admin users:', error);
+    return handleDatabaseError(error, res, 'sync admin users');
+  }
+});
+
 export default router;

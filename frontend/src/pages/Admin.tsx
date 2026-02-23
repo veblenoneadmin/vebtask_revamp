@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react';
+import { useSession } from '../lib/auth-client';
 import {
   Users, UserPlus, Mail, Trash2, Edit3, Crown,
   UserCog, Shield, Clock, CheckSquare, X, Check, Eye, EyeOff, UserCheck,
@@ -110,7 +111,11 @@ export function Admin() {
     finally { setLoading(false); }
   };
 
-  useEffect(() => { fetchData(); }, []);
+  const { data: session } = useSession();
+
+  useEffect(() => {
+    if (session?.user?.id) fetchData();
+  }, [session?.user?.id]);
 
   const handleInvite = async (e: React.FormEvent) => {
     e.preventDefault();

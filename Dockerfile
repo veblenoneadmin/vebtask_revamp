@@ -26,4 +26,4 @@ EXPOSE 3001
 
 # Start server immediately; let the server run migrations in background
 # Prisma client is already generated during the frontend/backend build step
-CMD ["sh", "-c", "cd /app/backend && node server.js"]
+CMD ["node", "backend/server.js"]

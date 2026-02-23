@@ -4,9 +4,32 @@ import { prisma } from '../lib/prisma.js';
 import { requireAuth, withOrgScope, requireAdmin, requireRole } from '../lib/rbac.js';
 import { checkDatabaseConnection, handleDatabaseError } from '../lib/api-error-handler.js';
 import crypto from 'crypto';
-import bcrypt from 'bcryptjs';
 
 const router = express.Router();
+
+// ─── Better Auth compatible password hashing ────────────────────────────────
+// Better Auth uses @noble/hashes scrypt with these exact parameters.
+// The stored format is: "<hex_salt>:<hex_hash>"
+// Salt = 32 hex chars (16 bytes), Hash = 64 hex chars (32 bytes)
+async function hashPasswordForBetterAuth(password) {
+  const { scrypt } = await import('@noble/hashes/scrypt');
+  const { bytesToHex } = await import('@noble/hashes/utils');
+
+  // 16 random bytes = 32 hex chars for salt
+  const saltBytes = crypto.randomBytes(16);
+  const salt = bytesToHex(saltBytes);  // 32 hex chars
+
+  // scrypt with dkLen: 32 = 32 bytes = 64 hex chars for hash
+  const hashBytes = scrypt(
+    new TextEncoder().encode(password),
+    new TextEncoder().encode(salt),
+    { N: 16384, r: 16, p: 1, dkLen: 32 }
+  );
+
+  // Final format: "32hexchars:64hexchars"
+  return `${salt}:${bytesToHex(hashBytes)}`;
+}
+// ────────────────────────────────────────────────────────────────────────────
 
 // Validation schemas
 const inviteUserSchema = z.object({
@@ -43,7 +66,6 @@ router.post('/users/create', requireAuth, withOrgScope, requireRole('ADMIN'), as
     // Check if email is already registered
     const existing = await prisma.user.findUnique({ where: { email } });
     if (existing) {
-      // If user exists but isn't in this org, just add the membership
       const existingMembership = await prisma.membership.findUnique({
         where: { userId_orgId: { userId: existing.id, orgId: req.orgId } },
       });
@@ -56,20 +78,27 @@ router.post('/users/create', requireAuth, withOrgScope, requireRole('ADMIN'), as
       return res.status(201).json({ success: true, message: 'Existing user added to organization', userId: existing.id });
     }
 
-    // Create the user
-    const hashedPassword = await bcrypt.hash(password, 12);
+    // Hash password using Better Auth's exact scrypt format
+    const hashedPassword = await hashPasswordForBetterAuth(password);
+
+    // Verify the hash looks correct before saving (32:64 hex chars)
+    const parts = hashedPassword.split(':');
+    if (parts.length !== 2 || parts[0].length !== 32 || parts[1].length !== 64) {
+      console.error('❌ Hash format invalid:', { saltLen: parts[0]?.length, hashLen: parts[1]?.length });
+      return res.status(500).json({ error: 'Password hashing failed - invalid format' });
+    }
+
     const user = await prisma.user.create({
       data: { name, email, emailVerified: true },
     });
 
-    // Create credential account (so they can log in with email + password)
-    // FIX: Changed 'credential' to 'credentials' to match Better Auth's expected providerId
+    // Create credential account
     await prisma.account.create({
       data: {
-        accountId: email,
-        userId:    user.id,
-        providerId: 'credentials',
-        password:  hashedPassword,
+        accountId:  email,
+        userId:     user.id,
+        providerId: 'credential',
+        password:   hashedPassword,
       },
     });
 
@@ -77,6 +106,8 @@ router.post('/users/create', requireAuth, withOrgScope, requireRole('ADMIN'), as
     await prisma.membership.create({
       data: { userId: user.id, orgId: req.orgId, role },
     });
+
+    console.log(`✅ User created: ${email}, hash format: ${parts[0].length}:${parts[1].length}`);
 
     res.status(201).json({
       success: true,
@@ -94,53 +125,31 @@ router.post('/users/create', requireAuth, withOrgScope, requireRole('ADMIN'), as
  */
 router.get('/users', requireAuth, withOrgScope, requireRole('ADMIN'), async (req, res) => {
   try {
-    // Check database connection first
-    if (!(await checkDatabaseConnection(res))) {
-      return; // Response already sent by checkDatabaseConnection
-    }
-    
+    if (!(await checkDatabaseConnection(res))) return;
+
     console.log(`📋 Fetching admin users for org ${req.orgId}, user ${req.user.id}`);
-    
+
     const users = await prisma.user.findMany({
       where: {
-        memberships: {
-          some: {
-            orgId: req.orgId
-          }
-        }
+        memberships: { some: { orgId: req.orgId } }
       },
       include: {
         memberships: {
           where: { orgId: req.orgId },
-          include: {
-            org: {
-              select: { name: true, slug: true }
-            }
-          }
+          include: { org: { select: { name: true, slug: true } } }
         },
         _count: {
           select: {
-            attendanceLogs: {
-              where: { orgId: req.orgId }
-            },
-            macroTasks: {
-              where: { orgId: req.orgId }
-            }
+            attendanceLogs: { where: { orgId: req.orgId } },
+            macroTasks:     { where: { orgId: req.orgId } }
           }
         }
       },
-      orderBy: {
-        createdAt: 'desc'
-      }
+      orderBy: { createdAt: 'desc' }
     });
 
     console.log(`✅ Fetched ${users.length} users for org ${req.orgId}`);
-
-    res.json({
-      success: true,
-      users,
-      count: users.length
-    });
+    res.json({ success: true, users, count: users.length });
   } catch (error) {
     console.error(`❌ Failed to fetch admin users for org ${req.orgId}:`, error.message);
     return handleDatabaseError(error, res, 'fetch admin users');
@@ -149,33 +158,18 @@ router.get('/users', requireAuth, withOrgScope, requireRole('ADMIN'), async (req
 
 /**
  * GET /api/admin/invites
- * List all invitations for the organization
  */
 router.get('/invites', requireAuth, withOrgScope, requireRole('ADMIN'), async (req, res) => {
   try {
-    // Check database connection first
-    if (!(await checkDatabaseConnection(res))) {
-      return; // Response already sent by checkDatabaseConnection
-    }
+    if (!(await checkDatabaseConnection(res))) return;
+
     const invites = await prisma.invite.findMany({
-      where: {
-        orgId: req.orgId
-      },
-      include: {
-        invitedBy: {
-          select: { name: true, email: true }
-        }
-      },
-      orderBy: {
-        createdAt: 'desc'
-      }
+      where: { orgId: req.orgId },
+      include: { invitedBy: { select: { name: true, email: true } } },
+      orderBy: { createdAt: 'desc' }
     });
 
-    res.json({
-      success: true,
-      invites,
-      count: invites.length
-    });
+    res.json({ success: true, invites, count: invites.length });
   } catch (error) {
     return handleDatabaseError(error, res, 'fetch admin invites');
   }
@@ -183,82 +177,41 @@ router.get('/invites', requireAuth, withOrgScope, requireRole('ADMIN'), async (r
 
 /**
  * POST /api/admin/invite
- * Send invitation to new user
  */
 router.post('/invite', requireAuth, withOrgScope, requireRole('ADMIN'), async (req, res) => {
   try {
-    // Check database connection first
-    if (!(await checkDatabaseConnection(res))) {
-      return; // Response already sent by checkDatabaseConnection
-    }
-    
+    if (!(await checkDatabaseConnection(res))) return;
+
     const validation = inviteUserSchema.safeParse(req.body);
     if (!validation.success) {
-      return res.status(400).json({ 
-        error: 'Invalid input',
-        code: 'VALIDATION_ERROR',
-        details: validation.error.errors 
-      });
+      return res.status(400).json({ error: 'Invalid input', code: 'VALIDATION_ERROR', details: validation.error.errors });
     }
 
     const { email, role } = validation.data;
 
-    // Check if user already exists in the organization
     const existingUser = await prisma.user.findFirst({
-      where: {
-        email,
-        memberships: {
-          some: { orgId: req.orgId }
-        }
-      }
+      where: { email, memberships: { some: { orgId: req.orgId } } }
     });
-
     if (existingUser) {
-      return res.status(409).json({
-        error: 'User already exists in this organization',
-        code: 'USER_EXISTS'
-      });
+      return res.status(409).json({ error: 'User already exists in this organization', code: 'USER_EXISTS' });
     }
 
-    // Check if there's already a pending invite
     const existingInvite = await prisma.invite.findFirst({
-      where: {
-        email,
-        orgId: req.orgId,
-        status: 'PENDING'
-      }
+      where: { email, orgId: req.orgId, status: 'PENDING' }
     });
-
     if (existingInvite) {
-      return res.status(409).json({
-        error: 'Invitation already sent to this email',
-        code: 'INVITE_EXISTS'
-      });
+      return res.status(409).json({ error: 'Invitation already sent to this email', code: 'INVITE_EXISTS' });
     }
 
-    // Generate invitation token
     const token = crypto.randomBytes(32).toString('hex');
     const expiresAt = new Date();
-    expiresAt.setDate(expiresAt.getDate() + 7); // 7 days expiration
+    expiresAt.setDate(expiresAt.getDate() + 7);
 
-    // Create invitation
     const invite = await prisma.invite.create({
-      data: {
-        orgId: req.orgId,
-        email,
-        role,
-        token,
-        expiresAt,
-        invitedById: req.user.id
-      },
-      include: {
-        invitedBy: {
-          select: { name: true, email: true }
-        }
-      }
+      data: { orgId: req.orgId, email, role, token, expiresAt, invitedById: req.user.id },
+      include: { invitedBy: { select: { name: true, email: true } } }
     });
 
-    // TODO: Send email invitation here
     console.log(`📧 Invitation created for ${email} with token: ${token}`);
     console.log(`🔗 Invite link: ${process.env.BETTER_AUTH_URL}/invite/${token}`);
 
@@ -281,81 +234,41 @@ router.post('/invite', requireAuth, withOrgScope, requireRole('ADMIN'), async (r
 
 /**
  * PATCH /api/admin/users/:userId/role
- * Update user role in the organization
  */
 router.patch('/users/:userId/role', requireAuth, withOrgScope, requireRole('ADMIN'), async (req, res) => {
   try {
-    // Check database connection first
-    if (!(await checkDatabaseConnection(res))) {
-      return; // Response already sent by checkDatabaseConnection
-    }
-    
+    if (!(await checkDatabaseConnection(res))) return;
+
     const validation = updateRoleSchema.safeParse(req.body);
     if (!validation.success) {
-      return res.status(400).json({ 
-        error: 'Invalid input',
-        code: 'VALIDATION_ERROR',
-        details: validation.error.errors 
-      });
+      return res.status(400).json({ error: 'Invalid input', code: 'VALIDATION_ERROR', details: validation.error.errors });
     }
 
     const { userId } = req.params;
     const { role } = validation.data;
 
-    // Check if user exists in the organization
     const membership = await prisma.membership.findUnique({
-      where: {
-        userId_orgId: {
-          userId,
-          orgId: req.orgId
-        }
-      },
-      include: {
-        user: {
-          select: { name: true, email: true }
-        }
-      }
+      where: { userId_orgId: { userId, orgId: req.orgId } },
+      include: { user: { select: { name: true, email: true } } }
     });
 
     if (!membership) {
-      return res.status(404).json({
-        error: 'User not found in this organization',
-        code: 'USER_NOT_FOUND'
-      });
+      return res.status(404).json({ error: 'User not found in this organization', code: 'USER_NOT_FOUND' });
     }
-
-    // Cannot change owner role
     if (membership.role === 'OWNER') {
-      return res.status(403).json({
-        error: 'Cannot change owner role',
-        code: 'CANNOT_CHANGE_OWNER'
-      });
+      return res.status(403).json({ error: 'Cannot change owner role', code: 'CANNOT_CHANGE_OWNER' });
     }
 
-    // Update user role
     const updatedMembership = await prisma.membership.update({
-      where: {
-        userId_orgId: {
-          userId,
-          orgId: req.orgId
-        }
-      },
+      where: { userId_orgId: { userId, orgId: req.orgId } },
       data: { role },
-      include: {
-        user: {
-          select: { name: true, email: true }
-        }
-      }
+      include: { user: { select: { name: true, email: true } } }
     });
 
     res.json({
       success: true,
       message: 'User role updated successfully',
-      membership: {
-        userId: updatedMembership.userId,
-        role: updatedMembership.role,
-        user: updatedMembership.user
-      }
+      membership: { userId: updatedMembership.userId, role: updatedMembership.role, user: updatedMembership.user }
     });
   } catch (error) {
     return handleDatabaseError(error, res, 'update user role');
@@ -364,49 +277,23 @@ router.patch('/users/:userId/role', requireAuth, withOrgScope, requireRole('ADMI
 
 /**
  * POST /api/admin/invites/:inviteId/revoke
- * Revoke an invitation
  */
 router.post('/invites/:inviteId/revoke', requireAuth, withOrgScope, requireRole('ADMIN'), async (req, res) => {
   try {
-    // Check database connection first
-    if (!(await checkDatabaseConnection(res))) {
-      return; // Response already sent by checkDatabaseConnection
-    }
-    
+    if (!(await checkDatabaseConnection(res))) return;
+
     const { inviteId } = req.params;
 
-    // Check if invite exists and belongs to the organization
-    const invite = await prisma.invite.findFirst({
-      where: {
-        id: inviteId,
-        orgId: req.orgId
-      }
-    });
-
+    const invite = await prisma.invite.findFirst({ where: { id: inviteId, orgId: req.orgId } });
     if (!invite) {
-      return res.status(404).json({
-        error: 'Invitation not found',
-        code: 'INVITE_NOT_FOUND'
-      });
+      return res.status(404).json({ error: 'Invitation not found', code: 'INVITE_NOT_FOUND' });
     }
-
     if (invite.status !== 'PENDING') {
-      return res.status(400).json({
-        error: 'Only pending invitations can be revoked',
-        code: 'INVALID_INVITE_STATUS'
-      });
+      return res.status(400).json({ error: 'Only pending invitations can be revoked', code: 'INVALID_INVITE_STATUS' });
     }
 
-    // Revoke invitation
-    await prisma.invite.update({
-      where: { id: inviteId },
-      data: { status: 'REVOKED' }
-    });
-
-    res.json({
-      success: true,
-      message: 'Invitation revoked successfully'
-    });
+    await prisma.invite.update({ where: { id: inviteId }, data: { status: 'REVOKED' } });
+    res.json({ success: true, message: 'Invitation revoked successfully' });
   } catch (error) {
     return handleDatabaseError(error, res, 'revoke invitation');
   }
@@ -414,61 +301,27 @@ router.post('/invites/:inviteId/revoke', requireAuth, withOrgScope, requireRole(
 
 /**
  * DELETE /api/admin/users/:userId
- * Remove user from organization (soft delete membership)
  */
 router.delete('/users/:userId', requireAuth, withOrgScope, requireRole('ADMIN'), async (req, res) => {
   try {
-    // Check database connection first
-    if (!(await checkDatabaseConnection(res))) {
-      return; // Response already sent by checkDatabaseConnection
-    }
-    
+    if (!(await checkDatabaseConnection(res))) return;
+
     const { userId } = req.params;
 
-    // Check if user exists in the organization
     const membership = await prisma.membership.findUnique({
-      where: {
-        userId_orgId: {
-          userId,
-          orgId: req.orgId
-        }
-      },
-      include: {
-        user: {
-          select: { name: true, email: true }
-        }
-      }
+      where: { userId_orgId: { userId, orgId: req.orgId } },
+      include: { user: { select: { name: true, email: true } } }
     });
 
     if (!membership) {
-      return res.status(404).json({
-        error: 'User not found in this organization',
-        code: 'USER_NOT_FOUND'
-      });
+      return res.status(404).json({ error: 'User not found in this organization', code: 'USER_NOT_FOUND' });
     }
-
-    // Cannot remove owner
     if (membership.role === 'OWNER') {
-      return res.status(403).json({
-        error: 'Cannot remove organization owner',
-        code: 'CANNOT_REMOVE_OWNER'
-      });
+      return res.status(403).json({ error: 'Cannot remove organization owner', code: 'CANNOT_REMOVE_OWNER' });
     }
 
-    // Remove user from organization
-    await prisma.membership.delete({
-      where: {
-        userId_orgId: {
-          userId,
-          orgId: req.orgId
-        }
-      }
-    });
-
-    res.json({
-      success: true,
-      message: 'User removed from organization successfully'
-    });
+    await prisma.membership.delete({ where: { userId_orgId: { userId, orgId: req.orgId } } });
+    res.json({ success: true, message: 'User removed from organization successfully' });
   } catch (error) {
     return handleDatabaseError(error, res, 'remove user');
   }
@@ -476,77 +329,30 @@ router.delete('/users/:userId', requireAuth, withOrgScope, requireRole('ADMIN'),
 
 /**
  * GET /api/admin/stats
- * Get organization statistics for admin dashboard
  */
 router.get('/stats', requireAuth, withOrgScope, requireAdmin, async (req, res) => {
   try {
-    // Check database connection first
-    if (!(await checkDatabaseConnection(res))) {
-      return; // Response already sent by checkDatabaseConnection
-    }
+    if (!(await checkDatabaseConnection(res))) return;
+
     const stats = await prisma.$transaction(async (tx) => {
-      const [
-        userCount,
-        pendingInvites,
-        totalTasks,
-        totalTimeLogs,
-        activeUsers,
-        totalRevenue
-      ] = await Promise.all([
-        // Total users in org
-        tx.membership.count({
-          where: { orgId: req.orgId }
-        }),
-        // Pending invites
-        tx.invite.count({
-          where: { 
-            orgId: req.orgId,
-            status: 'PENDING'
-          }
-        }),
-        // Total tasks
-        tx.macroTask.count({
-          where: { orgId: req.orgId }
-        }),
-        // Total time logs
-        tx.timeLog.count({
-          where: { orgId: req.orgId }
-        }),
-        // Active users (users with recent activity)
+      const [userCount, pendingInvites, totalTasks, totalTimeLogs, activeUsers, totalRevenue] = await Promise.all([
+        tx.membership.count({ where: { orgId: req.orgId } }),
+        tx.invite.count({ where: { orgId: req.orgId, status: 'PENDING' } }),
+        tx.macroTask.count({ where: { orgId: req.orgId } }),
+        tx.timeLog.count({ where: { orgId: req.orgId } }),
         tx.timeLog.groupBy({
           by: ['userId'],
-          where: {
-            orgId: req.orgId,
-            begin: {
-              gte: new Date(Date.now() - 30 * 24 * 60 * 60 * 1000) // Last 30 days
-            }
-          }
+          where: { orgId: req.orgId, begin: { gte: new Date(Date.now() - 30 * 24 * 60 * 60 * 1000) } }
         }).then(groups => groups.length),
-        // Total revenue from billable time
         tx.timeLog.aggregate({
-          where: {
-            orgId: req.orgId,
-            isBillable: true,
-            earnings: { not: null }
-          },
+          where: { orgId: req.orgId, isBillable: true, earnings: { not: null } },
           _sum: { earnings: true }
         }).then(result => result._sum.earnings || 0)
       ]);
-
-      return {
-        userCount,
-        pendingInvites,
-        totalTasks,
-        totalTimeLogs,
-        activeUsers,
-        totalRevenue
-      };
+      return { userCount, pendingInvites, totalTasks, totalTimeLogs, activeUsers, totalRevenue };
     });
 
-    res.json({
-      success: true,
-      stats
-    });
+    res.json({ success: true, stats });
   } catch (error) {
     return handleDatabaseError(error, res, 'fetch admin statistics');
   }
@@ -554,26 +360,15 @@ router.get('/stats', requireAuth, withOrgScope, requireAdmin, async (req, res) =
 
 /**
  * GET /api/admin/system/status
- * Get internal system status and configuration
  */
 router.get('/system/status', requireAuth, withOrgScope, requireAdmin, async (req, res) => {
   try {
-    // Check database connection first
-    if (!(await checkDatabaseConnection(res))) {
-      return; // Response already sent by checkDatabaseConnection
-    }
-    
+    if (!(await checkDatabaseConnection(res))) return;
+
     const { INTERNAL_CONFIG } = await import('../config/internal.js');
-    
-    // Get user count
     const userCount = await prisma.user.count();
-    
-    // Get pending invitations
     const pendingInvitations = await prisma.invitation.count({
-      where: { 
-        orgId: req.orgId,
-        status: { in: ['pending_approval', 'sent'] }
-      }
+      where: { orgId: req.orgId, status: { in: ['pending_approval', 'sent'] } }
     });
 
     res.json({
@@ -596,70 +391,40 @@ router.get('/system/status', requireAuth, withOrgScope, requireAdmin, async (req
 
 /**
  * POST /api/admin/sync-admins
- * Sync all ADMIN/OWNER users to the current organization
- * Finds users with admin roles in any org and adds them to this org if missing
  */
 router.post('/sync-admins', requireAuth, withOrgScope, requireRole('ADMIN'), async (req, res) => {
   try {
-    if (!(await checkDatabaseConnection(res))) {
-      return;
-    }
+    if (!(await checkDatabaseConnection(res))) return;
 
     console.log(`🔄 Syncing admin users for org ${req.orgId}...`);
 
-    // Find all users with ADMIN or OWNER role (distinct by userId)
     const adminMemberships = await prisma.membership.findMany({
-      where: {
-        role: { in: ['ADMIN', 'OWNER'] }
-      },
-      include: {
-        user: { select: { id: true, email: true, name: true } }
-      },
+      where: { role: { in: ['ADMIN', 'OWNER'] } },
+      include: { user: { select: { id: true, email: true, name: true } } },
       distinct: ['userId']
     });
 
-    let added = 0;
-    let skipped = 0;
+    let added = 0, skipped = 0;
     const results = [];
 
     for (const membership of adminMemberships) {
       const userId = membership.user.id;
-      
-      // Check if this user already has a membership in this org
       const existing = await prisma.membership.findUnique({
-        where: {
-          userId_orgId: { userId, orgId: req.orgId }
-        }
+        where: { userId_orgId: { userId, orgId: req.orgId } }
       });
 
       if (existing) {
         skipped++;
-        results.push({
-          email: membership.user.email,
-          status: 'skipped',
-          reason: 'Already in organization'
-        });
+        results.push({ email: membership.user.email, status: 'skipped', reason: 'Already in organization' });
       } else {
-        // Add the user to this org with their existing role
-        await prisma.membership.create({
-          data: {
-            userId,
-            orgId: req.orgId,
-            role: membership.role
-          }
-        });
+        await prisma.membership.create({ data: { userId, orgId: req.orgId, role: membership.role } });
         added++;
-        results.push({
-          email: membership.user.email,
-          status: 'added',
-          role: membership.role
-        });
+        results.push({ email: membership.user.email, status: 'added', role: membership.role });
         console.log(`✅ Added ${membership.user.email} as ${membership.role}`);
       }
     }
 
     console.log(`📊 Sync complete: ${added} added, ${skipped} already members`);
-
     res.json({
       success: true,
       message: `Admin sync complete: ${added} users added, ${skipped} already members`,

@@ -51,6 +51,11 @@ async function connectWithRetry() {
 }
 
 // Start connection attempt
-connectWithRetry();
+if (dbUrl) {
+  // Only attempt to connect if a database URL is configured
+  connectWithRetry();
+} else {
+  console.warn('⚠️  Skipping Prisma connection attempts because DATABASE_URL is not configured.');
+}
 
 export default prisma;

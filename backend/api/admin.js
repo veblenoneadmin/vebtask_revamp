@@ -1,7 +1,7 @@
 import express from 'express';
 import { z } from 'zod';
 import { prisma } from '../lib/prisma.js';
-import { requireAuth, withOrgScope, requireAdmin } from '../lib/rbac.js';
+import { requireAuth, withOrgScope, requireAdmin, requireRole } from '../lib/rbac.js';
 import { checkDatabaseConnection, handleDatabaseError } from '../lib/api-error-handler.js';
 import crypto from 'crypto';
 import bcrypt from 'bcryptjs';

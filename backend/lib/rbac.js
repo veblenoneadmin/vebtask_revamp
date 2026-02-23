@@ -61,7 +61,27 @@ export function withOrgScope(req, res, next) {
     // EMERGENCY FIX: Auto-provide organization ID for authenticated users
     if (req.user?.id) {
       console.log(`🔧 EMERGENCY: Auto-providing orgId for authenticated user ${req.user.email}`);
-      orgId = 'org_1757046595553'; // Use the existing organization
+      try {
+        // Prefer the user's activeOrgId if available
+        if (req.user.activeOrgId) {
+          orgId = req.user.activeOrgId;
+        } else {
+          // Fallback: look up first membership for the user and use that org
+          const membership = await prisma.membership.findFirst({
+            where: { userId: req.user.id },
+            orderBy: { createdAt: 'asc' },
+            select: { orgId: true }
+          });
+          if (membership && membership.orgId) {
+            orgId = membership.orgId;
+            console.log(`🔧 Auto-selected orgId ${orgId} from user's memberships`);
+          } else {
+            console.warn('⚠️  No membership found for user when attempting to auto-provide orgId');
+          }
+        }
+      } catch (err) {
+        console.error('Error auto-selecting orgId for user:', err);
+      }
     } else {
       return res.status(400).json({ 
         error: 'Organization context required',

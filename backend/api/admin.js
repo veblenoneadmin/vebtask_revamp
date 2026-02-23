@@ -119,10 +119,10 @@ router.get('/users', requireAuth, withOrgScope, requireRole('ADMIN'), async (req
         },
         _count: {
           select: {
-            timeLogs: {
+            attendanceLogs: {
               where: { orgId: req.orgId }
             },
-            createdTasks: {
+            macroTasks: {
               where: { orgId: req.orgId }
             }
           }

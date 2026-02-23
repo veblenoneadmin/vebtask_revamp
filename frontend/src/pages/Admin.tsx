@@ -38,7 +38,7 @@ interface OrgUser {
     role: 'OWNER' | 'ADMIN' | 'STAFF' | 'CLIENT';
     org: { name: string; slug: string };
   }>;
-  _count: { timeLogs: number; createdTasks: number };
+  _count: { attendanceLogs: number; macroTasks: number };
 }
 
 interface Invite {
@@ -222,8 +222,8 @@ export function Admin() {
 
   // ── KPI stats ───────────────────────────────────────────────────────────────
   const pendingInvites = invites.filter(i => i.status === 'PENDING').length;
-  const totalTasks     = users.reduce((a, u) => a + u._count.createdTasks, 0);
-  const totalTimeLogs  = users.reduce((a, u) => a + u._count.timeLogs, 0);
+  const totalTasks     = users.reduce((a, u) => a + u._count.macroTasks, 0);
+  const totalTimeLogs  = users.reduce((a, u) => a + u._count.attendanceLogs, 0);
 
   // ── Loading ──────────────────────────────────────────────────────────────────
   if (loading) {
@@ -406,8 +406,8 @@ export function Admin() {
 
                 {/* Activity */}
                 <div className="text-[12px]" style={{ color: VS.text2 }}>
-                  <div>{user._count.timeLogs} time logs</div>
-                  <div>{user._count.createdTasks} tasks</div>
+                  <div>{user._count.attendanceLogs} attendance logs</div>
+                  <div>{user._count.macroTasks} tasks</div>
                 </div>
 
                 {/* Actions */}

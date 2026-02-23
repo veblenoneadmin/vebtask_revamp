@@ -63,11 +63,12 @@ router.post('/users/create', requireAuth, withOrgScope, requireRole('ADMIN'), as
     });
 
     // Create credential account (so they can log in with email + password)
+    // FIX: Changed 'credential' to 'credentials' to match Better Auth's expected providerId
     await prisma.account.create({
       data: {
         accountId: email,
         userId:    user.id,
-        providerId: 'credential',
+        providerId: 'credentials',
         password:  hashedPassword,
       },
     });

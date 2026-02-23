@@ -364,118 +364,147 @@ export function Admin() {
         ))}
       </div>
 
-      {/* ── Members table ── */}
-      {activeTab === 'users' && (
-        <div className="rounded-xl overflow-hidden" style={{ background: VS.bg1, border: `1px solid ${VS.border}` }}>
-          {/* Table header */}
-          <div
-            className="grid gap-4 px-5 py-3 text-[11px] font-semibold uppercase tracking-widest"
-            style={{ gridTemplateColumns: '2fr 1fr 1fr 1fr 1fr', background: VS.bg2, color: VS.text2 }}
-          >
-            <span>Member</span>
-            <span>Role</span>
-            <span>Status</span>
-            <span>Activity</span>
-            <span>Actions</span>
-          </div>
-
-          {users.length === 0 ? (
-            <div className="py-12 text-center text-[13px]" style={{ color: VS.text2 }}>
-              No members found
-            </div>
-          ) : users.map((user, i) => {
-            const role = user.memberships[0]?.role ?? 'CLIENT';
-            const cfg  = ROLE_CFG[role] ?? ROLE_CFG.CLIENT;
-            const Icon = cfg.icon;
-            const initials = (user.name || user.email).charAt(0).toUpperCase();
-            const isOwner = role === 'OWNER';
-            return (
-              <div
-                key={user.id}
-                className="grid gap-4 px-5 py-4 items-center transition-colors hover:bg-white/[0.02]"
-                style={{
-                  gridTemplateColumns: '2fr 1fr 1fr 1fr 1fr',
-                  borderTop: i === 0 ? 'none' : `1px solid ${VS.border}`,
-                }}
-              >
-                {/* Member info */}
-                <div className="flex items-center gap-3 min-w-0">
-                  <div
-                    className="h-9 w-9 rounded-full flex items-center justify-center shrink-0 text-[13px] font-bold"
-                    style={{ background: `${cfg.color}22`, color: cfg.color }}
-                  >
-                    {initials}
+      {/* ── Members + Clients tables ── */}
+      {activeTab === 'users' && (() => {
+        const membersList = users.filter(u => (u.memberships[0]?.role ?? 'CLIENT') !== 'CLIENT');
+        const clientsList = users.filter(u => (u.memberships[0]?.role ?? 'CLIENT') === 'CLIENT');
+        const renderRow = (user: any, i: number) => {
+          const role = user.memberships[0]?.role ?? 'CLIENT';
+          const cfg  = ROLE_CFG[role] ?? ROLE_CFG.CLIENT;
+          const Icon = cfg.icon;
+          const initials = (user.name || user.email).charAt(0).toUpperCase();
+          const isOwner = role === 'OWNER';
+          return (
+            <div
+              key={user.id}
+              className="grid gap-4 px-5 py-4 items-center transition-colors hover:bg-white/[0.02]"
+              style={{
+                gridTemplateColumns: '2fr 1fr 1fr 1fr 1fr',
+                borderTop: i === 0 ? 'none' : `1px solid ${VS.border}`,
+              }}
+            >
+              {/* Member info */}
+              <div className="flex items-center gap-3 min-w-0">
+                <div
+                  className="h-9 w-9 rounded-full flex items-center justify-center shrink-0 text-[13px] font-bold"
+                  style={{ background: `${cfg.color}22`, color: cfg.color }}
+                >
+                  {initials}
+                </div>
+                <div className="min-w-0">
+                  <div className="text-[13px] font-medium truncate" style={{ color: VS.text0 }}>
+                    {user.name || 'No name'}
                   </div>
-                  <div className="min-w-0">
-                    <div className="text-[13px] font-medium truncate" style={{ color: VS.text0 }}>
-                      {user.name || 'No name'}
-                    </div>
-                    <div className="text-[11px] truncate" style={{ color: VS.text2 }}>{user.email}</div>
-                  </div>
-                </div>
-
-                {/* Role */}
-                <div>
-                  <span
-                    className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[11px] font-semibold"
-                    style={{ background: cfg.bg, color: cfg.color }}
-                  >
-                    <Icon className="h-3 w-3" />
-                    {cfg.label}
-                  </span>
-                </div>
-
-                {/* Status */}
-                <div>
-                  <span
-                    className="inline-flex px-2.5 py-1 rounded-full text-[11px] font-semibold"
-                    style={user.emailVerified
-                      ? { background: 'rgba(78,201,176,0.12)', color: VS.teal }
-                      : { background: 'rgba(220,220,170,0.12)', color: VS.yellow }
-                    }
-                  >
-                    {user.emailVerified ? 'Verified' : 'Pending'}
-                  </span>
-                </div>
-
-                {/* Activity */}
-                <div className="text-[12px]" style={{ color: VS.text2 }}>
-                  <div>{user._count.attendanceLogs} attendance logs</div>
-                  <div>{user._count.macroTasks} tasks</div>
-                </div>
-
-                {/* Actions */}
-                <div className="flex items-center gap-2">
-                  {!isOwner && (
-                    <>
-                      <button
-                        onClick={() => { setEditingUser(user); setEditingRole(role as any); }}
-                        className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-[12px] font-medium transition-colors hover:bg-white/5"
-                        style={{ background: VS.bg2, border: `1px solid ${VS.border}`, color: VS.blue }}
-                      >
-                        <Edit3 className="h-3 w-3" />
-                        Edit Role
-                      </button>
-                      <button
-                        onClick={() => handleRemoveMember(user.id)}
-                        disabled={removingId === user.id}
-                        className="h-7 w-7 rounded-lg flex items-center justify-center transition-colors hover:bg-white/5 disabled:opacity-40"
-                        style={{ background: VS.bg2, border: `1px solid ${VS.border}`, color: VS.red }}
-                        title="Remove member"
-                      >
-                        <Trash2 className="h-3.5 w-3.5" />
-                      </button>
-                    </>
-                  )}
-                  {isOwner && (
-                    <span className="text-[11px]" style={{ color: VS.text2 }}>Owner</span>
-                  )}
+                  <div className="text-[11px] truncate" style={{ color: VS.text2 }}>{user.email}</div>
                 </div>
               </div>
-            );
-          })}
-        </div>
-      )}
+
+              {/* Role */}
+              <div>
+                <span
+                  className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[11px] font-semibold"
+                  style={{ background: cfg.bg, color: cfg.color }}
+                >
+                  <Icon className="h-3 w-3" />
+                  {cfg.label}
+                </span>
+              </div>
+
+              {/* Status */}
+              <div>
+                <span
+                  className="inline-flex px-2.5 py-1 rounded-full text-[11px] font-semibold"
+                  style={user.emailVerified
+                    ? { background: 'rgba(78,201,176,0.12)', color: VS.teal }
+                    : { background: 'rgba(220,220,170,0.12)', color: VS.yellow }
+                  }
+                >
+                  {user.emailVerified ? 'Verified' : 'Pending'}
+                </span>
+              </div>
+
+              {/* Activity */}
+              <div className="text-[12px]" style={{ color: VS.text2 }}>
+                <div>{user._count.attendanceLogs} attendance logs</div>
+                <div>{user._count.macroTasks} tasks</div>
+              </div>
+
+              {/* Actions */}
+              <div className="flex items-center gap-2">
+                {!isOwner && (
+                  <>
+                    <button
+                      onClick={() => { setEditingUser(user); setEditingRole(role as any); }}
+                      className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-[12px] font-medium transition-colors hover:bg-white/5"
+                      style={{ background: VS.bg2, border: `1px solid ${VS.border}`, color: VS.blue }}
+                    >
+                      <Edit3 className="h-3 w-3" />
+                      Edit Role
+                    </button>
+                    <button
+                      onClick={() => handleRemoveMember(user.id)}
+                      disabled={removingId === user.id}
+                      className="h-7 w-7 rounded-lg flex items-center justify-center transition-colors hover:bg-white/5 disabled:opacity-40"
+                      style={{ background: VS.bg2, border: `1px solid ${VS.border}`, color: VS.red }}
+                      title="Remove member"
+                    >
+                      <Trash2 className="h-3.5 w-3.5" />
+                    </button>
+                  </>
+                )}
+                {isOwner && (
+                  <span className="text-[11px]" style={{ color: VS.text2 }}>Owner</span>
+                )}
+              </div>
+            </div>
+          );
+        };
+
+        return (
+          <>
+            {/* Members Table */}
+            <div className="rounded-xl overflow-hidden" style={{ background: VS.bg1, border: `1px solid ${VS.border}` }}>
+              <div
+                className="grid gap-4 px-5 py-3 text-[11px] font-semibold uppercase tracking-widest"
+                style={{ gridTemplateColumns: '2fr 1fr 1fr 1fr 1fr', background: VS.bg2, color: VS.text2 }}
+              >
+                <span>Member</span>
+                <span>Role</span>
+                <span>Status</span>
+                <span>Activity</span>
+                <span>Actions</span>
+              </div>
+
+              {membersList.length === 0 ? (
+                <div className="py-12 text-center text-[13px]" style={{ color: VS.text2 }}>
+                  No members found
+                </div>
+              ) : membersList.map((user, i) => renderRow(user, i))}
+            </div>
+
+            {/* Clients Table */}
+            <div className="mt-6 text-lg font-semibold" style={{ color: VS.text0 }}>Clients</div>
+            <div className="rounded-xl overflow-hidden mt-2" style={{ background: VS.bg1, border: `1px solid ${VS.border}` }}>
+              <div
+                className="grid gap-4 px-5 py-3 text-[11px] font-semibold uppercase tracking-widest"
+                style={{ gridTemplateColumns: '2fr 1fr 1fr 1fr 1fr', background: VS.bg2, color: VS.text2 }}
+              >
+                <span>Client</span>
+                <span>Role</span>
+                <span>Status</span>
+                <span>Activity</span>
+                <span>Actions</span>
+              </div>
+
+              {clientsList.length === 0 ? (
+                <div className="py-12 text-center text-[13px]" style={{ color: VS.text2 }}>
+                  No clients found
+                </div>
+              ) : clientsList.map((user, i) => renderRow(user, i))}
+            </div>
+          </>
+        );
+      })()}
 
       {/* ── Invitations table ── */}
       {activeTab === 'invites' && (

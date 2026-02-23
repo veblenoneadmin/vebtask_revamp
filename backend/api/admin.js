@@ -29,7 +29,7 @@ const createUserSchema = z.object({
  * POST /api/admin/users/create
  * Manually create a new user and add them to the organization
  */
-router.post('/users/create', requireAuth, withOrgScope, requireAdmin, async (req, res) => {
+router.post('/users/create', requireAuth, withOrgScope, requireRole('ADMIN'), async (req, res) => {
   try {
     if (!(await checkDatabaseConnection(res))) return;
 
@@ -91,7 +91,7 @@ router.post('/users/create', requireAuth, withOrgScope, requireAdmin, async (req
  * GET /api/admin/users
  * List all users in the organization
  */
-router.get('/users', requireAuth, withOrgScope, requireAdmin, async (req, res) => {
+router.get('/users', requireAuth, withOrgScope, requireRole('ADMIN'), async (req, res) => {
   try {
     // Check database connection first
     if (!(await checkDatabaseConnection(res))) {
@@ -150,7 +150,7 @@ router.get('/users', requireAuth, withOrgScope, requireAdmin, async (req, res) =
  * GET /api/admin/invites
  * List all invitations for the organization
  */
-router.get('/invites', requireAuth, withOrgScope, requireAdmin, async (req, res) => {
+router.get('/invites', requireAuth, withOrgScope, requireRole('ADMIN'), async (req, res) => {
   try {
     // Check database connection first
     if (!(await checkDatabaseConnection(res))) {
@@ -184,7 +184,7 @@ router.get('/invites', requireAuth, withOrgScope, requireAdmin, async (req, res)
  * POST /api/admin/invite
  * Send invitation to new user
  */
-router.post('/invite', requireAuth, withOrgScope, requireAdmin, async (req, res) => {
+router.post('/invite', requireAuth, withOrgScope, requireRole('ADMIN'), async (req, res) => {
   try {
     // Check database connection first
     if (!(await checkDatabaseConnection(res))) {
@@ -282,7 +282,7 @@ router.post('/invite', requireAuth, withOrgScope, requireAdmin, async (req, res)
  * PATCH /api/admin/users/:userId/role
  * Update user role in the organization
  */
-router.patch('/users/:userId/role', requireAuth, withOrgScope, requireAdmin, async (req, res) => {
+router.patch('/users/:userId/role', requireAuth, withOrgScope, requireRole('ADMIN'), async (req, res) => {
   try {
     // Check database connection first
     if (!(await checkDatabaseConnection(res))) {
@@ -365,7 +365,7 @@ router.patch('/users/:userId/role', requireAuth, withOrgScope, requireAdmin, asy
  * POST /api/admin/invites/:inviteId/revoke
  * Revoke an invitation
  */
-router.post('/invites/:inviteId/revoke', requireAuth, withOrgScope, requireAdmin, async (req, res) => {
+router.post('/invites/:inviteId/revoke', requireAuth, withOrgScope, requireRole('ADMIN'), async (req, res) => {
   try {
     // Check database connection first
     if (!(await checkDatabaseConnection(res))) {
@@ -415,7 +415,7 @@ router.post('/invites/:inviteId/revoke', requireAuth, withOrgScope, requireAdmin
  * DELETE /api/admin/users/:userId
  * Remove user from organization (soft delete membership)
  */
-router.delete('/users/:userId', requireAuth, withOrgScope, requireAdmin, async (req, res) => {
+router.delete('/users/:userId', requireAuth, withOrgScope, requireRole('ADMIN'), async (req, res) => {
   try {
     // Check database connection first
     if (!(await checkDatabaseConnection(res))) {

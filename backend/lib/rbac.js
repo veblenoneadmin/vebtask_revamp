@@ -386,6 +386,14 @@ export const requireOwner = requireRole('OWNER');
 export const requireAdmin = requireRole('ADMIN');
 
 /**
+ * Allow both ADMIN and OWNER roles
+ */
+export function allowAdminOrOwner(req, res, next) {
+  return requireRole('ADMIN')(req, res, next);
+  // Note: requireRole already checks role hierarchy, so OWNER (4) >= ADMIN (3) passes automatically
+}
+
+/**
  * Middleware for organization staff and above
  */
 export const requireStaff = requireRole('STAFF');

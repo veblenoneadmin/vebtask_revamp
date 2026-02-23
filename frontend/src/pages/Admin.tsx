@@ -124,6 +124,7 @@ export function Admin() {
     try {
       const res = await fetch('/api/admin/invite', {
         method: 'POST',
+        credentials: 'include',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ email: inviteEmail, role: inviteRole }),
       });
@@ -146,6 +147,7 @@ export function Admin() {
     try {
       const res = await fetch(`/api/admin/users/${editingUser.id}/role`, {
         method: 'PATCH',
+        credentials: 'include',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ role: editingRole }),
       });
@@ -164,7 +166,7 @@ export function Admin() {
   const handleRemoveMember = async (userId: string) => {
     setRemovingId(userId);
     try {
-      const res = await fetch(`/api/admin/users/${userId}`, { method: 'DELETE' });
+      const res = await fetch(`/api/admin/users/${userId}`, { method: 'DELETE', credentials: 'include' });
       if (res.ok) {
         fetchData();
         showToast('Member removed from organization.');
@@ -177,7 +179,7 @@ export function Admin() {
 
   const handleRevokeInvite = async (inviteId: string) => {
     try {
-      const res = await fetch(`/api/admin/invites/${inviteId}/revoke`, { method: 'POST' });
+      const res = await fetch(`/api/admin/invites/${inviteId}/revoke`, { method: 'POST', credentials: 'include' });
       if (res.ok) { fetchData(); showToast('Invitation revoked.'); }
       else showToast('Failed to revoke invitation.', false);
     } catch { showToast('Failed to revoke invitation.', false); }

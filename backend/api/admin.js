@@ -1,35 +1,12 @@
 import express from 'express';
 import { z } from 'zod';
 import { prisma } from '../lib/prisma.js';
+import { auth } from '../auth.js'; // Better Auth instance - handles hashing correctly
 import { requireAuth, withOrgScope, requireAdmin, requireRole } from '../lib/rbac.js';
 import { checkDatabaseConnection, handleDatabaseError } from '../lib/api-error-handler.js';
 import crypto from 'crypto';
 
 const router = express.Router();
-
-// ─── Better Auth compatible password hashing ────────────────────────────────
-// Better Auth uses @noble/hashes scrypt with these exact parameters.
-// The stored format is: "<hex_salt>:<hex_hash>"
-// Salt = 32 hex chars (16 bytes), Hash = 64 hex chars (32 bytes)
-async function hashPasswordForBetterAuth(password) {
-  const { scrypt } = await import('@noble/hashes/scrypt');
-  const { bytesToHex } = await import('@noble/hashes/utils');
-
-  // 16 random bytes = 32 hex chars for salt
-  const saltBytes = crypto.randomBytes(16);
-  const salt = bytesToHex(saltBytes);  // 32 hex chars
-
-  // scrypt with dkLen: 32 = 32 bytes = 64 hex chars for hash
-  const hashBytes = scrypt(
-    new TextEncoder().encode(password),
-    new TextEncoder().encode(salt),
-    { N: 16384, r: 16, p: 1, dkLen: 32 }
-  );
-
-  // Final format: "32hexchars:64hexchars"
-  return `${salt}:${bytesToHex(hashBytes)}`;
-}
-// ────────────────────────────────────────────────────────────────────────────
 
 // Validation schemas
 const inviteUserSchema = z.object({
@@ -78,43 +55,33 @@ router.post('/users/create', requireAuth, withOrgScope, requireRole('ADMIN'), as
       return res.status(201).json({ success: true, message: 'Existing user added to organization', userId: existing.id });
     }
 
-    // Hash password using Better Auth's exact scrypt format
-    const hashedPassword = await hashPasswordForBetterAuth(password);
+    // FIX: Use Better Auth's own signUpEmail API so the password is hashed
+    // exactly the same way as normal signup — no custom hashing needed.
+    const signUpResult = await auth.api.signUpEmail({
+      body: { email, password, name },
+    });
 
-    // Verify the hash looks correct before saving (32:64 hex chars)
-    const parts = hashedPassword.split(':');
-    if (parts.length !== 2 || parts[0].length !== 32 || parts[1].length !== 64) {
-      console.error('❌ Hash format invalid:', { saltLen: parts[0]?.length, hashLen: parts[1]?.length });
-      return res.status(500).json({ error: 'Password hashing failed - invalid format' });
+    if (!signUpResult?.user?.id) {
+      console.error('❌ Better Auth signUpEmail failed:', signUpResult);
+      return res.status(500).json({ error: 'Failed to create user via Better Auth' });
     }
 
-    const user = await prisma.user.create({
-      data: { name, email, emailVerified: true },
-    });
+    const userId = signUpResult.user.id;
 
-    // Create credential account
-    await prisma.account.create({
-      data: {
-        accountId:  email,
-        userId:     user.id,
-        providerId: 'credential',
-        password:   hashedPassword,
-      },
-    });
-
-    // Add to organization
+    // Add to organization with the specified role
     await prisma.membership.create({
-      data: { userId: user.id, orgId: req.orgId, role },
+      data: { userId, orgId: req.orgId, role },
     });
 
-    console.log(`✅ User created: ${email}, hash format: ${parts[0].length}:${parts[1].length}`);
+    console.log(`✅ User created via Better Auth: ${email}`);
 
     res.status(201).json({
       success: true,
       message: 'User created and added to organization',
-      user: { id: user.id, name: user.name, email: user.email, role },
+      user: { id: userId, name, email, role },
     });
   } catch (error) {
+    console.error('❌ Create user error:', error.message);
     return handleDatabaseError(error, res, 'create user');
   }
 });

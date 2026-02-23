@@ -32,7 +32,7 @@ export function requireAuth(req, res, next) {
 /**
  * Middleware to extract and validate organization context
  */
-export function withOrgScope(req, res, next) {
+export async function withOrgScope(req, res, next) {
   // Try to get orgId from multiple sources
   let orgId = 
     req.headers['x-org-id'] ||

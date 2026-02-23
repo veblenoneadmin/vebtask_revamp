@@ -1,372 +1,436 @@
-import { betterAuth } from "better-auth";
-import { prismaAdapter } from "better-auth/adapters/prisma";
-import { prisma } from "./lib/prisma.js";
+import express from 'express';
+import { z } from 'zod';
+import { prisma } from '../lib/prisma.js';
+import { requireAuth, withOrgScope, requireAdmin, requireRole } from '../lib/rbac.js';
+import { checkDatabaseConnection, handleDatabaseError } from '../lib/api-error-handler.js';
+import crypto from 'crypto';
 
-console.log('✅ Using Prisma adapter for Better Auth');
-// Helper function to get the base URL for the application
-function getBaseURL() {
-  return process.env.BETTER_AUTH_URL || process.env.VITE_APP_URL || "http://localhost:3009";
+const router = express.Router();
+
+// ─── Better Auth compatible password hashing ────────────────────────────────
+// Better Auth uses @noble/hashes scrypt under the hood.
+// The stored format is: "<hex_salt>:<hex_hash>"
+// Using bcrypt here caused: "Error: hex string expected, got undefined"
+async function hashPasswordForBetterAuth(password) {
+  const { scrypt } = await import('@noble/hashes/scrypt');
+  const { bytesToHex } = await import('@noble/hashes/utils');
+
+  const saltBytes = crypto.randomBytes(16);
+  const salt = bytesToHex(saltBytes);
+
+  const hashBytes = scrypt(
+    new TextEncoder().encode(password),
+    new TextEncoder().encode(salt),
+    { N: 16384, r: 16, p: 1, dkLen: 32 }
+  );
+
+  return `${salt}:${bytesToHex(hashBytes)}`;
 }
+// ────────────────────────────────────────────────────────────────────────────
 
-// Helper function to get the full auth API URL
-function getAuthBaseURL() {
-  return getBaseURL() + "/api/auth";
-}
-
-console.log('🔐 Better Auth Config:', {
-  appBaseURL: getBaseURL(),
-  authBaseURL: getAuthBaseURL(),
-  googleRedirectURI: process.env.GOOGLE_CLIENT_ID && process.env.GOOGLE_CLIENT_SECRET ? 
-    "Auto-generated from baseURL" : "N/A",
-  hasSecret: !!process.env.BETTER_AUTH_SECRET,
-  environment: process.env.NODE_ENV,
-  googleOAuthEnabled: !!(process.env.GOOGLE_CLIENT_ID && process.env.GOOGLE_CLIENT_SECRET),
-  hasGoogleClientId: !!process.env.GOOGLE_CLIENT_ID,
-  hasGoogleClientSecret: !!process.env.GOOGLE_CLIENT_SECRET
+// Validation schemas
+const inviteUserSchema = z.object({
+  email: z.string().email(),
+  role: z.enum(['ADMIN', 'STAFF', 'CLIENT'])
 });
 
-export const auth = betterAuth({
-  database: prismaAdapter(prisma, {
-    provider: "mysql"
-  }),
-  baseURL: process.env.BETTER_AUTH_URL || process.env.VITE_APP_URL || "https://vebtask.com",
-  basePath: "/api/auth",
-  secret: (() => {
-    const secret = process.env.BETTER_AUTH_SECRET;
-    if (!secret) {
-      if (process.env.NODE_ENV === 'production') {
-        throw new Error('BETTER_AUTH_SECRET environment variable is required in production');
-      }
-      console.warn('⚠️  Using fallback secret for development. Set BETTER_AUTH_SECRET in production!');
-      return "test-secret-key-for-debugging";
+const updateRoleSchema = z.object({
+  role: z.enum(['ADMIN', 'STAFF', 'CLIENT'])
+});
+
+const createUserSchema = z.object({
+  name:     z.string().min(1).max(255),
+  email:    z.string().email(),
+  password: z.string().min(6).max(128),
+  role:     z.enum(['ADMIN', 'STAFF', 'CLIENT']),
+});
+
+/**
+ * POST /api/admin/users/create
+ * Manually create a new user and add them to the organization
+ */
+router.post('/users/create', requireAuth, withOrgScope, requireRole('ADMIN'), async (req, res) => {
+  try {
+    if (!(await checkDatabaseConnection(res))) return;
+
+    const validation = createUserSchema.safeParse(req.body);
+    if (!validation.success) {
+      return res.status(400).json({ error: 'Invalid input', details: validation.error.errors });
     }
-    return secret;
-  })(),
-  
-  // Authentication providers
-  socialProviders: process.env.GOOGLE_CLIENT_ID && process.env.GOOGLE_CLIENT_SECRET ? {
-    google: {
-      clientId: process.env.GOOGLE_CLIENT_ID,
-      clientSecret: process.env.GOOGLE_CLIENT_SECRET,
-      // Always get refresh token and show account selector
-      accessType: "offline",
-      prompt: "select_account consent"
-      // Let Better Auth auto-generate redirectURI from baseURL
-    }
-  } : {},
-  
-  // Email and password authentication
-  emailAndPassword: {
-    enabled: true,
-    requireEmailVerification: false,
-    minPasswordLength: 6,
-    maxPasswordLength: 128
-  },
-  
-  // Session configuration
-  session: {
-    strategy: "database",
-    maxAge: 60 * 60 * 24 * 30, // 30 days
-    updateAge: 60 * 60 * 24, // 24 hours
-    cookieName: "vebtask.session",
-    cookieCache: {
-      enabled: true,
-      maxAge: 60 * 5 // 5 minutes
-    }
-  },
-  
-  // Pages configuration for redirects (removed callback - let Better Auth handle it)
-  
-  // Trusted origins for CORS
-  trustedOrigins: [
-    "http://localhost:5173",
-    "http://localhost:5174",
-    "http://localhost:5175",
-    "http://localhost:5176",
-    "http://localhost:5177",
-    "http://localhost:3001",
-    "http://localhost:3000",
-    "https://vebtask.com",
-    "https://www.vebtask.com",
-    "https://vebtask-production.up.railway.app",
-    "https://vebtaskrevamp-production.up.railway.app"
-  ],
-  
-  // Advanced configuration
-  advanced: {
-    database: {
-      generateId: () => crypto.randomUUID()
-    },
-    cookies: {
-      secure: process.env.NODE_ENV === 'production',
-      sameSite: "lax",
-      httpOnly: true,
-      // Only set domain if COOKIE_DOMAIN env var is explicitly configured.
-      // Omitting domain defaults to the current host, which works on Railway.
-      domain: process.env.COOKIE_DOMAIN || undefined
-    }
-  },
-  
-  // Password reset configuration
-  passwordReset: {
-    enabled: true,
-    expiresIn: 60 * 15, // 15 minutes
-    sendResetPassword: async ({ user, token }) => {
-      // This will be handled by our custom routes
-      console.log(`Password reset requested for ${user.email}, token: ${token}`);
-    }
-  },
-  
-  // Email verification
-  emailVerification: {
-    enabled: true,
-    expiresIn: 60 * 60 * 24, // 24 hours
-    sendVerificationEmail: async ({ user, token }) => {
-      console.log(`📧 Sending verification email to ${user.email}, token: ${token}`);
-      
-      // Import nodemailer
-      const nodemailer = await import('nodemailer');
-      
-      // Create SMTP transporter
-      const transporter = nodemailer.default.createTransport({
-        host: process.env.SMTP_HOST || 'smtp.gmail.com',
-        port: parseInt(process.env.SMTP_PORT || '587'),
-        secure: false, // true for 465, false for other ports
-        auth: {
-          user: process.env.SMTP_USER,
-          pass: process.env.SMTP_PASS,
-        },
+
+    const { name, email, password, role } = validation.data;
+
+    // Check if email is already registered
+    const existing = await prisma.user.findUnique({ where: { email } });
+    if (existing) {
+      const existingMembership = await prisma.membership.findUnique({
+        where: { userId_orgId: { userId: existing.id, orgId: req.orgId } },
       });
-
-      const verificationUrl = `${getBaseURL()}/email-verified?token=${token}`;
-
-      const mailOptions = {
-        from: process.env.SMTP_FROM || process.env.SMTP_USER,
-        to: user.email,
-        replyTo: process.env.SMTP_FROM || process.env.SMTP_USER,
-        subject: 'Verify your VebTask account - Action Required',
-        headers: {
-          'X-Priority': '1',
-          'X-Mailer': 'VebTask Authentication System',
-          'List-Unsubscribe': `<mailto:unsubscribe@veblengroup.com.au>`,
-          'Message-ID': `<${Date.now()}.${Math.random().toString(36)}@veblengroup.com.au>`
-        },
-        text: `
-Welcome to VebTask!
-
-Hi ${user.name || 'there'},
-
-Thank you for signing up for VebTask. To complete your registration and secure your account, please verify your email address.
-
-Verify your email by visiting this link:
-${verificationUrl}
-
-This verification link will expire in 24 hours for security purposes.
-
-If you did not create a VebTask account, please ignore this email.
-
-Best regards,
-The VebTask Team
-Veblen Group
-        `.trim(),
-        html: `
-<!DOCTYPE html>
-<html lang="en">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Verify your VebTask Account</title>
-    <!--[if mso]>
-    <noscript>
-        <xml>
-            <o:OfficeDocumentSettings>
-                <o:PixelsPerInch>96</o:PixelsPerInch>
-            </o:OfficeDocumentSettings>
-        </xml>
-    </noscript>
-    <![endif]-->
-</head>
-<body style="margin: 0; padding: 0; background-color: #f8fafc; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;">
-    <table role="presentation" style="width: 100%; border-collapse: collapse; margin: 0; padding: 0; background-color: #f8fafc;">
-        <tr>
-            <td align="center" style="padding: 40px 20px;">
-                <table role="presentation" style="width: 100%; max-width: 600px; border-collapse: collapse; background-color: #ffffff; border-radius: 8px; box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);">
-                    <!-- Header -->
-                    <tr>
-                        <td style="padding: 40px 40px 20px; text-align: center; border-bottom: 1px solid #e2e8f0;">
-                            <img src="https://vebtask.com/veblen-logo.png" alt="VebTask" style="height: 40px; width: auto;" />
-                            <h1 style="margin: 20px 0 0; color: #1e293b; font-size: 24px; font-weight: 600;">Welcome to VebTask</h1>
-                        </td>
-                    </tr>
-                    <!-- Body -->
-                    <tr>
-                        <td style="padding: 40px;">
-                            <p style="margin: 0 0 20px; color: #334155; font-size: 16px; line-height: 1.6;">Hi ${user.name || 'there'},</p>
-                            
-                            <p style="margin: 0 0 20px; color: #334155; font-size: 16px; line-height: 1.6;">Thank you for signing up for VebTask! To complete your registration and secure your account, please verify your email address.</p>
-                            
-                            <!-- CTA Button -->
-                            <div style="text-align: center; margin: 40px 0;">
-                                <a href="${verificationUrl}" style="display: inline-block; background-color: #6366f1; color: #ffffff; padding: 16px 32px; text-decoration: none; border-radius: 8px; font-weight: 600; font-size: 16px;">Verify Email Address</a>
-                            </div>
-                            
-                            <p style="margin: 20px 0; color: #64748b; font-size: 14px; line-height: 1.6;">If the button above doesn't work, copy and paste this link into your browser:</p>
-                            <p style="margin: 0 0 20px; color: #6366f1; font-size: 14px; word-break: break-all;">${verificationUrl}</p>
-                            
-                            <hr style="margin: 30px 0; border: none; border-top: 1px solid #e2e8f0;" />
-                            
-                            <p style="margin: 0 0 10px; color: #64748b; font-size: 14px; line-height: 1.6;"><strong>Security Notice:</strong> This verification link will expire in 24 hours.</p>
-                            <p style="margin: 0; color: #64748b; font-size: 14px; line-height: 1.6;">If you did not create a VebTask account, please ignore this email.</p>
-                        </td>
-                    </tr>
-                    <!-- Footer -->
-                    <tr>
-                        <td style="padding: 20px 40px 40px; text-align: center; border-top: 1px solid #e2e8f0;">
-                            <p style="margin: 0 0 10px; color: #64748b; font-size: 12px;">Best regards,<br>The VebTask Team</p>
-                            <p style="margin: 0; color: #94a3b8; font-size: 12px;">Veblen Group | Secure Task Management</p>
-                        </td>
-                    </tr>
-                </table>
-            </td>
-        </tr>
-    </table>
-</body>
-</html>
-        `
-      };
-
-      try {
-        await transporter.sendMail(mailOptions);
-        console.log(`✅ Verification email sent to ${user.email}`);
-      } catch (error) {
-        console.error('❌ Failed to send verification email:', error);
-        throw error;
+      if (existingMembership) {
+        return res.status(409).json({ error: 'User already exists in this organization' });
       }
-    }
-  },
-  
-  // User configuration
-  user: {
-    modelName: "User",
-    additionalFields: {
-      activeOrgId: {
-        type: "string",
-        required: false
-      }
-    }
-  },
-  
-  // Callbacks for custom logic
-  callbacks: {
-    async signIn({ user, account, profile }) {
-      console.log('🔐 Sign in callback:', { 
-        userId: user?.id, 
-        email: user?.email, 
-        provider: account?.providerId,
-        providerAccountId: account?.providerAccountId,
-        profileId: profile?.id,
-        profileEmail: profile?.email 
+      await prisma.membership.create({
+        data: { userId: existing.id, orgId: req.orgId, role },
       });
-      return true;
-    },
-    async session({ session, token }) {
-      console.log('🔐 Session callback:', {
-        sessionId: session?.id,
-        userId: session?.userId,
-        tokenId: token?.id,
-        hasActiveOrgId: !!token?.activeOrgId
-      });
-      // Add organization context to session
-      if (token.activeOrgId) {
-        session.activeOrgId = token.activeOrgId;
-      }
-      return session;
-    },
-    async jwt({ token, user, account }) {
-      console.log('🔐 JWT callback:', {
-        hasToken: !!token,
-        hasUser: !!user,
-        hasAccount: !!account,
-        tokenId: token?.id,
-        userId: user?.id
-      });
-      // Add custom claims to JWT
-      if (user) {
-        token.id = user.id;
-        token.email = user.email;
-      }
-      return token;
+      return res.status(201).json({ success: true, message: 'Existing user added to organization', userId: existing.id });
     }
-  },
-  
-  // Request/Response logging
-  async onRequest(request, response) {
-    // Log ALL auth-related requests to debug OAuth flow
-    console.log('🔐 Auth Request:', {
-      method: request.method,
-      url: request.url,
-      pathname: request.pathname,
-      query: request.query,
-      hasAuthHeader: !!request.headers?.authorization,
-      hasCookies: !!request.headers?.cookie,
-      cookieDetails: request.headers?.cookie?.substring(0, 200),
-      contentType: request.headers?.['content-type'],
-      userAgent: request.headers?.['user-agent']?.substring(0, 50)
+
+    // FIX: Use Better Auth-compatible scrypt hash instead of bcrypt.
+    // Better Auth's verifyPassword expects format "<hex_salt>:<hex_hash>".
+    // The old bcrypt hash caused: "Error: hex string expected, got undefined"
+    const hashedPassword = await hashPasswordForBetterAuth(password);
+
+    const user = await prisma.user.create({
+      data: { name, email, emailVerified: true },
     });
-    
-    // Log sign-in attempts specifically
-    if (request.url?.includes('/sign-in/email')) {
-      console.log('📧 Email sign-in attempt:', {
-        body: request.body ? Object.keys(request.body) : 'no-body',
-        hasEmail: !!(request.body?.email),
-        hasPassword: !!(request.body?.password)
-      });
-    }
-  },
 
-  async onResponse(request, response) {
-    // Log responses, especially for sign-in attempts and OAuth callbacks
-    if (request.url?.includes('/sign-in/') || request.url?.includes('/callback/')) {
-      console.log('🔐 Auth Response:', {
-        url: request.url,
-        method: request.method,
-        status: response?.status || 'no-status',
-        hasSetCookie: !!response?.headers?.['set-cookie'],
-        setCookieCount: response?.headers?.['set-cookie']?.length || 0,
-        location: response?.headers?.location,
-        contentType: response?.headers?.['content-type'],
-        responseHeaders: Object.keys(response?.headers || {})
-      });
-    }
-    return response;
-  },
-  
-  // Error handling
-  onError(error, request) {
-    console.error('🔐 Better-Auth Error:', {
-      message: error.message,
-      path: request?.url,
-      method: request?.method,
-      body: request?.body,
-      provider: request?.body?.provider,
-      name: error.name,
-      code: error.code,
-      cause: error.cause,
-      stack: error.stack,
-      fullError: error
+    // Create credential account (so they can log in with email + password)
+    await prisma.account.create({
+      data: {
+        accountId:  email,
+        userId:     user.id,
+        providerId: 'credential',
+        password:   hashedPassword,
+      },
     });
-    // Log database errors specifically
-    if (error.message?.includes('database') || error.message?.includes('prisma')) {
-      console.error('Database error details:', error);
-    }
-  },
-  
-  // Rate limiting
-  rateLimit: {
-    enabled: true,
-    window: 60 * 1000, // 1 minute
-    max: 100 // requests per window
+
+    // Add to organization
+    await prisma.membership.create({
+      data: { userId: user.id, orgId: req.orgId, role },
+    });
+
+    res.status(201).json({
+      success: true,
+      message: 'User created and added to organization',
+      user: { id: user.id, name: user.name, email: user.email, role },
+    });
+  } catch (error) {
+    return handleDatabaseError(error, res, 'create user');
   }
 });
 
-console.log('✅ Better-auth instance created successfully');
+/**
+ * GET /api/admin/users
+ * List all users in the organization
+ */
+router.get('/users', requireAuth, withOrgScope, requireRole('ADMIN'), async (req, res) => {
+  try {
+    if (!(await checkDatabaseConnection(res))) return;
+
+    console.log(`📋 Fetching admin users for org ${req.orgId}, user ${req.user.id}`);
+
+    const users = await prisma.user.findMany({
+      where: {
+        memberships: { some: { orgId: req.orgId } }
+      },
+      include: {
+        memberships: {
+          where: { orgId: req.orgId },
+          include: { org: { select: { name: true, slug: true } } }
+        },
+        _count: {
+          select: {
+            attendanceLogs: { where: { orgId: req.orgId } },
+            macroTasks:     { where: { orgId: req.orgId } }
+          }
+        }
+      },
+      orderBy: { createdAt: 'desc' }
+    });
+
+    console.log(`✅ Fetched ${users.length} users for org ${req.orgId}`);
+    res.json({ success: true, users, count: users.length });
+  } catch (error) {
+    console.error(`❌ Failed to fetch admin users for org ${req.orgId}:`, error.message);
+    return handleDatabaseError(error, res, 'fetch admin users');
+  }
+});
+
+/**
+ * GET /api/admin/invites
+ * List all invitations for the organization
+ */
+router.get('/invites', requireAuth, withOrgScope, requireRole('ADMIN'), async (req, res) => {
+  try {
+    if (!(await checkDatabaseConnection(res))) return;
+
+    const invites = await prisma.invite.findMany({
+      where: { orgId: req.orgId },
+      include: { invitedBy: { select: { name: true, email: true } } },
+      orderBy: { createdAt: 'desc' }
+    });
+
+    res.json({ success: true, invites, count: invites.length });
+  } catch (error) {
+    return handleDatabaseError(error, res, 'fetch admin invites');
+  }
+});
+
+/**
+ * POST /api/admin/invite
+ * Send invitation to new user
+ */
+router.post('/invite', requireAuth, withOrgScope, requireRole('ADMIN'), async (req, res) => {
+  try {
+    if (!(await checkDatabaseConnection(res))) return;
+
+    const validation = inviteUserSchema.safeParse(req.body);
+    if (!validation.success) {
+      return res.status(400).json({ error: 'Invalid input', code: 'VALIDATION_ERROR', details: validation.error.errors });
+    }
+
+    const { email, role } = validation.data;
+
+    const existingUser = await prisma.user.findFirst({
+      where: { email, memberships: { some: { orgId: req.orgId } } }
+    });
+    if (existingUser) {
+      return res.status(409).json({ error: 'User already exists in this organization', code: 'USER_EXISTS' });
+    }
+
+    const existingInvite = await prisma.invite.findFirst({
+      where: { email, orgId: req.orgId, status: 'PENDING' }
+    });
+    if (existingInvite) {
+      return res.status(409).json({ error: 'Invitation already sent to this email', code: 'INVITE_EXISTS' });
+    }
+
+    const token = crypto.randomBytes(32).toString('hex');
+    const expiresAt = new Date();
+    expiresAt.setDate(expiresAt.getDate() + 7);
+
+    const invite = await prisma.invite.create({
+      data: { orgId: req.orgId, email, role, token, expiresAt, invitedById: req.user.id },
+      include: { invitedBy: { select: { name: true, email: true } } }
+    });
+
+    console.log(`📧 Invitation created for ${email} with token: ${token}`);
+    console.log(`🔗 Invite link: ${process.env.BETTER_AUTH_URL}/invite/${token}`);
+
+    res.status(201).json({
+      success: true,
+      message: 'Invitation sent successfully',
+      invite: {
+        id: invite.id,
+        email: invite.email,
+        role: invite.role,
+        token: invite.token,
+        expiresAt: invite.expiresAt,
+        invitedBy: invite.invitedBy
+      }
+    });
+  } catch (error) {
+    return handleDatabaseError(error, res, 'send invitation');
+  }
+});
+
+/**
+ * PATCH /api/admin/users/:userId/role
+ * Update user role in the organization
+ */
+router.patch('/users/:userId/role', requireAuth, withOrgScope, requireRole('ADMIN'), async (req, res) => {
+  try {
+    if (!(await checkDatabaseConnection(res))) return;
+
+    const validation = updateRoleSchema.safeParse(req.body);
+    if (!validation.success) {
+      return res.status(400).json({ error: 'Invalid input', code: 'VALIDATION_ERROR', details: validation.error.errors });
+    }
+
+    const { userId } = req.params;
+    const { role } = validation.data;
+
+    const membership = await prisma.membership.findUnique({
+      where: { userId_orgId: { userId, orgId: req.orgId } },
+      include: { user: { select: { name: true, email: true } } }
+    });
+
+    if (!membership) {
+      return res.status(404).json({ error: 'User not found in this organization', code: 'USER_NOT_FOUND' });
+    }
+    if (membership.role === 'OWNER') {
+      return res.status(403).json({ error: 'Cannot change owner role', code: 'CANNOT_CHANGE_OWNER' });
+    }
+
+    const updatedMembership = await prisma.membership.update({
+      where: { userId_orgId: { userId, orgId: req.orgId } },
+      data: { role },
+      include: { user: { select: { name: true, email: true } } }
+    });
+
+    res.json({
+      success: true,
+      message: 'User role updated successfully',
+      membership: { userId: updatedMembership.userId, role: updatedMembership.role, user: updatedMembership.user }
+    });
+  } catch (error) {
+    return handleDatabaseError(error, res, 'update user role');
+  }
+});
+
+/**
+ * POST /api/admin/invites/:inviteId/revoke
+ * Revoke an invitation
+ */
+router.post('/invites/:inviteId/revoke', requireAuth, withOrgScope, requireRole('ADMIN'), async (req, res) => {
+  try {
+    if (!(await checkDatabaseConnection(res))) return;
+
+    const { inviteId } = req.params;
+
+    const invite = await prisma.invite.findFirst({ where: { id: inviteId, orgId: req.orgId } });
+    if (!invite) {
+      return res.status(404).json({ error: 'Invitation not found', code: 'INVITE_NOT_FOUND' });
+    }
+    if (invite.status !== 'PENDING') {
+      return res.status(400).json({ error: 'Only pending invitations can be revoked', code: 'INVALID_INVITE_STATUS' });
+    }
+
+    await prisma.invite.update({ where: { id: inviteId }, data: { status: 'REVOKED' } });
+    res.json({ success: true, message: 'Invitation revoked successfully' });
+  } catch (error) {
+    return handleDatabaseError(error, res, 'revoke invitation');
+  }
+});
+
+/**
+ * DELETE /api/admin/users/:userId
+ * Remove user from organization
+ */
+router.delete('/users/:userId', requireAuth, withOrgScope, requireRole('ADMIN'), async (req, res) => {
+  try {
+    if (!(await checkDatabaseConnection(res))) return;
+
+    const { userId } = req.params;
+
+    const membership = await prisma.membership.findUnique({
+      where: { userId_orgId: { userId, orgId: req.orgId } },
+      include: { user: { select: { name: true, email: true } } }
+    });
+
+    if (!membership) {
+      return res.status(404).json({ error: 'User not found in this organization', code: 'USER_NOT_FOUND' });
+    }
+    if (membership.role === 'OWNER') {
+      return res.status(403).json({ error: 'Cannot remove organization owner', code: 'CANNOT_REMOVE_OWNER' });
+    }
+
+    await prisma.membership.delete({ where: { userId_orgId: { userId, orgId: req.orgId } } });
+    res.json({ success: true, message: 'User removed from organization successfully' });
+  } catch (error) {
+    return handleDatabaseError(error, res, 'remove user');
+  }
+});
+
+/**
+ * GET /api/admin/stats
+ * Get organization statistics for admin dashboard
+ */
+router.get('/stats', requireAuth, withOrgScope, requireAdmin, async (req, res) => {
+  try {
+    if (!(await checkDatabaseConnection(res))) return;
+
+    const stats = await prisma.$transaction(async (tx) => {
+      const [userCount, pendingInvites, totalTasks, totalTimeLogs, activeUsers, totalRevenue] = await Promise.all([
+        tx.membership.count({ where: { orgId: req.orgId } }),
+        tx.invite.count({ where: { orgId: req.orgId, status: 'PENDING' } }),
+        tx.macroTask.count({ where: { orgId: req.orgId } }),
+        tx.timeLog.count({ where: { orgId: req.orgId } }),
+        tx.timeLog.groupBy({
+          by: ['userId'],
+          where: { orgId: req.orgId, begin: { gte: new Date(Date.now() - 30 * 24 * 60 * 60 * 1000) } }
+        }).then(groups => groups.length),
+        tx.timeLog.aggregate({
+          where: { orgId: req.orgId, isBillable: true, earnings: { not: null } },
+          _sum: { earnings: true }
+        }).then(result => result._sum.earnings || 0)
+      ]);
+      return { userCount, pendingInvites, totalTasks, totalTimeLogs, activeUsers, totalRevenue };
+    });
+
+    res.json({ success: true, stats });
+  } catch (error) {
+    return handleDatabaseError(error, res, 'fetch admin statistics');
+  }
+});
+
+/**
+ * GET /api/admin/system/status
+ */
+router.get('/system/status', requireAuth, withOrgScope, requireAdmin, async (req, res) => {
+  try {
+    if (!(await checkDatabaseConnection(res))) return;
+
+    const { INTERNAL_CONFIG } = await import('../config/internal.js');
+    const userCount = await prisma.user.count();
+    const pendingInvitations = await prisma.invitation.count({
+      where: { orgId: req.orgId, status: { in: ['pending_approval', 'sent'] } }
+    });
+
+    res.json({
+      success: true,
+      system: {
+        mode: INTERNAL_CONFIG.MODE,
+        organization: INTERNAL_CONFIG.ORGANIZATION.name,
+        brandingName: INTERNAL_CONFIG.UI.brandingName,
+        inviteOnly: INTERNAL_CONFIG.FEATURES.inviteOnly,
+        maxUsers: INTERNAL_CONFIG.ADMIN.maxUsers,
+        currentUsers: userCount,
+        availableSlots: Math.max(0, INTERNAL_CONFIG.ADMIN.maxUsers - userCount),
+        pendingInvitations
+      }
+    });
+  } catch (error) {
+    return handleDatabaseError(error, res, 'fetch system status');
+  }
+});
+
+/**
+ * POST /api/admin/sync-admins
+ */
+router.post('/sync-admins', requireAuth, withOrgScope, requireRole('ADMIN'), async (req, res) => {
+  try {
+    if (!(await checkDatabaseConnection(res))) return;
+
+    console.log(`🔄 Syncing admin users for org ${req.orgId}...`);
+
+    const adminMemberships = await prisma.membership.findMany({
+      where: { role: { in: ['ADMIN', 'OWNER'] } },
+      include: { user: { select: { id: true, email: true, name: true } } },
+      distinct: ['userId']
+    });
+
+    let added = 0, skipped = 0;
+    const results = [];
+
+    for (const membership of adminMemberships) {
+      const userId = membership.user.id;
+      const existing = await prisma.membership.findUnique({
+        where: { userId_orgId: { userId, orgId: req.orgId } }
+      });
+
+      if (existing) {
+        skipped++;
+        results.push({ email: membership.user.email, status: 'skipped', reason: 'Already in organization' });
+      } else {
+        await prisma.membership.create({ data: { userId, orgId: req.orgId, role: membership.role } });
+        added++;
+        results.push({ email: membership.user.email, status: 'added', role: membership.role });
+        console.log(`✅ Added ${membership.user.email} as ${membership.role}`);
+      }
+    }
+
+    console.log(`📊 Sync complete: ${added} added, ${skipped} already members`);
+    res.json({
+      success: true,
+      message: `Admin sync complete: ${added} users added, ${skipped} already members`,
+      stats: { added, skipped, total: adminMemberships.length },
+      results
+    });
+  } catch (error) {
+    console.error('❌ Error syncing admin users:', error);
+    return handleDatabaseError(error, res, 'sync admin users');
+  }
+});
+
+export default router;

@@ -154,7 +154,7 @@ export function KPIReport() {
     } finally {
       setLoading(false);
     }
-  }, [currentOrg?.id, period, apiClient]);
+  }, [currentOrg?.id, period]); // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => { fetchData(); }, [fetchData]);
 

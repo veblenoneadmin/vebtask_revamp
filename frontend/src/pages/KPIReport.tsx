@@ -1,0 +1,545 @@
+import { useState, useEffect, useCallback } from 'react';
+import { useSession } from '../lib/auth-client';
+import { useOrganization } from '../contexts/OrganizationContext';
+import { useApiClient } from '../lib/api-client';
+import { Card, CardContent, CardHeader } from '../components/ui/card';
+import { Badge } from '../components/ui/badge';
+import { Button } from '../components/ui/button';
+import {
+  Star, TrendingUp, TrendingDown, Minus, AlertTriangle, Coffee,
+  Zap, Users, Clock, CheckSquare, Target, BarChart3,
+  Download, RefreshCw, ChevronDown, Calendar, DollarSign,
+  Flame, Activity, Award, AlertCircle, Eye, EyeOff, ChevronUp
+} from 'lucide-react';
+
+// ─── Types ────────────────────────────────────────────────────────────────────
+interface UserKPI {
+  user: { id: string; name: string; email: string; image?: string };
+  role: string;
+  currentHours: number;
+  previousHours: number;
+  hoursTrend: number | null;
+  utilizationRate: number;
+  completedTasks: number;
+  inProgressTasks: number;
+  totalTasks: number;
+  overdueTaskCount: number;
+  taskCompletionRate: number;
+  billableHours: number;
+  billableRatio: number;
+  estimationAccuracy: number | null;
+  sessionCount: number;
+  avgSessionLength: number;
+  activeDays: number;
+  classification: 'star' | 'overworked' | 'underperformer' | 'coaster' | 'solid' | 'inactive' | 'client';
+  classificationReason: string;
+  score: number | null;
+}
+
+interface ProjectHealth {
+  id: string; name: string; status: string; color: string;
+  budget: number; spent: number; budgetUsed: number | null;
+  estimatedHours: number; hoursLogged: number; hoursUsed: number | null;
+  progress: number; isOverBudget: boolean; isOverTime: boolean;
+  taskCount: number; completedTaskCount: number;
+}
+
+interface OrgKPIs {
+  totalHours: number; previousHours: number; hoursTrend: number | null;
+  totalCompleted: number; totalTasks: number; totalOverdue: number;
+  taskCompletionRate: number; billableHours: number; billableRatio: number;
+  activeMembers: number; totalMembers: number;
+  classificationCounts: Record<string, number>;
+}
+
+interface KPIData {
+  period: string; label: string;
+  dateRange: { start: string; end: string };
+  orgKPIs: OrgKPIs;
+  users: UserKPI[];
+  projectHealth: ProjectHealth[];
+}
+
+type Period = 'daily' | 'weekly' | 'monthly';
+
+// ─── Classification Config ────────────────────────────────────────────────────
+const CLASSIFICATIONS = {
+  star:           { label: 'Star Performer', color: '#f59e0b', bg: 'rgba(245,158,11,0.12)', border: 'rgba(245,158,11,0.3)', icon: Star, glow: '0 0 20px rgba(245,158,11,0.3)' },
+  overworked:     { label: 'Overworked',     color: '#ef4444', bg: 'rgba(239,68,68,0.12)',  border: 'rgba(239,68,68,0.3)',  icon: Flame, glow: '0 0 20px rgba(239,68,68,0.25)' },
+  underperformer: { label: 'Underperformer', color: '#8b5cf6', bg: 'rgba(139,92,246,0.12)', border: 'rgba(139,92,246,0.3)', icon: TrendingDown, glow: '' },
+  coaster:        { label: 'Coasting',       color: '#64748b', bg: 'rgba(100,116,139,0.12)',border: 'rgba(100,116,139,0.3)',icon: Coffee, glow: '' },
+  solid:          { label: 'Solid',          color: '#22c55e', bg: 'rgba(34,197,94,0.12)',  border: 'rgba(34,197,94,0.3)',  icon: CheckSquare, glow: '' },
+  inactive:       { label: 'Inactive',       color: '#475569', bg: 'rgba(71,85,105,0.10)',  border: 'rgba(71,85,105,0.25)', icon: AlertCircle, glow: '' },
+  client:         { label: 'Client',         color: '#38bdf8', bg: 'rgba(56,189,248,0.10)', border: 'rgba(56,189,248,0.25)',icon: Eye, glow: '' },
+};
+
+// ─── Helpers ──────────────────────────────────────────────────────────────────
+function TrendBadge({ value }: { value: number | null }) {
+  if (value === null) return <span style={{ color: '#64748b', fontSize: 12 }}>—</span>;
+  const isUp = value > 0;
+  const isFlat = value === 0;
+  return (
+    <span style={{
+      display: 'inline-flex', alignItems: 'center', gap: 2, fontSize: 12, fontWeight: 600,
+      color: isFlat ? '#64748b' : isUp ? '#22c55e' : '#ef4444',
+    }}>
+      {isFlat ? <Minus size={11}/> : isUp ? <TrendingUp size={11}/> : <TrendingDown size={11}/>}
+      {Math.abs(value)}%
+    </span>
+  );
+}
+
+function MiniBar({ value, max = 100, color = '#6366f1' }: { value: number; max?: number; color?: string }) {
+  const pct = Math.min(100, (value / max) * 100);
+  return (
+    <div style={{ width: '100%', height: 4, background: 'rgba(255,255,255,0.07)', borderRadius: 2, overflow: 'hidden' }}>
+      <div style={{ width: `${pct}%`, height: '100%', background: color, borderRadius: 2, transition: 'width 0.6s ease' }}/>
+    </div>
+  );
+}
+
+function Avatar({ name, image, size = 36 }: { name: string; image?: string; size?: number }) {
+  const initials = name?.split(' ').map(n => n[0]).join('').slice(0, 2).toUpperCase() || '?';
+  const colors = ['#6366f1','#8b5cf6','#ec4899','#f59e0b','#22c55e','#06b6d4'];
+  const colorIndex = name?.charCodeAt(0) % colors.length || 0;
+  return image ? (
+    <img src={image} alt={name} style={{ width: size, height: size, borderRadius: '50%', objectFit: 'cover', flexShrink: 0 }}/>
+  ) : (
+    <div style={{
+      width: size, height: size, borderRadius: '50%', background: colors[colorIndex],
+      display: 'flex', alignItems: 'center', justifyContent: 'center',
+      fontSize: size * 0.35, fontWeight: 700, color: '#fff', flexShrink: 0,
+      fontFamily: '"Syne", sans-serif'
+    }}>{initials}</div>
+  );
+}
+
+function ScoreRing({ score }: { score: number }) {
+  const radius = 20;
+  const circumference = 2 * Math.PI * radius;
+  const progress = circumference - (score / 100) * circumference;
+  const color = score >= 80 ? '#f59e0b' : score >= 60 ? '#22c55e' : score >= 40 ? '#64748b' : '#ef4444';
+  return (
+    <div style={{ position: 'relative', width: 52, height: 52, flexShrink: 0 }}>
+      <svg width="52" height="52" style={{ transform: 'rotate(-90deg)' }}>
+        <circle cx="26" cy="26" r={radius} fill="none" stroke="rgba(255,255,255,0.07)" strokeWidth="3.5"/>
+        <circle cx="26" cy="26" r={radius} fill="none" stroke={color} strokeWidth="3.5"
+          strokeDasharray={circumference} strokeDashoffset={progress} strokeLinecap="round"
+          style={{ transition: 'stroke-dashoffset 0.8s ease' }}/>
+      </svg>
+      <span style={{
+        position: 'absolute', inset: 0, display: 'flex', alignItems: 'center',
+        justifyContent: 'center', fontSize: 13, fontWeight: 700, color,
+      }}>{score}</span>
+    </div>
+  );
+}
+
+// ─── Main Component ───────────────────────────────────────────────────────────
+export function KPIReport() {
+  const { data: session } = useSession();
+  const { currentOrg } = useOrganization();
+  const apiClient = useApiClient();
+
+  const [period, setPeriod] = useState<Period>('weekly');
+  const [data, setData] = useState<KPIData | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+  const [expandedUser, setExpandedUser] = useState<string | null>(null);
+  const [filterClass, setFilterClass] = useState<string | null>(null);
+  const [showClients, setShowClients] = useState(false);
+  const [sortBy, setSortBy] = useState<'score' | 'hours' | 'completion'>('score');
+
+  const fetchData = useCallback(async () => {
+    if (!currentOrg?.id) return;
+    setLoading(true); setError(null);
+    try {
+      const result = await apiClient.fetch(
+        `/api/kpi-report?orgId=${currentOrg.id}&period=${period}`
+      );
+      setData(result);
+    } catch (err: any) {
+      setError(err.message || 'Failed to load KPI data');
+    } finally {
+      setLoading(false);
+    }
+  }, [currentOrg?.id, period, apiClient]);
+
+  useEffect(() => { fetchData(); }, [fetchData]);
+
+  // ── Derived data ──────────────────────────────────────────────────────────
+  const filteredUsers = data?.users
+    .filter(u => showClients || u.classification !== 'client')
+    .filter(u => !filterClass || u.classification === filterClass)
+    .sort((a, b) => {
+      if (sortBy === 'score') return (b.score ?? 0) - (a.score ?? 0);
+      if (sortBy === 'hours') return b.currentHours - a.currentHours;
+      return b.taskCompletionRate - a.taskCompletionRate;
+    }) ?? [];
+
+  const kpi = data?.orgKPIs;
+
+  // ── Export ────────────────────────────────────────────────────────────────
+  const handleExport = () => {
+    if (!data) return;
+    const rows = [
+      ['Name', 'Role', 'Classification', 'Score', 'Hours', 'Utilization%', 'Tasks Completed', 'Completion%', 'Overdue', 'Billable%', 'Notes'],
+      ...data.users.map(u => [
+        u.user.name, u.role, u.classification, u.score ?? '', u.currentHours,
+        u.utilizationRate, u.completedTasks, u.taskCompletionRate, u.overdueTaskCount,
+        u.billableRatio, u.classificationReason
+      ])
+    ];
+    const csv = rows.map(r => r.map(c => `"${c}"`).join(',')).join('\n');
+    const blob = new Blob([csv], { type: 'text/csv' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a'); a.href = url;
+    a.download = `kpi-report-${period}-${data.label.replace(/\s+/g,'-')}.csv`;
+    a.click(); URL.revokeObjectURL(url);
+  };
+
+  // ── Styles ────────────────────────────────────────────────────────────────
+  const s: Record<string, React.CSSProperties> = {
+    page: {
+      minHeight: '100vh', background: 'hsl(240 10% 3.9%)',
+      fontFamily: '"DM Sans", "Inter", sans-serif', color: '#e2e8f0', padding: '0 0 60px',
+    },
+    header: {
+      background: 'linear-gradient(180deg, hsl(240 10% 6%) 0%, hsl(240 10% 3.9%) 100%)',
+      borderBottom: '1px solid rgba(255,255,255,0.07)', padding: '28px 32px 20px',
+    },
+    headerTitle: {
+      fontFamily: '"Syne", "Inter", sans-serif', fontSize: 26, fontWeight: 800,
+      letterSpacing: '-0.5px', color: '#f8fafc', margin: 0,
+    },
+    headerSub: { fontSize: 13, color: '#64748b', marginTop: 2 },
+    container: { maxWidth: 1280, margin: '0 auto', padding: '28px 32px' },
+    periodBtn: (active: boolean): React.CSSProperties => ({
+      padding: '6px 18px', borderRadius: 8, border: active ? '1px solid #6366f1' : '1px solid rgba(255,255,255,0.1)',
+      background: active ? 'rgba(99,102,241,0.15)' : 'transparent', color: active ? '#a5b4fc' : '#64748b',
+      fontSize: 13, fontWeight: 600, cursor: 'pointer', transition: 'all 0.2s'
+    }),
+    kpiGrid: {
+      display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: 16, marginBottom: 28,
+    },
+    kpiCard: {
+      background: 'hsl(240 6% 10%)', borderRadius: 14, border: '1px solid rgba(255,255,255,0.07)',
+      padding: '18px 20px',
+    },
+    kpiValue: { fontSize: 30, fontWeight: 800, fontFamily: '"Syne", sans-serif', lineHeight: 1, color: '#f8fafc' },
+    kpiLabel: { fontSize: 11, fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.08em', color: '#475569', marginTop: 6 },
+    section: { marginBottom: 32 },
+    sectionTitle: {
+      fontSize: 13, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.1em',
+      color: '#475569', marginBottom: 14,
+    },
+    classGrid: {
+      display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(110px, 1fr))', gap: 10, marginBottom: 24,
+    },
+    classCard: (key: string, active: boolean): React.CSSProperties => ({
+      borderRadius: 12, padding: '12px 14px', cursor: 'pointer', transition: 'all 0.2s',
+      background: active ? CLASSIFICATIONS[key as keyof typeof CLASSIFICATIONS]?.bg : 'hsl(240 6% 10%)',
+      border: `1px solid ${active ? CLASSIFICATIONS[key as keyof typeof CLASSIFICATIONS]?.border : 'rgba(255,255,255,0.07)'}`,
+      boxShadow: active ? CLASSIFICATIONS[key as keyof typeof CLASSIFICATIONS]?.glow : 'none',
+    }),
+    userCard: (u: UserKPI): React.CSSProperties => {
+      const cfg = CLASSIFICATIONS[u.classification];
+      return {
+        background: 'hsl(240 6% 10%)', borderRadius: 14,
+        border: `1px solid ${cfg.border}`,
+        marginBottom: 10, overflow: 'hidden', transition: 'border-color 0.2s',
+      };
+    },
+    userCardMain: {
+      display: 'flex', alignItems: 'center', gap: 16, padding: '16px 20px', cursor: 'pointer',
+    },
+    userExpanded: {
+      padding: '0 20px 18px', borderTop: '1px solid rgba(255,255,255,0.06)',
+    },
+    statGrid: {
+      display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(130px, 1fr))', gap: 12, marginTop: 14,
+    },
+    statCell: {
+      background: 'rgba(255,255,255,0.03)', borderRadius: 10, padding: '10px 14px',
+      border: '1px solid rgba(255,255,255,0.05)',
+    },
+    projectRow: {
+      display: 'grid', gridTemplateColumns: '1fr auto auto auto', alignItems: 'center',
+      gap: 16, padding: '14px 18px', background: 'hsl(240 6% 10%)',
+      borderRadius: 12, marginBottom: 8, border: '1px solid rgba(255,255,255,0.07)',
+    },
+  };
+
+  if (loading) return (
+    <div style={{ ...s.page, display: 'flex', alignItems: 'center', justifyContent: 'center', minHeight: '60vh' }}>
+      <div style={{ textAlign: 'center' }}>
+        <div style={{ width: 44, height: 44, border: '3px solid #6366f1', borderTopColor: 'transparent', borderRadius: '50%', animation: 'spin 0.8s linear infinite', margin: '0 auto 16px' }}/>
+        <style>{`@keyframes spin { to { transform: rotate(360deg); } }`}</style>
+        <div style={{ color: '#64748b', fontSize: 14 }}>Loading intelligence report…</div>
+      </div>
+    </div>
+  );
+
+  if (error) return (
+    <div style={{ ...s.page, display: 'flex', alignItems: 'center', justifyContent: 'center', minHeight: '60vh' }}>
+      <div style={{ textAlign: 'center', color: '#ef4444' }}>
+        <AlertTriangle size={40} style={{ margin: '0 auto 12px' }}/>
+        <div style={{ fontSize: 15 }}>{error}</div>
+        <button onClick={fetchData} style={{ marginTop: 16, ...s.periodBtn(true) }}>Retry</button>
+      </div>
+    </div>
+  );
+
+  return (
+    <div style={s.page}>
+      <link href="https://fonts.googleapis.com/css2?family=Syne:wght@700;800&family=DM+Sans:wght@400;500;600;700&display=swap" rel="stylesheet"/>
+
+      {/* ── Header ── */}
+      <div style={s.header}>
+        <div style={{ maxWidth: 1280, margin: '0 auto', display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', flexWrap: 'wrap', gap: 16 }}>
+          <div>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 4 }}>
+              <BarChart3 size={22} style={{ color: '#6366f1' }}/>
+              <h1 style={s.headerTitle}>KPI Intelligence Report</h1>
+            </div>
+            <div style={s.headerSub}>
+              {data?.label} · {currentOrg?.name} · Auto-classifying team performance
+            </div>
+          </div>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+            {/* Period selector */}
+            <div style={{ display: 'flex', gap: 6, background: 'hsl(240 6% 10%)', padding: 4, borderRadius: 10, border: '1px solid rgba(255,255,255,0.07)' }}>
+              {(['daily','weekly','monthly'] as Period[]).map(p => (
+                <button key={p} style={s.periodBtn(period === p)} onClick={() => setPeriod(p)}>
+                  {p.charAt(0).toUpperCase() + p.slice(1)}
+                </button>
+              ))}
+            </div>
+            <button onClick={fetchData} style={{ background: 'hsl(240 6% 10%)', border: '1px solid rgba(255,255,255,0.07)', borderRadius: 8, padding: '7px 10px', color: '#64748b', cursor: 'pointer', display: 'flex', alignItems: 'center' }}>
+              <RefreshCw size={15}/>
+            </button>
+            <button onClick={handleExport} style={{ background: 'rgba(99,102,241,0.12)', border: '1px solid rgba(99,102,241,0.3)', borderRadius: 8, padding: '7px 14px', color: '#a5b4fc', cursor: 'pointer', fontSize: 13, fontWeight: 600, display: 'flex', alignItems: 'center', gap: 6 }}>
+              <Download size={14}/> Export CSV
+            </button>
+          </div>
+        </div>
+      </div>
+
+      <div style={s.container}>
+
+        {/* ── Org KPI Cards ── */}
+        <div style={s.kpiGrid}>
+          {[
+            { icon: Clock, label: 'Total Hours', value: kpi?.totalHours, unit: 'h', trend: kpi?.hoursTrend, color: '#6366f1' },
+            { icon: CheckSquare, label: 'Tasks Completed', value: kpi?.totalCompleted, unit: '', trend: null, color: '#22c55e' },
+            { icon: Target, label: 'Completion Rate', value: kpi?.taskCompletionRate, unit: '%', trend: null, color: '#f59e0b' },
+            { icon: AlertTriangle, label: 'Overdue Tasks', value: kpi?.totalOverdue, unit: '', trend: null, color: '#ef4444' },
+            { icon: DollarSign, label: 'Billable Hours', value: kpi?.billableHours, unit: 'h', trend: null, color: '#06b6d4' },
+            { icon: Users, label: 'Active Members', value: `${kpi?.activeMembers}/${kpi?.totalMembers}`, unit: '', trend: null, color: '#8b5cf6' },
+          ].map(({ icon: Icon, label, value, unit, trend, color }) => (
+            <div key={label} style={s.kpiCard}>
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 10 }}>
+                <div style={{ width: 34, height: 34, borderRadius: 9, background: `${color}20`, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                  <Icon size={16} style={{ color }}/>
+                </div>
+                {trend !== null && <TrendBadge value={trend}/>}
+              </div>
+              <div style={s.kpiValue}>{value}{unit}</div>
+              <div style={s.kpiLabel}>{label}</div>
+            </div>
+          ))}
+        </div>
+
+        {/* ── Classification Summary ── */}
+        <div style={s.section}>
+          <div style={s.sectionTitle}>Performance Classification</div>
+          <div style={s.classGrid}>
+            {Object.entries(CLASSIFICATIONS).filter(([k]) => k !== 'client').map(([key, cfg]) => {
+              const count = kpi?.classificationCounts[key] ?? 0;
+              const Icon = cfg.icon;
+              const isActive = filterClass === key;
+              return (
+                <div key={key} style={s.classCard(key, isActive)}
+                  onClick={() => setFilterClass(isActive ? null : key)}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 7, marginBottom: 6 }}>
+                    <Icon size={14} style={{ color: cfg.color }}/>
+                    <span style={{ fontSize: 11, fontWeight: 700, color: cfg.color, textTransform: 'uppercase', letterSpacing: '0.06em' }}>{cfg.label}</span>
+                  </div>
+                  <div style={{ fontSize: 28, fontWeight: 800, color: '#f8fafc', fontFamily: '"Syne", sans-serif', lineHeight: 1 }}>{count}</div>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+
+        {/* ── Controls ── */}
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 16, flexWrap: 'wrap', gap: 10 }}>
+          <div style={s.sectionTitle}>Team Members ({filteredUsers.length})</div>
+          <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+            <span style={{ fontSize: 12, color: '#475569', fontWeight: 600 }}>Sort:</span>
+            {(['score','hours','completion'] as const).map(s2 => (
+              <button key={s2} style={{
+                fontSize: 12, fontWeight: 600, padding: '4px 10px', borderRadius: 6, cursor: 'pointer',
+                border: sortBy === s2 ? '1px solid #6366f1' : '1px solid rgba(255,255,255,0.08)',
+                background: sortBy === s2 ? 'rgba(99,102,241,0.12)' : 'transparent',
+                color: sortBy === s2 ? '#a5b4fc' : '#475569',
+              }} onClick={() => setSortBy(s2)}>
+                {s2.charAt(0).toUpperCase() + s2.slice(1)}
+              </button>
+            ))}
+            <button onClick={() => setShowClients(!showClients)} style={{
+              fontSize: 12, fontWeight: 600, padding: '4px 10px', borderRadius: 6, cursor: 'pointer',
+              border: '1px solid rgba(255,255,255,0.08)', background: 'transparent', color: '#475569',
+              display: 'flex', alignItems: 'center', gap: 5,
+            }}>
+              {showClients ? <EyeOff size={12}/> : <Eye size={12}/>} Clients
+            </button>
+          </div>
+        </div>
+
+        {/* ── User Cards ── */}
+        <div>
+          {filteredUsers.length === 0 && (
+            <div style={{ textAlign: 'center', padding: '40px 0', color: '#475569' }}>
+              No members match the selected filter.
+            </div>
+          )}
+          {filteredUsers.map(u => {
+            const cfg = CLASSIFICATIONS[u.classification];
+            const Icon = cfg.icon;
+            const isExpanded = expandedUser === u.user.id;
+            return (
+              <div key={u.user.id} style={s.userCard(u)}>
+                {/* Main Row */}
+                <div style={s.userCardMain} onClick={() => setExpandedUser(isExpanded ? null : u.user.id)}>
+                  <Avatar name={u.user.name || u.user.email} image={u.user.image}/>
+
+                  <div style={{ flex: 1, minWidth: 0 }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+                      <span style={{ fontSize: 14, fontWeight: 700, color: '#f1f5f9', fontFamily: '"Syne", sans-serif' }}>
+                        {u.user.name || u.user.email}
+                      </span>
+                      <span style={{
+                        fontSize: 10, fontWeight: 700, padding: '2px 8px', borderRadius: 20,
+                        background: cfg.bg, border: `1px solid ${cfg.border}`, color: cfg.color,
+                        textTransform: 'uppercase', letterSpacing: '0.06em',
+                        display: 'flex', alignItems: 'center', gap: 4,
+                      }}>
+                        <Icon size={10}/> {cfg.label}
+                      </span>
+                      <span style={{ fontSize: 11, color: '#475569' }}>{u.role}</span>
+                    </div>
+                    <div style={{ fontSize: 12, color: '#64748b', marginTop: 3 }}>{u.classificationReason}</div>
+                    <div style={{ marginTop: 8 }}>
+                      <MiniBar value={u.utilizationRate} color={cfg.color}/>
+                    </div>
+                  </div>
+
+                  {/* Quick stats */}
+                  <div style={{ display: 'flex', gap: 20, alignItems: 'center', flexShrink: 0 }}>
+                    <div style={{ textAlign: 'right' }}>
+                      <div style={{ fontSize: 16, fontWeight: 800, color: '#f1f5f9', fontFamily: '"Syne", sans-serif' }}>{u.currentHours}h</div>
+                      <div style={{ fontSize: 10, color: '#475569', display: 'flex', alignItems: 'center', justifyContent: 'flex-end', gap: 3 }}>
+                        <TrendBadge value={u.hoursTrend}/>
+                      </div>
+                    </div>
+                    <div style={{ textAlign: 'center' }}>
+                      <div style={{ fontSize: 16, fontWeight: 800, color: '#f1f5f9', fontFamily: '"Syne", sans-serif' }}>{u.taskCompletionRate}%</div>
+                      <div style={{ fontSize: 10, color: '#475569' }}>Done</div>
+                    </div>
+                    {u.score !== null && <ScoreRing score={u.score}/>}
+                    <div style={{ color: '#475569' }}>
+                      {isExpanded ? <ChevronUp size={16}/> : <ChevronDown size={16}/>}
+                    </div>
+                  </div>
+                </div>
+
+                {/* Expanded detail */}
+                {isExpanded && (
+                  <div style={s.userExpanded}>
+                    <div style={s.statGrid}>
+                      {[
+                        { label: 'Utilization', value: `${u.utilizationRate}%`, sub: 'vs expected hours', color: u.utilizationRate >= 90 ? '#22c55e' : u.utilizationRate >= 70 ? '#f59e0b' : '#ef4444' },
+                        { label: 'Completed Tasks', value: `${u.completedTasks}`, sub: `of ${u.totalTasks} total`, color: '#6366f1' },
+                        { label: 'Overdue', value: `${u.overdueTaskCount}`, sub: 'tasks past due', color: u.overdueTaskCount > 0 ? '#ef4444' : '#22c55e' },
+                        { label: 'Billable Ratio', value: `${u.billableRatio}%`, sub: `${u.billableHours}h billable`, color: '#06b6d4' },
+                        { label: 'Avg Session', value: `${u.avgSessionLength}h`, sub: `${u.sessionCount} sessions`, color: '#8b5cf6' },
+                        { label: 'Active Days', value: `${u.activeDays}`, sub: 'days with logs', color: '#f59e0b' },
+                        { label: 'In Progress', value: `${u.inProgressTasks}`, sub: 'tasks currently active', color: '#38bdf8' },
+                        ...(u.estimationAccuracy !== null ? [{ label: 'Est. Accuracy', value: `${u.estimationAccuracy}%`, sub: 'time estimate accuracy', color: u.estimationAccuracy >= 80 ? '#22c55e' : '#f59e0b' }] : []),
+                      ].map(({ label, value, sub, color }) => (
+                        <div key={label} style={s.statCell}>
+                          <div style={{ fontSize: 20, fontWeight: 800, color, fontFamily: '"Syne", sans-serif', lineHeight: 1 }}>{value}</div>
+                          <div style={{ fontSize: 11, fontWeight: 600, color: '#cbd5e1', marginTop: 4 }}>{label}</div>
+                          <div style={{ fontSize: 10, color: '#475569', marginTop: 2 }}>{sub}</div>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+              </div>
+            );
+          })}
+        </div>
+
+        {/* ── Project Health ── */}
+        {data?.projectHealth && data.projectHealth.length > 0 && (
+          <div style={{ ...s.section, marginTop: 36 }}>
+            <div style={s.sectionTitle}>Project Health</div>
+            {data.projectHealth.map(p => (
+              <div key={p.id} style={{ ...s.projectRow, borderColor: p.isOverBudget || p.isOverTime ? 'rgba(239,68,68,0.3)' : 'rgba(255,255,255,0.07)' }}>
+                <div>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 4 }}>
+                    <div style={{ width: 10, height: 10, borderRadius: '50%', background: p.color, flexShrink: 0 }}/>
+                    <span style={{ fontWeight: 600, fontSize: 14, color: '#f1f5f9' }}>{p.name}</span>
+                    {p.isOverBudget && <span style={{ fontSize: 10, background: 'rgba(239,68,68,0.15)', color: '#ef4444', padding: '2px 7px', borderRadius: 10, fontWeight: 700 }}>Over Budget</span>}
+                    {p.isOverTime && <span style={{ fontSize: 10, background: 'rgba(245,158,11,0.15)', color: '#f59e0b', padding: '2px 7px', borderRadius: 10, fontWeight: 700 }}>Over Time</span>}
+                  </div>
+                  <div style={{ display: 'flex', gap: 16, marginTop: 6 }}>
+                    {p.hoursUsed !== null && (
+                      <div style={{ width: 120 }}>
+                        <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 10, color: '#64748b', marginBottom: 3 }}>
+                          <span>Hours {p.hoursLogged}h / {p.estimatedHours}h</span>
+                          <span>{p.hoursUsed}%</span>
+                        </div>
+                        <MiniBar value={p.hoursUsed} color={p.hoursUsed > 100 ? '#ef4444' : '#6366f1'}/>
+                      </div>
+                    )}
+                    {p.budgetUsed !== null && (
+                      <div style={{ width: 120 }}>
+                        <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 10, color: '#64748b', marginBottom: 3 }}>
+                          <span>Budget ${p.spent} / ${p.budget}</span>
+                          <span>{p.budgetUsed}%</span>
+                        </div>
+                        <MiniBar value={p.budgetUsed} color={p.budgetUsed > 100 ? '#ef4444' : '#22c55e'}/>
+                      </div>
+                    )}
+                  </div>
+                </div>
+                <div style={{ textAlign: 'center' }}>
+                  <div style={{ fontSize: 20, fontWeight: 800, color: '#f8fafc', fontFamily: '"Syne", sans-serif' }}>{p.progress}%</div>
+                  <div style={{ fontSize: 10, color: '#475569' }}>Progress</div>
+                </div>
+                <div style={{ textAlign: 'center' }}>
+                  <div style={{ fontSize: 14, fontWeight: 700, color: '#f8fafc' }}>{p.completedTaskCount}/{p.taskCount}</div>
+                  <div style={{ fontSize: 10, color: '#475569' }}>Tasks</div>
+                </div>
+                <div>
+                  <span style={{
+                    fontSize: 11, fontWeight: 700, padding: '4px 10px', borderRadius: 8,
+                    background: p.status === 'active' ? 'rgba(34,197,94,0.12)' : p.status === 'completed' ? 'rgba(99,102,241,0.12)' : 'rgba(100,116,139,0.12)',
+                    color: p.status === 'active' ? '#22c55e' : p.status === 'completed' ? '#a5b4fc' : '#64748b',
+                    textTransform: 'capitalize',
+                  }}>{p.status}</span>
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+
+      </div>
+    </div>
+  );
+}
+
+export default KPIReport;

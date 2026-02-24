@@ -11,18 +11,18 @@ const router = express.Router();
 // Validation schemas
 const inviteUserSchema = z.object({
   email: z.string().email(),
-  role: z.enum(['ADMIN', 'STAFF', 'CLIENT'])
+  role: z.enum(['OWNER', 'ADMIN', 'STAFF', 'CLIENT'])
 });
 
 const updateRoleSchema = z.object({
-  role: z.enum(['ADMIN', 'STAFF', 'CLIENT'])
+  role: z.enum(['OWNER', 'ADMIN', 'STAFF', 'CLIENT'])
 });
 
 const createUserSchema = z.object({
   name:     z.string().min(1).max(255),
   email:    z.string().email(),
   password: z.string().min(6).max(128),
-  role:     z.enum(['ADMIN', 'STAFF', 'CLIENT']),
+  role:     z.enum(['OWNER', 'ADMIN', 'STAFF', 'CLIENT']),
 });
 
 /**
@@ -55,7 +55,7 @@ router.post('/users/create', requireAuth, withOrgScope, requireRole('ADMIN'), as
       return res.status(201).json({ success: true, message: 'Existing user added to organization', userId: existing.id });
     }
 
-    // FIX: Use Better Auth's own signUpEmail API so the password is hashed
+    // Use Better Auth's own signUpEmail API so the password is hashed
     // exactly the same way as normal signup — no custom hashing needed.
     const signUpResult = await auth.api.signUpEmail({
       body: { email, password, name },
@@ -73,7 +73,7 @@ router.post('/users/create', requireAuth, withOrgScope, requireRole('ADMIN'), as
       data: { userId, orgId: req.orgId, role },
     });
 
-    console.log(`✅ User created via Better Auth: ${email}`);
+    console.log(`✅ User created via Better Auth: ${email} as ${role}`);
 
     res.status(201).json({
       success: true,
@@ -88,7 +88,6 @@ router.post('/users/create', requireAuth, withOrgScope, requireRole('ADMIN'), as
 
 /**
  * GET /api/admin/users
- * List all users in the organization
  */
 router.get('/users', requireAuth, withOrgScope, requireRole('ADMIN'), async (req, res) => {
   try {
@@ -376,7 +375,7 @@ router.post('/sync-admins', requireAuth, withOrgScope, requireRole('ADMIN'), asy
 
     for (const membership of adminMemberships) {
       const userId = membership.user.id;
-      const existing = await prisma.membership.findUnique({
+      const existing = await prisma.mesmbership.findUnique({
         where: { userId_orgId: { userId, orgId: req.orgId } }
       });
 

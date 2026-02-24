@@ -44,7 +44,7 @@ interface OrgUser {
 interface Invite {
   id: string;
   email: string;
-  role: 'ADMIN' | 'STAFF' | 'CLIENT';
+  role: 'OWNER' | 'ADMIN' | 'STAFF' | 'CLIENT';
   status: 'PENDING' | 'ACCEPTED' | 'EXPIRED' | 'REVOKED';
   createdAt: string;
   expiresAt: string;
@@ -73,12 +73,12 @@ export function Admin() {
   // Invite form
   const [showInvite, setShowInvite] = useState(false);
   const [inviteEmail, setInviteEmail] = useState('');
-  const [inviteRole, setInviteRole]   = useState<'ADMIN' | 'STAFF' | 'CLIENT'>('STAFF');
+  const [inviteRole, setInviteRole]   = useState<'OWNER' | 'ADMIN' | 'STAFF' | 'CLIENT'>('STAFF');
   const [inviting, setInviting]       = useState(false);
 
   // Edit role
   const [editingUser, setEditingUser] = useState<OrgUser | null>(null);
-  const [editingRole, setEditingRole] = useState<'ADMIN' | 'STAFF' | 'CLIENT'>('STAFF');
+  const [editingRole, setEditingRole] = useState<'OWNER' | 'ADMIN' | 'STAFF' | 'CLIENT'>('STAFF');
   const [saving, setSaving]           = useState(false);
 
   // Remove member
@@ -90,7 +90,7 @@ export function Admin() {
   const [addName, setAddName]               = useState('');
   const [addEmail, setAddEmail]             = useState('');
   const [addPassword, setAddPassword]       = useState('');
-  const [addRole, setAddRole]               = useState<'ADMIN' | 'STAFF' | 'CLIENT'>('STAFF');
+  const [addRole, setAddRole]               = useState<'OWNER' | 'ADMIN' | 'STAFF' | 'CLIENT'>('STAFF');
   const [showPassword, setShowPassword]     = useState(false);
   const [addingUser, setAddingUser]         = useState(false);
 
@@ -586,7 +586,6 @@ export function Admin() {
           onClick={e => { if (e.target === e.currentTarget) setShowInvite(false); }}>
           <div className="w-full max-w-md rounded-2xl overflow-hidden"
             style={{ background: VS.bg0, border: `1px solid ${VS.border}`, boxShadow: '0 24px 60px rgba(0,0,0,0.7)' }}>
-            {/* Header */}
             <div className="flex items-center justify-between px-5 py-4"
               style={{ background: VS.bg1, borderBottom: `1px solid ${VS.border}` }}>
               <div className="flex items-center gap-2">
@@ -597,7 +596,6 @@ export function Admin() {
                 <X className="h-4 w-4" />
               </button>
             </div>
-            {/* Body */}
             <form onSubmit={handleInvite} className="p-5 space-y-4">
               <div>
                 <label className="block text-[12px] font-semibold mb-1.5" style={{ color: VS.text2 }}>Email Address</label>
@@ -619,8 +617,9 @@ export function Admin() {
                   className={inputCls}
                   style={inputStyle}
                 >
+                  <option value="OWNER">Owner — full organization control</option>
+                  <option value="ADMIN">Admin — manage members &amp; settings</option>
                   <option value="STAFF">Staff — standard member</option>
-                  <option value="ADMIN">Admin — manage members & settings</option>
                   <option value="CLIENT">Client — limited view access</option>
                 </select>
               </div>
@@ -659,7 +658,6 @@ export function Admin() {
               </button>
             </div>
             <div className="p-5 space-y-4">
-              {/* User preview */}
               <div className="flex items-center gap-3 p-3 rounded-lg" style={{ background: VS.bg2 }}>
                 <div className="h-9 w-9 rounded-full flex items-center justify-center text-[13px] font-bold shrink-0"
                   style={{ background: `${ROLE_CFG[editingUser.memberships[0]?.role ?? 'CLIENT'].color}22`, color: ROLE_CFG[editingUser.memberships[0]?.role ?? 'CLIENT'].color }}>
@@ -678,9 +676,10 @@ export function Admin() {
                   className={inputCls}
                   style={inputStyle}
                 >
-                  <option value="STAFF">Staff</option>
-                  <option value="ADMIN">Admin</option>
-                  <option value="CLIENT">Client</option>
+                  <option value="OWNER">Owner — full organization control</option>
+                  <option value="ADMIN">Admin — manage members &amp; settings</option>
+                  <option value="STAFF">Staff — standard member</option>
+                  <option value="CLIENT">Client — limited view access</option>
                 </select>
               </div>
               <div className="flex justify-end gap-3 pt-1">
@@ -707,7 +706,6 @@ export function Admin() {
           onClick={e => { if (e.target === e.currentTarget) setShowAddUser(false); }}>
           <div className="w-full max-w-md rounded-2xl overflow-hidden"
             style={{ background: VS.bg0, border: `1px solid ${VS.border}`, boxShadow: '0 24px 60px rgba(0,0,0,0.7)' }}>
-            {/* Header */}
             <div className="flex items-center justify-between px-5 py-4"
               style={{ background: VS.bg1, borderBottom: `1px solid ${VS.border}` }}>
               <div className="flex items-center gap-2">
@@ -719,7 +717,6 @@ export function Admin() {
                 <X className="h-4 w-4" />
               </button>
             </div>
-            {/* Body */}
             <form onSubmit={handleAddUser} className="p-5 space-y-4">
               <p className="text-[12px]" style={{ color: VS.text2 }}>
                 Creates the account immediately — no email invite required. The user can log in right away.
@@ -779,8 +776,9 @@ export function Admin() {
                   className={inputCls}
                   style={inputStyle}
                 >
-                  <option value="STAFF">Staff — standard member</option>
+                  <option value="OWNER">Owner — full organization control</option>
                   <option value="ADMIN">Admin — manage members &amp; settings</option>
+                  <option value="STAFF">Staff — standard member</option>
                   <option value="CLIENT">Client — limited view access</option>
                 </select>
               </div>

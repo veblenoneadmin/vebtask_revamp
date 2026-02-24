@@ -17,7 +17,7 @@ const router = express.Router();
  *   - period: 'daily' | 'weekly' | 'monthly' (default: 'weekly')
  *   - date: ISO date string (default: now)
  */
-router.get('/', requireAuth, withOrgScope, async (req, res) => {
+router.get('/', requireAuth, async (req, res) => {
   try {
     const { orgId, period = 'weekly', date } = req.query;
 

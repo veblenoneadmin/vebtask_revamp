@@ -2,14 +2,11 @@ import { useState, useEffect, useCallback } from 'react';
 import { useSession } from '../lib/auth-client';
 import { useOrganization } from '../contexts/OrganizationContext';
 import { useApiClient } from '../lib/api-client';
-import { Card, CardContent, CardHeader } from '../components/ui/card';
-import { Badge } from '../components/ui/badge';
-import { Button } from '../components/ui/button';
 import {
   Star, TrendingUp, TrendingDown, Minus, AlertTriangle, Coffee,
-  Zap, Users, Clock, CheckSquare, Target, BarChart3,
-  Download, RefreshCw, ChevronDown, Calendar, DollarSign,
-  Flame, Activity, Award, AlertCircle, Eye, EyeOff, ChevronUp
+  Users, Clock, CheckSquare, Target, BarChart3,
+  Download, RefreshCw, ChevronDown, DollarSign,
+  Flame, AlertCircle, Eye, EyeOff, ChevronUp
 } from 'lucide-react';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
@@ -137,7 +134,7 @@ function ScoreRing({ score }: { score: number }) {
 
 // ─── Main Component ───────────────────────────────────────────────────────────
 export function KPIReport() {
-  const { data: session } = useSession();
+  useSession();
   const { currentOrg } = useOrganization();
   const apiClient = useApiClient();
 
@@ -199,6 +196,28 @@ export function KPIReport() {
   };
 
   // ── Styles ────────────────────────────────────────────────────────────────
+  const periodBtnStyle = (active: boolean): React.CSSProperties => ({
+    padding: '6px 18px', borderRadius: 8, border: active ? '1px solid #6366f1' : '1px solid rgba(255,255,255,0.1)',
+    background: active ? 'rgba(99,102,241,0.15)' : 'transparent', color: active ? '#a5b4fc' : '#64748b',
+    fontSize: 13, fontWeight: 600, cursor: 'pointer', transition: 'all 0.2s'
+  });
+
+  const classCardStyle = (key: string, active: boolean): React.CSSProperties => ({
+    borderRadius: 12, padding: '12px 14px', cursor: 'pointer', transition: 'all 0.2s',
+    background: active ? CLASSIFICATIONS[key as keyof typeof CLASSIFICATIONS]?.bg : 'hsl(240 6% 10%)',
+    border: `1px solid ${active ? CLASSIFICATIONS[key as keyof typeof CLASSIFICATIONS]?.border : 'rgba(255,255,255,0.07)'}`,
+    boxShadow: active ? CLASSIFICATIONS[key as keyof typeof CLASSIFICATIONS]?.glow : 'none',
+  });
+
+  const userCardStyle = (u: UserKPI): React.CSSProperties => {
+    const cfg = CLASSIFICATIONS[u.classification];
+    return {
+      background: 'hsl(240 6% 10%)', borderRadius: 14,
+      border: `1px solid ${cfg.border}`,
+      marginBottom: 10, overflow: 'hidden', transition: 'border-color 0.2s',
+    };
+  };
+
   const s: Record<string, React.CSSProperties> = {
     page: {
       minHeight: '100vh', background: 'hsl(240 10% 3.9%)',
@@ -214,11 +233,6 @@ export function KPIReport() {
     },
     headerSub: { fontSize: 13, color: '#64748b', marginTop: 2 },
     container: { maxWidth: 1280, margin: '0 auto', padding: '28px 32px' },
-    periodBtn: (active: boolean): React.CSSProperties => ({
-      padding: '6px 18px', borderRadius: 8, border: active ? '1px solid #6366f1' : '1px solid rgba(255,255,255,0.1)',
-      background: active ? 'rgba(99,102,241,0.15)' : 'transparent', color: active ? '#a5b4fc' : '#64748b',
-      fontSize: 13, fontWeight: 600, cursor: 'pointer', transition: 'all 0.2s'
-    }),
     kpiGrid: {
       display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: 16, marginBottom: 28,
     },
@@ -235,20 +249,6 @@ export function KPIReport() {
     },
     classGrid: {
       display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(110px, 1fr))', gap: 10, marginBottom: 24,
-    },
-    classCard: (key: string, active: boolean): React.CSSProperties => ({
-      borderRadius: 12, padding: '12px 14px', cursor: 'pointer', transition: 'all 0.2s',
-      background: active ? CLASSIFICATIONS[key as keyof typeof CLASSIFICATIONS]?.bg : 'hsl(240 6% 10%)',
-      border: `1px solid ${active ? CLASSIFICATIONS[key as keyof typeof CLASSIFICATIONS]?.border : 'rgba(255,255,255,0.07)'}`,
-      boxShadow: active ? CLASSIFICATIONS[key as keyof typeof CLASSIFICATIONS]?.glow : 'none',
-    }),
-    userCard: (u: UserKPI): React.CSSProperties => {
-      const cfg = CLASSIFICATIONS[u.classification];
-      return {
-        background: 'hsl(240 6% 10%)', borderRadius: 14,
-        border: `1px solid ${cfg.border}`,
-        marginBottom: 10, overflow: 'hidden', transition: 'border-color 0.2s',
-      };
     },
     userCardMain: {
       display: 'flex', alignItems: 'center', gap: 16, padding: '16px 20px', cursor: 'pointer',
@@ -285,7 +285,7 @@ export function KPIReport() {
       <div style={{ textAlign: 'center', color: '#ef4444' }}>
         <AlertTriangle size={40} style={{ margin: '0 auto 12px' }}/>
         <div style={{ fontSize: 15 }}>{error}</div>
-        <button onClick={fetchData} style={{ marginTop: 16, ...s.periodBtn(true) }}>Retry</button>
+        <button onClick={fetchData} style={periodBtnStyle(true)}>Retry</button>
       </div>
     </div>
   );
@@ -310,7 +310,7 @@ export function KPIReport() {
             {/* Period selector */}
             <div style={{ display: 'flex', gap: 6, background: 'hsl(240 6% 10%)', padding: 4, borderRadius: 10, border: '1px solid rgba(255,255,255,0.07)' }}>
               {(['daily','weekly','monthly'] as Period[]).map(p => (
-                <button key={p} style={s.periodBtn(period === p)} onClick={() => setPeriod(p)}>
+                <button key={p} style={periodBtnStyle(period === p)} onClick={() => setPeriod(p)}>
                   {p.charAt(0).toUpperCase() + p.slice(1)}
                 </button>
               ))}
@@ -330,7 +330,7 @@ export function KPIReport() {
         {/* ── Org KPI Cards ── */}
         <div style={s.kpiGrid}>
           {[
-            { icon: Clock, label: 'Total Hours', value: kpi?.totalHours, unit: 'h', trend: kpi?.hoursTrend, color: '#6366f1' },
+            { icon: Clock, label: 'Total Hours', value: kpi?.totalHours, unit: 'h', trend: kpi?.hoursTrend ?? null, color: '#6366f1' },
             { icon: CheckSquare, label: 'Tasks Completed', value: kpi?.totalCompleted, unit: '', trend: null, color: '#22c55e' },
             { icon: Target, label: 'Completion Rate', value: kpi?.taskCompletionRate, unit: '%', trend: null, color: '#f59e0b' },
             { icon: AlertTriangle, label: 'Overdue Tasks', value: kpi?.totalOverdue, unit: '', trend: null, color: '#ef4444' },
@@ -359,7 +359,7 @@ export function KPIReport() {
               const Icon = cfg.icon;
               const isActive = filterClass === key;
               return (
-                <div key={key} style={s.classCard(key, isActive)}
+                <div key={key} style={classCardStyle(key, isActive)}
                   onClick={() => setFilterClass(isActive ? null : key)}>
                   <div style={{ display: 'flex', alignItems: 'center', gap: 7, marginBottom: 6 }}>
                     <Icon size={14} style={{ color: cfg.color }}/>
@@ -409,7 +409,7 @@ export function KPIReport() {
             const Icon = cfg.icon;
             const isExpanded = expandedUser === u.user.id;
             return (
-              <div key={u.user.id} style={s.userCard(u)}>
+              <div key={u.user.id} style={userCardStyle(u)}>
                 {/* Main Row */}
                 <div style={s.userCardMain} onClick={() => setExpandedUser(isExpanded ? null : u.user.id)}>
                   <Avatar name={u.user.name || u.user.email} image={u.user.image}/>

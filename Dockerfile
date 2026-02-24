@@ -1,5 +1,5 @@
 # Use Node.js 20 slim for better Prisma compatibility
-FROM node:20-slim
+FROM mirror.gcr.io/library/node:20-slim
 
 # Install OpenSSL for Prisma
 RUN apt-get update && apt-get install -y openssl ca-certificates && rm -rf /var/lib/apt/lists/*

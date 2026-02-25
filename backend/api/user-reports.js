@@ -82,7 +82,7 @@ router.get('/', requireAuth, withOrgScope, validateQuery(commonSchemas.paginatio
     if (userIds.length) {
       const placeholders = userIds.map(() => '?').join(',');
       const users = await prisma.$queryRawUnsafe(
-        `SELECT id, name, email, image FROM users WHERE id IN (${placeholders})`,
+        `SELECT id, name, email, image FROM user WHERE id IN (${placeholders})`,
         ...userIds
       );
       users.forEach(u => { usersMap[u.id] = u; });
@@ -129,7 +129,7 @@ router.get('/', requireAuth, withOrgScope, validateQuery(commonSchemas.paginatio
       if (mUserIds.length) {
         const ph = mUserIds.map(() => '?').join(',');
         const mUsers = await prisma.$queryRawUnsafe(
-          `SELECT id, name, email FROM users WHERE id IN (${ph})`,
+          `SELECT id, name, email FROM user WHERE id IN (${ph})`,
           ...mUserIds
         );
         mUsers.forEach(u => { mUsersMap[u.id] = u; });

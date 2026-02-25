@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react';
 import { useSession } from '../lib/auth-client';
+import { useApiClient } from '../lib/api-client';
 import {
   Users, UserPlus, Mail, Trash2, Edit3, Crown,
   UserCog, Shield, Clock, CheckSquare, X, Check, Eye, EyeOff, UserCheck,
@@ -94,6 +95,9 @@ export function Admin() {
   const [showPassword, setShowPassword]     = useState(false);
   const [addingUser, setAddingUser]         = useState(false);
 
+  const { data: session } = useSession();
+  const apiClient = useApiClient();
+
   function showToast(msg: string, ok = true) {
     setToast({ msg, ok });
     setTimeout(() => setToast(null), 3500);
@@ -102,29 +106,18 @@ export function Admin() {
   const fetchData = async () => {
     try {
       setLoading(true);
-      const [uRes, iRes] = await Promise.all([
-        fetch('/api/admin/users', { credentials: 'include' }),
-        fetch('/api/admin/invites', { credentials: 'include' }),
+      const [uData, iData] = await Promise.all([
+        apiClient.fetch('/api/admin/users'),
+        apiClient.fetch('/api/admin/invites'),
       ]);
-      if (uRes.ok) {
-        setUsers((await uRes.json()).users ?? []);
-      } else {
-        const errData = await uRes.json().catch(() => ({}));
-        console.error('❌ Failed to fetch users:', uRes.status, errData);
-      }
-      if (iRes.ok) {
-        setInvites((await iRes.json()).invites ?? []);
-      } else {
-        const errData = await iRes.json().catch(() => ({}));
-        console.error('❌ Failed to fetch invites:', iRes.status, errData);
-      }
+      setUsers(uData.users ?? []);
+      setInvites(iData.invites ?? []);
     } catch (error) {
       console.error('❌ Error in fetchData:', error);
+    } finally {
+      setLoading(false);
     }
-    finally { setLoading(false); }
   };
-
-  const { data: session } = useSession();
 
   useEffect(() => {
     if (session?.user?.id) fetchData();
@@ -135,22 +128,15 @@ export function Admin() {
     if (!inviteEmail.trim()) return;
     setInviting(true);
     try {
-      const res = await fetch('/api/admin/invite', {
+      await apiClient.fetch('/api/admin/invite', {
         method: 'POST',
-        credentials: 'include',
-        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ email: inviteEmail, role: inviteRole }),
       });
-      if (res.ok) {
-        setInviteEmail('');
-        setShowInvite(false);
-        fetchData();
-        showToast('Invitation sent successfully!');
-      } else {
-        const err = await res.json();
-        showToast(err.error || 'Failed to send invitation', false);
-      }
-    } catch { showToast('Failed to send invitation', false); }
+      setInviteEmail('');
+      setShowInvite(false);
+      fetchData();
+      showToast('Invitation sent successfully!');
+    } catch (err: any) { showToast(err.message || 'Failed to send invitation', false); }
     finally { setInviting(false); }
   };
 
@@ -158,64 +144,44 @@ export function Admin() {
     if (!editingUser) return;
     setSaving(true);
     try {
-      const res = await fetch(`/api/admin/users/${editingUser.id}/role`, {
+      await apiClient.fetch(`/api/admin/users/${editingUser.id}/role`, {
         method: 'PATCH',
-        credentials: 'include',
-        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ role: editingRole }),
       });
-      if (res.ok) {
-        setEditingUser(null);
-        fetchData();
-        showToast('Role updated successfully!');
-      } else {
-        const err = await res.json();
-        showToast(err.error || 'Failed to update role', false);
-      }
-    } catch { showToast('Failed to update role', false); }
+      setEditingUser(null);
+      fetchData();
+      showToast('Role updated successfully!');
+    } catch (err: any) { showToast(err.message || 'Failed to update role', false); }
     finally { setSaving(false); }
   };
 
   const handleRemoveMember = async (userId: string) => {
     setRemovingId(userId);
     try {
-      const res = await fetch(`/api/admin/users/${userId}`, { method: 'DELETE', credentials: 'include' });
-      if (res.ok) {
-        fetchData();
-        showToast('Member removed from organization.');
-      } else {
-        showToast('Failed to remove member.', false);
-      }
-    } catch { showToast('Failed to remove member.', false); }
+      await apiClient.fetch(`/api/admin/users/${userId}`, { method: 'DELETE' });
+      fetchData();
+      showToast('Member removed from organization.');
+    } catch (err: any) { showToast(err.message || 'Failed to remove member.', false); }
     finally { setRemovingId(null); }
   };
 
   const handleRevokeInvite = async (inviteId: string) => {
     try {
-      const res = await fetch(`/api/admin/invites/${inviteId}/revoke`, { method: 'POST', credentials: 'include' });
-      if (res.ok) { fetchData(); showToast('Invitation revoked.'); }
-      else showToast('Failed to revoke invitation.', false);
-    } catch { showToast('Failed to revoke invitation.', false); }
+      await apiClient.fetch(`/api/admin/invites/${inviteId}/revoke`, { method: 'POST' });
+      fetchData();
+      showToast('Invitation revoked.');
+    } catch (err: any) { showToast(err.message || 'Failed to revoke invitation.', false); }
   };
 
   const handleSyncAdmins = async () => {
     setSyncing(true);
     try {
-      const res = await fetch('/api/admin/sync-admins', {
-        method: 'POST',
-        credentials: 'include',
-        headers: { 'Content-Type': 'application/json' },
-      });
-      const data = await res.json();
-      if (res.ok) {
-        fetchData();
-        showToast(`✅ Synced! Added ${data.stats.added} admin(s), ${data.stats.skipped} already in org`);
-      } else {
-        showToast(data.error || 'Failed to sync admins', false);
-      }
-    } catch (error) {
-      console.error('Sync error:', error);
-      showToast('Failed to sync admins', false);
+      const data = await apiClient.fetch('/api/admin/sync-admins', { method: 'POST' });
+      fetchData();
+      showToast(`✅ Synced! Added ${data.stats.added} admin(s), ${data.stats.skipped} already in org`);
+    } catch (err: any) {
+      console.error('Sync error:', err);
+      showToast(err.message || 'Failed to sync admins', false);
     } finally {
       setSyncing(false);
     }
@@ -225,22 +191,15 @@ export function Admin() {
     e.preventDefault();
     setAddingUser(true);
     try {
-      const res = await fetch('/api/admin/users/create', {
+      const data = await apiClient.fetch('/api/admin/users/create', {
         method: 'POST',
-        credentials: 'include',
-        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ name: addName, email: addEmail, password: addPassword, role: addRole }),
       });
-      const data = await res.json();
-      if (res.ok) {
-        setShowAddUser(false);
-        setAddName(''); setAddEmail(''); setAddPassword(''); setAddRole('STAFF');
-        fetchData();
-        showToast(data.message || 'User created successfully!');
-      } else {
-        showToast(data.error || 'Failed to create user', false);
-      }
-    } catch { showToast('Failed to create user', false); }
+      setShowAddUser(false);
+      setAddName(''); setAddEmail(''); setAddPassword(''); setAddRole('STAFF');
+      fetchData();
+      showToast(data.message || 'User created successfully!');
+    } catch (err: any) { showToast(err.message || 'Failed to create user', false); }
     finally { setAddingUser(false); }
   };
 

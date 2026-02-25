@@ -6,6 +6,7 @@ import { auth } from './auth.js';
 import { prisma } from './lib/prisma.js';
 
 // Import new route modules
+import { startKPIScheduler } from './services/kpiEmailScheduler.js';
 import authRoutes from './routes/auth.js';
 import organizationRoutes from './routes/organizations.js';
 import memberRoutes from './routes/members.js';
@@ -2941,6 +2942,9 @@ async function startServer() {
       resolve();
     }).on('error', reject);
   });
+
+  // ── Start KPI email scheduler ──────────────────────────────────────────────
+  startKPIScheduler();
 
   // Run full migrations + seed in background after server starts
   runDatabaseMigrations()

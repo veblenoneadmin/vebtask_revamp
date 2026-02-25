@@ -26,6 +26,7 @@ model User {
   taskAttachments  TaskAttachment[]
   invitesSent      Invite[]         @relation("InvitedByUser")
   invitesAccepted  Invite[]         @relation("AcceptedByUser")
+  clients          Client[]
 }
 
 model Organization {
@@ -236,19 +237,29 @@ model Project {
 }
 
 model Client {
-  id        String    @id @default(cuid())
-  name      String    @db.VarChar(255)
-  email     String?   @db.VarChar(255)
-  phone     String?   @db.VarChar(50)
-  address   String?   @db.Text
-  orgId     String
-  createdAt DateTime  @default(now())
-  updatedAt DateTime  @updatedAt
-  
+  id            String    @id @default(cuid())
+  name          String    @db.VarChar(255)
+  email         String?   @db.VarChar(255)
+  phone         String?   @db.VarChar(50)
+  address       String?   @db.Text
+  company       String?   @db.VarChar(255)
+  status        String    @default("active") @db.VarChar(20)
+  hourlyRate    Decimal?  @db.Decimal(10, 2)
+  contactPerson String?   @db.VarChar(255)
+  industry      String?   @db.VarChar(255)
+  priority      String    @default("medium") @db.VarChar(20)
+  notes         String?   @db.Text
+  userId        String?   // Link to User account with CLIENT role
+  orgId         String
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+
   // Relations
-  projects  Project[]
-  
+  projects      Project[]
+  user          User?     @relation(fields: [userId], references: [id], onDelete: SetNull)
+
   @@index([orgId])
+  @@index([userId])
   @@map("clients")
 }
 

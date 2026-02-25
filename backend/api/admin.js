@@ -52,6 +52,15 @@ router.post('/users/create', requireAuth, withOrgScope, requireRole('ADMIN'), as
       await prisma.membership.create({
         data: { userId: existing.id, orgId: req.orgId, role },
       });
+      // Auto-create Client record for existing user added as CLIENT
+      if (role === 'CLIENT') {
+        const ec = await prisma.client.findFirst({ where: { userId: existing.id, orgId: req.orgId } });
+        if (!ec) {
+          await prisma.client.create({
+            data: { name: existing.name || existing.email, email: existing.email, userId: existing.id, orgId: req.orgId, status: 'active', priority: 'medium' },
+          });
+        }
+      }
       return res.status(201).json({ success: true, message: 'Existing user added to organization', userId: existing.id });
     }
 
@@ -72,6 +81,19 @@ router.post('/users/create', requireAuth, withOrgScope, requireRole('ADMIN'), as
     await prisma.membership.create({
       data: { userId, orgId: req.orgId, role },
     });
+
+    // Auto-create Client record when role is CLIENT
+    if (role === 'CLIENT') {
+      const existingClient = await prisma.client.findFirst({
+        where: { userId, orgId: req.orgId },
+      });
+      if (!existingClient) {
+        await prisma.client.create({
+          data: { name, email, userId, orgId: req.orgId, status: 'active', priority: 'medium' },
+        });
+        console.log(`👤 Auto-created Client record for ${email}`);
+      }
+    }
 
     console.log(`✅ User created via Better Auth: ${email} as ${role}`);
 

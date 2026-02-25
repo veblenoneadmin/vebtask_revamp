@@ -1,21 +1,43 @@
 import { useState, useEffect, useCallback } from 'react';
 import { useSession } from '../lib/auth-client';
-import { Card, CardContent, CardHeader } from '../components/ui/card';
-import { Button } from '../components/ui/button';
-import { Badge } from '../components/ui/badge';
 import {
-  Clock, Calendar, Download, Search,
-  TrendingUp, BarChart3, Users, LogIn, LogOut, Timer
+  Clock, Calendar, Download, Search, LogIn, LogOut,
+  Coffee, Zap, BarChart3, Users, AlertTriangle,
 } from 'lucide-react';
-import { cn } from '../lib/utils';
 
+// ── VS Code Dark+ tokens (matches Dashboard) ──────────────────────────────────
+const VS = {
+  bg0:    '#1e1e1e',
+  bg1:    '#252526',
+  bg2:    '#2d2d2d',
+  bg3:    '#333333',
+  border: '#3c3c3c',
+  text0:  '#f0f0f0',
+  text1:  '#c0c0c0',
+  text2:  '#909090',
+  blue:   '#569cd6',
+  teal:   '#4ec9b0',
+  yellow: '#dcdcaa',
+  orange: '#ce9178',
+  purple: '#c586c0',
+  red:    '#f44747',
+  green:  '#6a9955',
+  accent: '#007acc',
+};
+
+const BREAK_LIMIT = 1800; // 30 minutes in seconds
+
+// ── Interfaces ────────────────────────────────────────────────────────────────
 interface AttendanceLog {
   id: string;
   date: string;
   timeIn: string;
   timeOut: string | null;
-  duration: number; // seconds
+  duration: number;
   durationMins: number | null;
+  breakDuration: number;
+  overBreak: number;
+  overtime: number;
   notes: string | null;
   isActive: boolean;
   memberId: string;
@@ -25,57 +47,101 @@ interface AttendanceLog {
   memberRole: string;
 }
 
-function MemberAvatar({ name, image, size = 28 }: { name: string; image?: string | null; size?: number }) {
-  const initials = name?.split(' ').map(n => n[0]).join('').slice(0, 2).toUpperCase() || '?';
-  const colors = ['#569cd6', '#c586c0', '#4ec9b0', '#dcdcaa', '#ce9178', '#007acc'];
-  const color = colors[(name?.charCodeAt(0) ?? 0) % colors.length];
-  return image
-    ? <img src={image} alt={name} style={{ width: size, height: size, borderRadius: '50%', objectFit: 'cover', flexShrink: 0 }} />
-    : <div style={{ width: size, height: size, borderRadius: '50%', background: color, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: size * 0.36, fontWeight: 700, color: '#fff', flexShrink: 0 }}>{initials}</div>;
-}
-
-function formatDuration(seconds: number | null): string {
-  if (!seconds) return '—';
-  const h = Math.floor(seconds / 3600);
-  const m = Math.floor((seconds % 3600) / 60);
+// ── Helpers ───────────────────────────────────────────────────────────────────
+function fmtDuration(s: number | null): string {
+  if (!s) return '—';
+  const h = Math.floor(s / 3600);
+  const m = Math.floor((s % 3600) / 60);
   return h > 0 ? `${h}h ${m}m` : `${m}m`;
 }
-
-function formatTime(iso: string | null): string {
+function fmtClock(s: number): string {
+  const h = Math.floor(s / 3600);
+  const m = Math.floor((s % 3600) / 60);
+  const sec = s % 60;
+  return `${String(h).padStart(2,'0')}:${String(m).padStart(2,'0')}:${String(sec).padStart(2,'0')}`;
+}
+function fmtTime(iso: string | null): string {
   if (!iso) return '—';
   return new Date(iso).toLocaleTimeString('en-AU', { hour: '2-digit', minute: '2-digit', hour12: true });
 }
-
-function formatDate(iso: string | null): string {
+function fmtDate(iso: string | null): string {
   if (!iso) return '—';
-  return new Date(iso).toLocaleDateString('en-AU', { weekday: 'short', day: 'numeric', month: 'short', year: 'numeric' });
+  return new Date(iso).toLocaleDateString('en-AU', { weekday: 'short', day: 'numeric', month: 'short' });
 }
 
-const getRoleBadgeStyle = (role: string) => {
-  switch (role) {
-    case 'OWNER': return { background: 'rgba(220,220,170,0.15)', color: '#dcdcaa', border: '1px solid rgba(220,220,170,0.3)' };
-    case 'ADMIN': return { background: 'rgba(197,134,192,0.15)', color: '#c586c0', border: '1px solid rgba(197,134,192,0.3)' };
-    case 'STAFF': return { background: 'rgba(78,201,176,0.15)',  color: '#4ec9b0',  border: '1px solid rgba(78,201,176,0.3)'  };
-    default:      return { background: 'rgba(144,144,144,0.15)', color: '#909090',  border: '1px solid rgba(144,144,144,0.3)'  };
-  }
+const ROLE_STYLE: Record<string, { color: string }> = {
+  OWNER: { color: VS.yellow  },
+  ADMIN: { color: VS.purple  },
+  STAFF: { color: VS.teal    },
+  CLIENT:{ color: VS.text2   },
 };
 
+// ── StatCard (same pattern as Dashboard) ─────────────────────────────────────
+function StatCard({
+  label, value, sub, color, icon: Icon,
+}: {
+  label: string; value: string | number; sub?: string; color: string; icon: React.ElementType;
+}) {
+  return (
+    <div className="rounded-xl p-4 flex flex-col gap-3"
+      style={{ background: VS.bg1, border: `1px solid ${VS.border}` }}>
+      <div className="flex items-center justify-between">
+        <span className="text-[11px] font-semibold uppercase tracking-widest"
+          style={{ color: VS.text2 }}>{label}</span>
+        <div className="h-8 w-8 rounded-lg flex items-center justify-center"
+          style={{ background: `${color}18`, border: `1px solid ${color}33` }}>
+          <Icon className="h-4 w-4" style={{ color }} />
+        </div>
+      </div>
+      <div>
+        <div className="text-2xl font-bold tabular-nums leading-none"
+          style={{ color: VS.text0 }}>{value}</div>
+        {sub && <div className="text-[11px] mt-1" style={{ color: VS.text2 }}>{sub}</div>}
+      </div>
+    </div>
+  );
+}
+
+// ── MemberAvatar ──────────────────────────────────────────────────────────────
+function MemberAvatar({ name, image, size = 26 }: { name: string; image?: string | null; size?: number }) {
+  const initials = name?.split(' ').map(n => n[0]).join('').slice(0, 2).toUpperCase() || '?';
+  const colors   = [VS.blue, VS.purple, VS.teal, VS.yellow, VS.orange, VS.accent];
+  const color    = colors[(name?.charCodeAt(0) ?? 0) % colors.length];
+  return image
+    ? <img src={image} alt={name}
+        style={{ width: size, height: size, borderRadius: '50%', objectFit: 'cover', flexShrink: 0 }} />
+    : <div style={{
+        width: size, height: size, borderRadius: '50%', background: `${color}28`,
+        border: `1px solid ${color}55`, display: 'flex', alignItems: 'center',
+        justifyContent: 'center', fontSize: size * 0.36, fontWeight: 700,
+        color, flexShrink: 0,
+      }}>{initials}</div>;
+}
+
+// ── Main component ────────────────────────────────────────────────────────────
 export function TimeLogs() {
   const { data: session } = useSession();
-  const [logs, setLogs] = useState<AttendanceLog[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [orgId, setOrgId] = useState('');
+  const [logs, setLogs]             = useState<AttendanceLog[]>([]);
+  const [loading, setLoading]       = useState(true);
+  const [orgId, setOrgId]           = useState('');
   const [isPrivileged, setIsPrivileged] = useState(false);
-  const [userRole, setUserRole] = useState('STAFF');
+  const [userRole, setUserRole]     = useState('STAFF');
 
-  // Clock-in state
-  const [clockedIn, setClockedIn] = useState(false);
-  const [activeLog, setActiveLog] = useState<AttendanceLog | null>(null);
+  // Clock state
+  const [clockedIn, setClockedIn]   = useState(false);
+  const [activeLog, setActiveLog]   = useState<{ id: string; timeIn: string } | null>(null);
   const [clockLoading, setClockLoading] = useState(false);
-  const [elapsed, setElapsed] = useState(0); // seconds ticking
+  const [elapsed, setElapsed]       = useState(0);
+
+  // Break state — shared localStorage keys with Dashboard
+  const todayStr = () => new Date().toISOString().slice(0, 10);
+  const [onBreak, setOnBreak]       = useState(() => !!localStorage.getItem('att_break_start'));
+  const [breakAccum, setBreakAccum] = useState(() => Number(localStorage.getItem('att_break_accum') || 0));
+  const [breakUsed, setBreakUsed]   = useState(() => localStorage.getItem('att_break_used') === new Date().toISOString().slice(0, 10));
+  const [breakElapsed, setBreakElapsed] = useState(0); // live seconds since break started
 
   // Filters
-  const [searchTerm, setSearchTerm] = useState('');
+  const [searchTerm, setSearchTerm]   = useState('');
   const [filterMember, setFilterMember] = useState('all');
 
   // ── Fetch org ──────────────────────────────────────────────────────────────
@@ -108,17 +174,15 @@ export function TimeLogs() {
     }
   }, [session, orgId]);
 
-  // ── Fetch clock-in status ──────────────────────────────────────────────────
+  // ── Fetch clock status ─────────────────────────────────────────────────────
   const fetchStatus = useCallback(async () => {
     if (!orgId) return;
     try {
-      const res = await fetch(`/api/attendance/status`, {
-        headers: { 'x-org-id': orgId },
-      });
+      const res = await fetch('/api/attendance/status', { headers: { 'x-org-id': orgId } });
       if (res.ok) {
         const data = await res.json();
         setClockedIn(data.clockedIn);
-        setActiveLog(data.activeLog);
+        setActiveLog(data.activeLog || null);
       }
     } catch (err) {
       console.error('Failed to fetch clock status:', err);
@@ -127,16 +191,29 @@ export function TimeLogs() {
 
   useEffect(() => { if (orgId) { fetchLogs(); fetchStatus(); } }, [orgId, fetchLogs, fetchStatus]);
 
-  // ── Elapsed timer tick ─────────────────────────────────────────────────────
+  // ── Net elapsed timer (pauses on break) ───────────────────────────────────
   useEffect(() => {
-    if (!clockedIn || !activeLog?.timeIn) { setElapsed(0); return; }
-    const tick = () => setElapsed(Math.floor((Date.now() - new Date(activeLog.timeIn).getTime()) / 1000));
+    if (!clockedIn || !activeLog?.timeIn || onBreak) { if (!clockedIn) setElapsed(0); return; }
+    const tick = () => {
+      const gross = Math.floor((Date.now() - new Date(activeLog.timeIn).getTime()) / 1000);
+      setElapsed(Math.max(0, gross - breakAccum));
+    };
     tick();
     const id = setInterval(tick, 1000);
     return () => clearInterval(id);
-  }, [clockedIn, activeLog]);
+  }, [clockedIn, activeLog, onBreak, breakAccum]);
 
-  // ── Clock In ───────────────────────────────────────────────────────────────
+  // ── Live break timer ───────────────────────────────────────────────────────
+  useEffect(() => {
+    if (!onBreak) { setBreakElapsed(0); return; }
+    const breakStart = Number(localStorage.getItem('att_break_start') || Date.now());
+    const tick = () => setBreakElapsed(Math.floor((Date.now() - breakStart) / 1000));
+    tick();
+    const id = setInterval(tick, 1000);
+    return () => clearInterval(id);
+  }, [onBreak]);
+
+  // ── Handlers ───────────────────────────────────────────────────────────────
   const handleClockIn = async () => {
     setClockLoading(true);
     try {
@@ -150,21 +227,51 @@ export function TimeLogs() {
     } catch (err) { console.error(err); } finally { setClockLoading(false); }
   };
 
-  // ── Clock Out ──────────────────────────────────────────────────────────────
   const handleClockOut = async () => {
     setClockLoading(true);
+    let totalBreak = breakAccum;
+    if (onBreak) {
+      const started = Number(localStorage.getItem('att_break_start') || Date.now());
+      totalBreak += Math.floor((Date.now() - started) / 1000);
+    }
+    localStorage.removeItem('att_break_start');
+    localStorage.removeItem('att_break_accum');
+    setOnBreak(false);
+    setBreakAccum(0);
+    setBreakElapsed(0);
     try {
       const res = await fetch('/api/attendance/clock-out', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', 'x-org-id': orgId },
-        body: JSON.stringify({ orgId }),
+        body: JSON.stringify({ orgId, breakDuration: totalBreak }),
       });
       if (res.ok) { await fetchStatus(); await fetchLogs(); }
       else { const d = await res.json(); alert(d.error || 'Failed to clock out'); }
     } catch (err) { console.error(err); } finally { setClockLoading(false); }
   };
 
-  // ── Derived stats ──────────────────────────────────────────────────────────
+  const handleBreak = () => {
+    if (!clockedIn) return;
+    if (breakUsed && !onBreak) return;
+    if (!onBreak) {
+      localStorage.setItem('att_break_start', String(Date.now()));
+      localStorage.setItem('att_break_used', todayStr());
+      setOnBreak(true);
+      setBreakUsed(true);
+    } else {
+      const started = Number(localStorage.getItem('att_break_start') || Date.now());
+      const secs    = Math.floor((Date.now() - started) / 1000);
+      const newAccum = breakAccum + secs;
+      localStorage.setItem('att_break_accum', String(newAccum));
+      localStorage.removeItem('att_break_start');
+      setBreakAccum(newAccum);
+      setOnBreak(false);
+      setBreakElapsed(0);
+    }
+    window.dispatchEvent(new CustomEvent('attendance-change'));
+  };
+
+  // ── Derived data ───────────────────────────────────────────────────────────
   const uniqueMembers = [...new Map(logs.map(l => [l.memberId, { id: l.memberId, name: l.memberName }])).values()];
 
   const filteredLogs = logs.filter(log => {
@@ -176,153 +283,316 @@ export function TimeLogs() {
     return matchSearch && matchMember;
   });
 
-  const completedLogs = filteredLogs.filter(l => !l.isActive);
-  const totalSeconds  = completedLogs.reduce((sum, l) => sum + (l.duration || 0), 0);
-  const totalHours    = Math.round(totalSeconds / 3600 * 10) / 10;
-  const avgHours      = completedLogs.length > 0 ? Math.round(totalSeconds / completedLogs.length / 3600 * 10) / 10 : 0;
+  const completedLogs   = filteredLogs.filter(l => !l.isActive);
+  const totalSeconds    = completedLogs.reduce((s, l) => s + (l.duration || 0), 0);
+  const totalHours      = (totalSeconds / 3600).toFixed(1);
+  const totalOvertimeSec = completedLogs.reduce((s, l) => s + (l.overtime || 0), 0);
+  const overBreakCount  = completedLogs.filter(l => l.overBreak > 0).length;
+
+  // Live break display inside the clock card
+  const liveBreakTotal = breakAccum + (onBreak ? breakElapsed : 0);
+  const isOverBreak    = liveBreakTotal > BREAK_LIMIT;
+  const breakRemaining = Math.max(0, BREAK_LIMIT - liveBreakTotal);
 
   if (loading) {
     return (
-      <div className="space-y-8">
-        <div><h1 className="text-3xl font-bold gradient-text">Time Logs</h1><p className="text-muted-foreground mt-2">Loading attendance records...</p></div>
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
-          {[...Array(4)].map((_, i) => (<Card key={i} className="glass p-6"><div className="animate-pulse"><div className="h-4 bg-muted rounded w-3/4 mb-2"></div><div className="h-8 bg-muted rounded w-1/2"></div></div></Card>))}
+      <div className="space-y-6" style={{ color: VS.text0 }}>
+        <div>
+          <div className="h-8 rounded-lg w-48 animate-pulse" style={{ background: VS.bg2 }} />
+          <div className="h-4 rounded w-64 mt-2 animate-pulse" style={{ background: VS.bg2 }} />
+        </div>
+        <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+          {[...Array(4)].map((_, i) => (
+            <div key={i} className="h-24 rounded-xl animate-pulse" style={{ background: VS.bg1 }} />
+          ))}
         </div>
       </div>
     );
   }
 
   return (
-    <div className="space-y-8">
+    <div className="space-y-6">
 
-      {/* Header */}
-      <div className="flex items-center justify-between flex-wrap gap-4">
+      {/* ── Header ── */}
+      <div className="flex items-start justify-between gap-4">
         <div>
-          <h1 className="text-3xl font-bold gradient-text">Time Logs</h1>
-          <p className="text-muted-foreground mt-1">
-            {isPrivileged ? `Team attendance records · ${userRole.charAt(0) + userRole.slice(1).toLowerCase()} view` : 'Your attendance records'}
+          <h1 className="text-2xl font-bold" style={{ color: VS.text0 }}>Time Logs</h1>
+          <p className="text-[13px] mt-1" style={{ color: VS.text2 }}>
+            {isPrivileged
+              ? `Team attendance records · ${userRole.charAt(0) + userRole.slice(1).toLowerCase()} view`
+              : 'Your attendance records'}
           </p>
         </div>
-        <div className="flex items-center gap-2">
-          <Button variant="outline" className="glass-surface">
-            <Download className="h-4 w-4 mr-2" />Export
-          </Button>
+        <button
+          className="flex items-center gap-2 px-3 py-1.5 rounded-lg text-[12px] transition-opacity hover:opacity-70"
+          style={{ background: VS.bg2, border: `1px solid ${VS.border}`, color: VS.text2 }}
+        >
+          <Download className="h-3.5 w-3.5" />
+          Export
+        </button>
+      </div>
+
+      {/* ── Clock card (matches Dashboard style) ── */}
+      <div
+        className="rounded-xl p-4 flex items-center justify-between gap-4 flex-wrap"
+        style={{
+          background: VS.bg1,
+          border: `1px solid ${clockedIn ? (onBreak ? 'rgba(220,220,170,0.3)' : 'rgba(78,201,176,0.3)') : VS.border}`,
+        }}
+      >
+        {/* Left: icon + timer */}
+        <div className="flex items-center gap-4">
+          <div className="relative">
+            <div
+              className="h-11 w-11 rounded-xl flex items-center justify-center shrink-0"
+              style={{ background: clockedIn ? (onBreak ? 'rgba(220,220,170,0.12)' : 'rgba(78,201,176,0.12)') : VS.bg2 }}
+            >
+              {onBreak
+                ? <Coffee className="h-5 w-5" style={{ color: VS.yellow }} />
+                : <Clock  className="h-5 w-5" style={{ color: clockedIn ? VS.teal : VS.text2 }} />
+              }
+            </div>
+            {clockedIn && !onBreak && (
+              <span className="absolute -top-1 -right-1 h-2.5 w-2.5 rounded-full"
+                style={{ background: VS.teal }}>
+                <span className="absolute inset-0 rounded-full animate-ping opacity-75"
+                  style={{ background: VS.teal }} />
+              </span>
+            )}
+          </div>
+          <div>
+            <p className="text-[11px] font-semibold uppercase tracking-wider" style={{ color: VS.text2 }}>
+              {!clockedIn ? 'Not Clocked In' : onBreak ? 'On Break' : 'Session Running'}
+            </p>
+            <p className="text-xl font-mono font-bold tabular-nums leading-tight mt-0.5"
+              style={{ color: clockedIn && !onBreak ? VS.teal : onBreak ? VS.yellow : VS.bg3 }}>
+              {clockedIn ? fmtClock(onBreak ? 0 : elapsed) : '--:--:--'}
+            </p>
+            {clockedIn && activeLog && !onBreak && (
+              <p className="text-[11px] mt-0.5" style={{ color: VS.text2 }}>
+                Clocked in at {fmtTime(activeLog.timeIn)}
+              </p>
+            )}
+          </div>
+        </div>
+
+        {/* Right: break timer + buttons */}
+        <div className="flex items-center gap-3 flex-wrap">
+
+          {/* Live break info */}
+          {clockedIn && (
+            <div className="text-right hidden sm:block">
+              {onBreak ? (
+                <>
+                  <p className="text-[11px]" style={{ color: VS.text2 }}>Break elapsed</p>
+                  <p className="text-[13px] font-mono font-semibold tabular-nums"
+                    style={{ color: isOverBreak ? VS.red : VS.yellow }}>
+                    {fmtClock(breakElapsed)}
+                    {isOverBreak && <span className="ml-1 text-[10px]" style={{ color: VS.red }}>OVER</span>}
+                  </p>
+                </>
+              ) : liveBreakTotal > 0 ? (
+                <>
+                  <p className="text-[11px]" style={{ color: VS.text2 }}>Break used</p>
+                  <p className="text-[13px] font-mono font-semibold tabular-nums"
+                    style={{ color: liveBreakTotal > BREAK_LIMIT ? VS.red : VS.text1 }}>
+                    {fmtDuration(liveBreakTotal)}
+                    {liveBreakTotal > BREAK_LIMIT && (
+                      <span className="ml-1 text-[10px]" style={{ color: VS.red }}>
+                        +{fmtDuration(liveBreakTotal - BREAK_LIMIT)} over
+                      </span>
+                    )}
+                  </p>
+                </>
+              ) : null}
+            </div>
+          )}
+
+          {/* Break button */}
+          {clockedIn && (
+            <div className="flex flex-col items-end gap-1">
+              <button
+                onClick={handleBreak}
+                disabled={clockLoading || (breakUsed && !onBreak)}
+                title={
+                  breakUsed && !onBreak
+                    ? 'Break already used today (30-min limit)'
+                    : onBreak
+                      ? `Resume work${isOverBreak ? ' · You are over the 30-min limit' : ''}`
+                      : 'Take a 30-min break'
+                }
+                className="flex items-center gap-2 px-4 py-2 rounded-lg text-[13px] font-semibold transition-all shrink-0 disabled:opacity-40 disabled:cursor-not-allowed"
+                style={onBreak
+                  ? { background: 'rgba(78,201,176,0.12)', color: VS.teal,   border: `1px solid rgba(78,201,176,0.25)` }
+                  : { background: 'rgba(220,220,170,0.10)', color: VS.yellow, border: '1px solid rgba(220,220,170,0.25)' }
+                }
+              >
+                <Coffee className="h-4 w-4" />
+                {onBreak ? 'Resume' : 'Break'}
+              </button>
+              {!onBreak && !breakUsed && (
+                <span className="text-[10px]" style={{ color: VS.text2 }}>30 min limit</span>
+              )}
+              {breakUsed && !onBreak && (
+                <span className="text-[10px]" style={{ color: VS.red }}>Break used today</span>
+              )}
+              {onBreak && !isOverBreak && (
+                <span className="text-[10px]" style={{ color: VS.text2 }}>
+                  {fmtDuration(breakRemaining)} remaining
+                </span>
+              )}
+              {onBreak && isOverBreak && (
+                <span className="text-[10px]" style={{ color: VS.red }}>
+                  Over break limit!
+                </span>
+              )}
+            </div>
+          )}
+
+          {/* Clock In / Out button */}
+          <button
+            onClick={clockedIn ? handleClockOut : handleClockIn}
+            disabled={clockLoading}
+            className="flex items-center gap-2 px-4 py-2 rounded-lg text-[13px] font-semibold transition-all shrink-0 disabled:opacity-50"
+            style={clockedIn
+              ? { background: 'rgba(244,71,71,0.12)', color: VS.red,  border: `1px solid rgba(244,71,71,0.25)` }
+              : { background: 'rgba(78,201,176,0.12)', color: VS.teal, border: `1px solid rgba(78,201,176,0.25)` }
+            }
+          >
+            {clockedIn
+              ? <><LogOut className="h-4 w-4" />{clockLoading ? 'Clocking out…' : 'Clock Out'}</>
+              : <><LogIn  className="h-4 w-4" />{clockLoading ? 'Clocking in…'  : 'Clock In'}</>
+            }
+          </button>
         </div>
       </div>
 
-      {/* Clock In/Out Card */}
-      <Card className={cn('glass shadow-elevation border', clockedIn ? 'border-green-500/30' : 'border-border')}>
-        <CardContent className="p-6">
-          <div className="flex items-center justify-between flex-wrap gap-4">
-            <div className="flex items-center gap-4">
-              {/* Pulsing status dot */}
-              <div className="relative">
-                <div className={cn('h-14 w-14 rounded-2xl flex items-center justify-center', clockedIn ? 'bg-green-500/20' : 'bg-muted/30')}>
-                  <Timer className={cn('h-7 w-7', clockedIn ? 'text-green-400' : 'text-muted-foreground')} />
-                </div>
-                {clockedIn && (
-                  <span className="absolute -top-1 -right-1 h-3 w-3 rounded-full bg-green-400">
-                    <span className="absolute inset-0 rounded-full bg-green-400 animate-ping opacity-75"></span>
-                  </span>
-                )}
-              </div>
-              <div>
-                <p className="font-semibold text-lg">{clockedIn ? 'Currently Clocked In' : 'Not Clocked In'}</p>
-                {clockedIn && activeLog ? (
-                  <p className="text-muted-foreground text-sm">
-                    Since {formatTime(activeLog.timeIn)} · <span className="text-green-400 font-mono font-semibold">{formatDuration(elapsed)}</span>
-                  </p>
-                ) : (
-                  <p className="text-muted-foreground text-sm">Click to start your work session</p>
-                )}
-              </div>
-            </div>
-
-            <Button
-              onClick={clockedIn ? handleClockOut : handleClockIn}
-              disabled={clockLoading}
-              className={cn(
-                'px-8 py-3 text-base font-semibold rounded-xl shadow-lg transition-all',
-                clockedIn
-                  ? 'bg-red-500/80 hover:bg-red-500 text-white border border-red-400/30'
-                  : 'bg-green-500/80 hover:bg-green-500 text-white border border-green-400/30'
-              )}
-            >
-              {clockLoading ? (
-                <span className="flex items-center gap-2"><Clock className="h-4 w-4 animate-spin" /> Loading...</span>
-              ) : clockedIn ? (
-                <span className="flex items-center gap-2"><LogOut className="h-5 w-5" /> Clock Out</span>
-              ) : (
-                <span className="flex items-center gap-2"><LogIn className="h-5 w-5" /> Clock In</span>
-              )}
-            </Button>
-          </div>
-        </CardContent>
-      </Card>
-
-      {/* Stats */}
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
-        <Card className="glass shadow-elevation"><CardContent className="p-6"><div className="flex items-center"><div className="h-12 w-12 rounded-xl bg-gradient-primary flex items-center justify-center shadow-glow mr-4"><Clock className="h-6 w-6 text-white" /></div><div><p className="text-2xl font-bold">{totalHours}h</p><p className="text-sm text-muted-foreground">Total Hours</p></div></div></CardContent></Card>
-        <Card className="glass shadow-elevation"><CardContent className="p-6"><div className="flex items-center"><div className="h-12 w-12 rounded-xl bg-gradient-success flex items-center justify-center shadow-glow mr-4"><TrendingUp className="h-6 w-6 text-white" /></div><div><p className="text-2xl font-bold">{avgHours}h</p><p className="text-sm text-muted-foreground">Avg Per Session</p></div></div></CardContent></Card>
-        <Card className="glass shadow-elevation"><CardContent className="p-6"><div className="flex items-center"><div className="h-12 w-12 rounded-xl bg-gradient-info flex items-center justify-center shadow-glow mr-4"><BarChart3 className="h-6 w-6 text-white" /></div><div><p className="text-2xl font-bold">{completedLogs.length}</p><p className="text-sm text-muted-foreground">Sessions</p></div></div></CardContent></Card>
-        <Card className="glass shadow-elevation"><CardContent className="p-6"><div className="flex items-center"><div className="h-12 w-12 rounded-xl bg-gradient-warning flex items-center justify-center shadow-glow mr-4"><Users className="h-6 w-6 text-white" /></div><div><p className="text-2xl font-bold">{new Set(filteredLogs.map(l => l.memberId)).size}</p><p className="text-sm text-muted-foreground">{isPrivileged ? 'Members' : 'This Month'}</p></div></div></CardContent></Card>
+      {/* ── Stats strip ── */}
+      <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+        <StatCard
+          label="Total Hours"
+          value={`${totalHours}h`}
+          sub={`${completedLogs.length} sessions`}
+          icon={Clock}
+          color={VS.blue}
+        />
+        <StatCard
+          label="Sessions"
+          value={completedLogs.length}
+          sub={filteredLogs.some(l => l.isActive) ? '1 active now' : undefined}
+          icon={BarChart3}
+          color={VS.teal}
+        />
+        <StatCard
+          label="Total Overtime"
+          value={totalOvertimeSec > 0 ? fmtDuration(totalOvertimeSec) : '0h'}
+          sub={totalOvertimeSec > 0 ? `across ${completedLogs.filter(l => l.overtime > 0).length} sessions` : 'No overtime'}
+          icon={Zap}
+          color={totalOvertimeSec > 0 ? VS.orange : VS.text2}
+        />
+        <StatCard
+          label={isPrivileged ? 'Over Break' : 'Members'}
+          value={isPrivileged ? overBreakCount : new Set(filteredLogs.map(l => l.memberId)).size}
+          sub={isPrivileged
+            ? (overBreakCount > 0 ? 'sessions over 30-min limit' : 'No over-break sessions')
+            : undefined}
+          icon={isPrivileged ? AlertTriangle : Users}
+          color={isPrivileged && overBreakCount > 0 ? VS.red : VS.text2}
+        />
       </div>
 
-      {/* Filters */}
-      <Card className="glass shadow-elevation">
-        <CardContent className="p-6">
-          <div className="flex flex-col md:flex-row gap-4 items-center">
-            <div className="relative flex-1">
-              <Search className="absolute left-3 top-3 h-4 w-4 text-muted-foreground" />
-              <input type="text" placeholder="Search by name, notes, or date..." value={searchTerm} onChange={e => setSearchTerm(e.target.value)}
-                className="w-full pl-10 pr-4 py-2 glass-surface border border-border rounded-lg focus:outline-none focus:ring-2 focus:ring-primary" />
-            </div>
-            {isPrivileged && (
-              <select value={filterMember} onChange={e => setFilterMember(e.target.value)}
-                className="px-4 py-2 glass-surface border border-border rounded-lg focus:outline-none focus:ring-2 focus:ring-primary">
-                <option value="all">All Members</option>
-                {uniqueMembers.map(m => <option key={m.id} value={m.id}>{m.name}</option>)}
-              </select>
-            )}
-          </div>
-        </CardContent>
-      </Card>
+      {/* ── Filters ── */}
+      <div
+        className="rounded-xl p-4 flex flex-col sm:flex-row gap-3 items-center"
+        style={{ background: VS.bg1, border: `1px solid ${VS.border}` }}
+      >
+        <div className="relative flex-1 w-full">
+          <Search className="absolute left-3 top-2.5 h-4 w-4" style={{ color: VS.text2 }} />
+          <input
+            type="text"
+            placeholder="Search by name, notes, or date…"
+            value={searchTerm}
+            onChange={e => setSearchTerm(e.target.value)}
+            className="w-full pl-9 pr-4 py-2 rounded-lg text-[13px] outline-none focus:ring-1"
+            style={{
+              background: VS.bg2, border: `1px solid ${VS.border}`,
+              color: VS.text0, '--tw-ring-color': VS.accent,
+            } as React.CSSProperties}
+          />
+        </div>
+        {isPrivileged && (
+          <select
+            value={filterMember}
+            onChange={e => setFilterMember(e.target.value)}
+            className="px-3 py-2 rounded-lg text-[13px] outline-none"
+            style={{ background: VS.bg2, border: `1px solid ${VS.border}`, color: VS.text1 }}
+          >
+            <option value="all">All Members</option>
+            {uniqueMembers.map(m => <option key={m.id} value={m.id}>{m.name}</option>)}
+          </select>
+        )}
+      </div>
 
-      {/* Table */}
-      <Card className="glass shadow-elevation">
-        <CardHeader>
-          <div className="flex items-center justify-between">
-            <h2 className="text-xl font-semibold">
-              Attendance Records ({filteredLogs.length})
-              {isPrivileged && <span className="ml-2 text-sm font-normal text-muted-foreground">— Team view</span>}
-            </h2>
-          </div>
-        </CardHeader>
-        <CardContent className="p-0">
-          <div className="overflow-x-auto">
-            <table className="w-full">
-              <thead>
-                <tr className="border-b border-border">
-                  {isPrivileged && <th className="text-left p-4 font-medium text-muted-foreground">Member</th>}
-                  <th className="text-left p-4 font-medium text-muted-foreground">Date</th>
-                  <th className="text-left p-4 font-medium text-muted-foreground">Clock In</th>
-                  <th className="text-left p-4 font-medium text-muted-foreground">Clock Out</th>
-                  <th className="text-left p-4 font-medium text-muted-foreground">Duration</th>
-                  <th className="text-left p-4 font-medium text-muted-foreground">Notes</th>
-                  <th className="text-left p-4 font-medium text-muted-foreground">Status</th>
-                </tr>
-              </thead>
-              <tbody>
-                {filteredLogs.map(log => (
-                  <tr key={log.id} className="border-b border-border hover:bg-surface-elevated/50 transition-colors">
+      {/* ── Table ── */}
+      <div className="rounded-xl overflow-hidden" style={{ background: VS.bg1, border: `1px solid ${VS.border}` }}>
 
+        {/* Table header */}
+        <div className="px-5 py-3.5 flex items-center justify-between"
+          style={{ borderBottom: `1px solid ${VS.border}` }}>
+          <span className="text-[13px] font-bold" style={{ color: VS.text0 }}>
+            Attendance Records
+            <span className="ml-2 text-[11px] font-normal" style={{ color: VS.text2 }}>
+              {filteredLogs.length} {isPrivileged ? '· Team view' : '· Your records'}
+            </span>
+          </span>
+        </div>
+
+        <div className="overflow-x-auto">
+          <table className="w-full text-[13px]">
+            <thead>
+              <tr style={{ borderBottom: `1px solid ${VS.border}` }}>
+                {isPrivileged && (
+                  <th className="text-left px-4 py-3 font-semibold text-[11px] uppercase tracking-wider"
+                    style={{ color: VS.text2 }}>Member</th>
+                )}
+                <th className="text-left px-4 py-3 font-semibold text-[11px] uppercase tracking-wider"
+                  style={{ color: VS.text2 }}>Date</th>
+                <th className="text-left px-4 py-3 font-semibold text-[11px] uppercase tracking-wider"
+                  style={{ color: VS.text2 }}>Clock In</th>
+                <th className="text-left px-4 py-3 font-semibold text-[11px] uppercase tracking-wider"
+                  style={{ color: VS.text2 }}>Clock Out</th>
+                <th className="text-left px-4 py-3 font-semibold text-[11px] uppercase tracking-wider"
+                  style={{ color: VS.text2 }}>Net Hours</th>
+                <th className="text-left px-4 py-3 font-semibold text-[11px] uppercase tracking-wider"
+                  style={{ color: VS.text2 }}>Break</th>
+                <th className="text-left px-4 py-3 font-semibold text-[11px] uppercase tracking-wider"
+                  style={{ color: VS.text2 }}>Over Break</th>
+                <th className="text-left px-4 py-3 font-semibold text-[11px] uppercase tracking-wider"
+                  style={{ color: VS.text2 }}>Overtime</th>
+                <th className="text-left px-4 py-3 font-semibold text-[11px] uppercase tracking-wider"
+                  style={{ color: VS.text2 }}>Status</th>
+              </tr>
+            </thead>
+            <tbody>
+              {filteredLogs.map(log => {
+                const isOwnActive = log.isActive && log.memberId === session?.user?.id;
+                return (
+                  <tr key={log.id}
+                    className="transition-colors hover:bg-white/[0.02]"
+                    style={{ borderBottom: `1px solid ${VS.border}` }}
+                  >
+
+                    {/* Member */}
                     {isPrivileged && (
-                      <td className="p-4">
+                      <td className="px-4 py-3">
                         <div className="flex items-center gap-2">
                           <MemberAvatar name={log.memberName} image={log.memberImage} />
                           <div>
-                            <p className="text-sm font-medium leading-tight">{log.memberName}</p>
-                            <span className="text-[10px] px-1.5 py-0.5 rounded font-semibold capitalize" style={getRoleBadgeStyle(log.memberRole)}>
+                            <p className="font-medium leading-tight" style={{ color: VS.text0 }}>
+                              {log.memberName}
+                            </p>
+                            <span className="text-[10px] font-semibold capitalize"
+                              style={{ color: (ROLE_STYLE[log.memberRole] ?? ROLE_STYLE.STAFF).color }}>
                               {log.memberRole.toLowerCase()}
                             </span>
                           </div>
@@ -330,72 +600,120 @@ export function TimeLogs() {
                       </td>
                     )}
 
-                    <td className="p-4">
-                      <div className="flex items-center gap-2">
-                        <Calendar className="h-4 w-4 text-muted-foreground" />
-                        <span className="text-sm font-medium">{formatDate(log.timeIn)}</span>
+                    {/* Date */}
+                    <td className="px-4 py-3">
+                      <div className="flex items-center gap-1.5">
+                        <Calendar className="h-3.5 w-3.5 shrink-0" style={{ color: VS.text2 }} />
+                        <span style={{ color: VS.text1 }}>{fmtDate(log.timeIn)}</span>
                       </div>
                     </td>
 
-                    <td className="p-4">
-                      <span className="text-sm font-mono text-green-400">{formatTime(log.timeIn)}</span>
+                    {/* Clock In */}
+                    <td className="px-4 py-3 font-mono tabular-nums" style={{ color: VS.teal }}>
+                      {fmtTime(log.timeIn)}
                     </td>
 
-                    <td className="p-4">
+                    {/* Clock Out */}
+                    <td className="px-4 py-3 font-mono tabular-nums">
                       {log.timeOut
-                        ? <span className="text-sm font-mono text-red-400">{formatTime(log.timeOut)}</span>
-                        : <span className="text-sm text-muted-foreground italic">Active</span>}
+                        ? <span style={{ color: VS.red }}>{fmtTime(log.timeOut)}</span>
+                        : <span className="italic text-[12px]" style={{ color: VS.text2 }}>Active</span>
+                      }
                     </td>
 
-                    <td className="p-4">
-                      <div className="flex items-center gap-2">
-                        <Clock className="h-4 w-4 text-muted-foreground" />
-                        <span className="font-semibold">
-                          {log.isActive ? (
-                            <span className="text-green-400 font-mono">{formatDuration(log.memberId === session?.user?.id ? elapsed : null) || '...'}</span>
-                          ) : (
-                            formatDuration(log.duration)
-                          )}
-                        </span>
-                      </div>
+                    {/* Net Hours */}
+                    <td className="px-4 py-3 font-semibold tabular-nums">
+                      {log.isActive
+                        ? <span className="font-mono" style={{ color: VS.teal }}>
+                            {isOwnActive ? fmtClock(elapsed) : '…'}
+                          </span>
+                        : <span style={{ color: VS.text0 }}>{fmtDuration(log.duration)}</span>
+                      }
                     </td>
 
-                    <td className="p-4">
-                      <span className="text-sm text-muted-foreground">{log.notes || '—'}</span>
+                    {/* Break */}
+                    <td className="px-4 py-3 tabular-nums">
+                      {log.breakDuration > 0
+                        ? <span style={{ color: VS.yellow }}>{fmtDuration(log.breakDuration)}</span>
+                        : <span style={{ color: VS.text2 }}>—</span>
+                      }
                     </td>
 
-                    <td className="p-4">
-                      <Badge className={cn('text-xs', log.isActive
-                        ? 'text-green-400 bg-green-400/10 border-green-400/20'
-                        : 'text-muted-foreground bg-muted/10 border-border')}>
+                    {/* Over Break */}
+                    <td className="px-4 py-3 tabular-nums">
+                      {log.overBreak > 0
+                        ? (
+                          <span
+                            className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-[11px] font-semibold"
+                            style={{ background: `${VS.red}18`, color: VS.red, border: `1px solid ${VS.red}30` }}
+                          >
+                            +{fmtDuration(log.overBreak)}
+                          </span>
+                        )
+                        : <span style={{ color: VS.text2 }}>—</span>
+                      }
+                    </td>
+
+                    {/* Overtime */}
+                    <td className="px-4 py-3 tabular-nums">
+                      {log.overtime > 0
+                        ? (
+                          <span
+                            className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-[11px] font-semibold"
+                            style={{ background: `${VS.orange}18`, color: VS.orange, border: `1px solid ${VS.orange}30` }}
+                          >
+                            +{fmtDuration(log.overtime)}
+                          </span>
+                        )
+                        : <span style={{ color: VS.text2 }}>—</span>
+                      }
+                    </td>
+
+                    {/* Status */}
+                    <td className="px-4 py-3">
+                      <span
+                        className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-[11px] font-semibold"
+                        style={log.isActive
+                          ? { background: `${VS.teal}18`, color: VS.teal, border: `1px solid ${VS.teal}30` }
+                          : { background: `${VS.text2}10`, color: VS.text2, border: `1px solid ${VS.border}` }
+                        }
+                      >
                         {log.isActive ? '● Active' : 'Completed'}
-                      </Badge>
+                      </span>
                     </td>
                   </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
+                );
+              })}
+            </tbody>
+          </table>
+        </div>
 
-          {filteredLogs.length === 0 && (
-            <div className="text-center py-16">
-              <Clock className="h-12 w-12 text-muted-foreground mx-auto mb-4" />
-              <h3 className="text-lg font-semibold mb-2">No attendance records found</h3>
-              <p className="text-muted-foreground mb-6">
-                {searchTerm || filterMember !== 'all'
-                  ? 'Try adjusting your filters'
-                  : 'Clock in to start recording your attendance'}
-              </p>
-              {!clockedIn && (
-                <Button onClick={handleClockIn} disabled={clockLoading}
-                  className="bg-green-500/80 hover:bg-green-500 text-white">
-                  <LogIn className="h-4 w-4 mr-2" />Clock In Now
-                </Button>
-              )}
-            </div>
-          )}
-        </CardContent>
-      </Card>
+        {/* Empty state */}
+        {filteredLogs.length === 0 && (
+          <div className="flex flex-col items-center py-16 gap-3">
+            <Clock className="h-10 w-10" style={{ color: VS.text2 }} />
+            <p className="text-[15px] font-semibold" style={{ color: VS.text1 }}>
+              No attendance records found
+            </p>
+            <p className="text-[13px]" style={{ color: VS.text2 }}>
+              {searchTerm || filterMember !== 'all'
+                ? 'Try adjusting your filters'
+                : 'Clock in to start recording your attendance'}
+            </p>
+            {!clockedIn && (
+              <button
+                onClick={handleClockIn}
+                disabled={clockLoading}
+                className="mt-2 flex items-center gap-2 px-4 py-2 rounded-lg text-[13px] font-semibold"
+                style={{ background: 'rgba(78,201,176,0.12)', color: VS.teal, border: `1px solid rgba(78,201,176,0.25)` }}
+              >
+                <LogIn className="h-4 w-4" />Clock In Now
+              </button>
+            )}
+          </div>
+        )}
+      </div>
+
     </div>
   );
 }

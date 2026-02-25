@@ -291,9 +291,10 @@ model AttendanceLog {
   orgId     String
   timeIn    DateTime
   timeOut   DateTime?
-  duration  Int       @default(0) // seconds (net, excluding breaks)
-  notes     String?   @db.Text
-  date      String    @db.VarChar(10) // YYYY-MM-DD
+  duration      Int       @default(0) // seconds (net, excluding breaks)
+  breakDuration Int       @default(0) // seconds of break taken
+  notes         String?   @db.Text
+  date          String    @db.VarChar(10) // YYYY-MM-DD
 
   createdAt DateTime  @default(now())
   updatedAt DateTime  @default(now()) @updatedAt

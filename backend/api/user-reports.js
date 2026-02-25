@@ -2,80 +2,121 @@
 import express from 'express';
 import { prisma } from '../lib/prisma.js';
 import { requireAuth, withOrgScope } from '../lib/rbac.js';
-import { validateBody, validateQuery, commonSchemas } from '../lib/validation.js';
+import { validateQuery, commonSchemas } from '../lib/validation.js';
 
 const router = express.Router();
 
-// Get user reports
+// ── GET /api/user-reports — role-aware list ───────────────────────────────────
+// OWNER/ADMIN → all org reports
+// STAFF       → only their own reports
+// CLIENT      → only their own submitted reports
 router.get('/', requireAuth, withOrgScope, validateQuery(commonSchemas.pagination), async (req, res) => {
   try {
-    const { orgId, userId, limit = 50, offset = 0 } = req.query;
+    const userId = req.user.id;
+    const orgId  = req.orgId;
+    const { limit = 100, offset = 0, projectId, memberId, search, dateFrom, dateTo } = req.query;
 
-    if (!orgId) {
-      return res.status(400).json({ error: 'orgId is required' });
-    }
+    // ── Role lookup ──────────────────────────────────────────────────────────
+    const membership = await prisma.membership.findUnique({
+      where: { userId_orgId: { userId, orgId } },
+      select: { role: true },
+    });
+    const role         = membership?.role || 'STAFF';
+    const isPrivileged = role === 'OWNER' || role === 'ADMIN';
 
-    console.log('📊 Fetching user reports:', { orgId, userId, limit, offset });
-
+    // ── Build where clause ───────────────────────────────────────────────────
     const where = { orgId };
 
-    // Apply filters
-    if (userId) where.userId = userId;
+    // Non-privileged users only see their own reports
+    if (!isPrivileged) {
+      where.userId = userId;
+    } else {
+      // Admin can optionally filter by a specific member
+      if (memberId) where.userId = memberId;
+    }
 
-    const reports = await prisma.report.findMany({
-      where,
-      include: {
-        user: {
-          select: {
-            id: true,
-            name: true,
-            email: true
-          }
+    // Optional: filter by project
+    if (projectId) where.projectId = projectId;
+
+    // Optional: date range
+    if (dateFrom || dateTo) {
+      where.createdAt = {};
+      if (dateFrom) where.createdAt.gte = new Date(dateFrom);
+      if (dateTo)   where.createdAt.lte = new Date(new Date(dateTo).setHours(23, 59, 59, 999));
+    }
+
+    // Optional: text search on title, description, userName
+    if (search) {
+      where.OR = [
+        { title:       { contains: search } },
+        { description: { contains: search } },
+        { userName:    { contains: search } },
+      ];
+    }
+
+    const [reports, total] = await Promise.all([
+      prisma.report.findMany({
+        where,
+        include: {
+          user:    { select: { id: true, name: true, email: true, image: true } },
+          project: { select: { id: true, name: true, color: true, status: true, budget: true } },
         },
-        project: {
-          select: {
-            id: true,
-            name: true,
-            color: true,
-            status: true,
-            budget: true
-          }
-        }
-      },
-      orderBy: [
-        { createdAt: 'desc' }
-      ],
-      take: parseInt(limit),
-      skip: parseInt(offset)
+        orderBy: { createdAt: 'desc' },
+        take:    parseInt(limit),
+        skip:    parseInt(offset),
+      }),
+      prisma.report.count({ where }),
+    ]);
+
+    // ── Analytics (from full unfiltered set for stats strip) ──────────────────
+    const allOrgWhere = isPrivileged ? { orgId } : { orgId, userId };
+    const allOrgReports = await prisma.report.findMany({
+      where: allOrgWhere,
+      select: { userId: true, projectId: true, createdAt: true },
     });
 
-    const total = await prisma.report.count({ where });
+    const now       = new Date();
+    const weekStart = new Date(now);
+    weekStart.setDate(now.getDate() - now.getDay());
+    weekStart.setHours(0, 0, 0, 0);
 
-    console.log(`✅ Found ${reports.length} user reports for orgId: ${orgId}`);
+    const analytics = {
+      total:          allOrgReports.length,
+      thisWeek:       allOrgReports.filter(r => new Date(r.createdAt) >= weekStart).length,
+      uniqueProjects: new Set(allOrgReports.filter(r => r.projectId).map(r => r.projectId)).size,
+      uniqueMembers:  new Set(allOrgReports.map(r => r.userId)).size,
+    };
 
-    // Format reports for frontend compatibility
-    const formattedReports = reports.map(report => ({
-      id: report.id,
-      title: report.title,
-      description: report.description,
-      userName: report.userName,
-      image: report.image,
-      project: report.project ? {
-        id: report.project.id,
-        name: report.project.name,
-        color: report.project.color,
-        status: report.project.status,
-        budget: report.project.budget
-      } : null,
-      user: report.user,
-      createdAt: report.createdAt,
-      updatedAt: report.updatedAt
-    }));
+    // ── Member list for filter dropdown (admin only) ──────────────────────────
+    let members = [];
+    if (isPrivileged) {
+      const memberships = await prisma.membership.findMany({
+        where: { orgId, role: { in: ['OWNER', 'ADMIN', 'STAFF'] } },
+        include: { user: { select: { id: true, name: true, email: true } } },
+      });
+      members = memberships.map(m => ({
+        id:   m.userId,
+        name: m.user?.name || m.user?.email || 'Unknown',
+        role: m.role,
+      }));
+    }
+
+    // ── Project list for filter dropdown ─────────────────────────────────────
+    const projects = await prisma.project.findMany({
+      where:   { orgId },
+      select:  { id: true, name: true, color: true },
+      orderBy: { name: 'asc' },
+    });
 
     res.json({
-      success: true,
-      reports: formattedReports,
-      total
+      success:     true,
+      role,
+      isPrivileged,
+      reports:     reports.map(r => formatReport(r)),
+      total,
+      analytics,
+      members,
+      projects,
     });
   } catch (error) {
     console.error('Error fetching user reports:', error);
@@ -83,330 +124,132 @@ router.get('/', requireAuth, withOrgScope, validateQuery(commonSchemas.paginatio
   }
 });
 
-// Create a new user report
+// ── POST /api/user-reports — create a report ─────────────────────────────────
 router.post('/', requireAuth, withOrgScope, async (req, res) => {
   try {
-    const { orgId } = req.query;
-    const { title, description, userName, image, projectId } = req.body;
     const userId = req.user?.id;
+    const orgId  = req.orgId;
+    const { title, description, userName, image, projectId } = req.body;
 
-    console.log('📝 Received report creation request:', {
-      hasOrgId: !!orgId,
-      hasUserId: !!userId,
-      hasUser: !!req.user,
-      orgId,
-      userId,
-      body: { title, description, userName, hasImage: !!image, projectId }
-    });
-
-    // Check for user authentication
-    if (!req.user || !userId) {
-      console.error('❌ No authenticated user found');
-      return res.status(401).json({ success: false, error: 'Authentication required' });
-    }
-
-    if (!orgId) {
-      console.error('❌ No orgId provided');
-      return res.status(400).json({ success: false, error: 'Organization ID is required' });
-    }
-
+    if (!userId) return res.status(401).json({ success: false, error: 'Authentication required' });
+    if (!orgId)  return res.status(400).json({ success: false, error: 'Organization ID is required' });
     if (!description || !userName) {
-      console.error('❌ Missing required fields:', { hasDescription: !!description, hasUserName: !!userName });
       return res.status(400).json({ success: false, error: 'Description and userName are required' });
-    }
-
-    // Auto-fix: Ensure user exists in database (emergency fallback)
-    let userExists = await prisma.user.findUnique({
-      where: { id: userId },
-      select: { id: true, email: true }
-    });
-
-    if (!userExists && userId === '53ebe8d8-4700-43b0-aae7-f30608cd3b66') {
-      console.log('🔧 AUTOFIX: Creating missing system user');
-      try {
-        userExists = await prisma.user.create({
-          data: {
-            id: userId,
-            email: 'tony@opusautomations.com',
-            name: 'Tony',
-            emailVerified: true
-          }
-        });
-        console.log('✅ System user created:', userExists.id);
-      } catch (createError) {
-        console.error('❌ Failed to create system user:', createError);
-        return res.status(500).json({ success: false, error: 'Failed to create system user' });
-      }
-    } else if (!userExists) {
-      console.error('❌ User not found in database:', userId);
-      return res.status(400).json({ success: false, error: 'User not found in database' });
-    }
-
-    // Auto-fix: Ensure organization exists in database (emergency fallback)
-    let orgExists = await prisma.organization.findUnique({
-      where: { id: orgId },
-      select: { id: true, name: true }
-    });
-
-    if (!orgExists && orgId === 'org_1757046595553') {
-      console.log('🔧 AUTOFIX: Creating missing system organization');
-      try {
-        orgExists = await prisma.organization.create({
-          data: {
-            id: orgId,
-            name: 'Veblen',
-            slug: 'veblen',
-            createdById: userId
-          }
-        });
-        console.log('✅ System organization created:', orgExists.id);
-
-        // Also create membership
-        await prisma.membership.create({
-          data: {
-            userId: userId,
-            orgId: orgId,
-            role: 'OWNER'
-          }
-        });
-        console.log('✅ System membership created');
-      } catch (createError) {
-        console.error('❌ Failed to create system organization:', createError);
-        return res.status(500).json({ success: false, error: 'Failed to create system organization' });
-      }
-    } else if (!orgExists) {
-      console.error('❌ Organization not found in database:', orgId);
-      return res.status(400).json({ success: false, error: 'Organization not found in database' });
     }
 
     // Validate project if provided
     if (projectId) {
-      const projectExists = await prisma.project.findUnique({
-        where: { id: projectId },
-        select: { id: true, orgId: true }
-      });
-
-      if (!projectExists) {
-        console.error('❌ Project not found:', projectId);
-        return res.status(400).json({ success: false, error: 'Project not found' });
-      }
-
-      if (projectExists.orgId !== orgId) {
-        console.error('❌ Project belongs to different organization:', { projectId, projectOrgId: projectExists.orgId, requestOrgId: orgId });
-        return res.status(400).json({ success: false, error: 'Project belongs to different organization' });
-      }
+      const proj = await prisma.project.findUnique({ where: { id: projectId }, select: { orgId: true } });
+      if (!proj)                return res.status(400).json({ success: false, error: 'Project not found' });
+      if (proj.orgId !== orgId) return res.status(400).json({ success: false, error: 'Project belongs to different organization' });
     }
-
-    console.log('📝 Creating user report:', { orgId, userId, projectId, userName });
 
     const report = await prisma.report.create({
       data: {
-        title: title || null,
+        title:     title || null,
         description,
         userName,
-        image: image || null,
+        image:     image || null,
         projectId: projectId || null,
         userId,
-        orgId
+        orgId,
       },
       include: {
-        user: {
-          select: {
-            id: true,
-            name: true,
-            email: true
-          }
-        },
-        project: {
-          select: {
-            id: true,
-            name: true,
-            color: true,
-            status: true,
-            budget: true
-          }
-        }
-      }
+        user:    { select: { id: true, name: true, email: true, image: true } },
+        project: { select: { id: true, name: true, color: true, status: true, budget: true } },
+      },
     });
 
-    console.log('✅ Created user report:', report.id);
-
-    // Format report for frontend
-    const formattedReport = {
-      id: report.id,
-      title: report.title,
-      description: report.description,
-      userName: report.userName,
-      image: report.image,
-      project: report.project ? {
-        id: report.project.id,
-        name: report.project.name,
-        color: report.project.color,
-        status: report.project.status,
-        budget: report.project.budget
-      } : null,
-      user: report.user,
-      createdAt: report.createdAt,
-      updatedAt: report.updatedAt
-    };
-
-    res.status(201).json({
-      success: true,
-      report: formattedReport
-    });
+    console.log(`✅ Created report: ${report.id} by ${req.user.email}`);
+    res.status(201).json({ success: true, report: formatReport(report) });
   } catch (error) {
-    console.error('❌ Error creating user report:', {
-      message: error.message,
-      code: error.code,
-      meta: error.meta,
-      stack: error.stack?.split('\n').slice(0, 5).join('\n'),
-      requestData: {
-        orgId: req.query.orgId,
-        userId: req.user?.id,
-        userName: req.body.userName,
-        hasDescription: !!req.body.description
-      }
-    });
-
-    // Handle specific Prisma errors
-    let errorMessage = 'Failed to create user report';
-    let statusCode = 500;
-
-    if (error.code === 'P2002') {
-      errorMessage = 'A report with this data already exists';
-      statusCode = 400;
-    } else if (error.code === 'P2003') {
-      errorMessage = 'Referenced data not found (user, organization, or project)';
-      statusCode = 400;
-    } else if (error.code === 'P2025') {
-      errorMessage = 'Required data not found';
-      statusCode = 404;
-    } else if (error.message?.includes('User')) {
-      errorMessage = 'User authentication error';
-      statusCode = 401;
-    } else if (error.message?.includes('Organization')) {
-      errorMessage = 'Organization not found';
-      statusCode = 400;
-    }
-
-    res.status(statusCode).json({
-      success: false,
-      error: errorMessage,
-      details: process.env.NODE_ENV === 'development' ? {
-        originalError: error.message,
-        code: error.code,
-        meta: error.meta
-      } : undefined
-    });
+    console.error('Error creating user report:', error);
+    res.status(500).json({ success: false, error: 'Failed to create user report' });
   }
 });
 
-// Get a specific user report
+// ── GET /api/user-reports/:id ─────────────────────────────────────────────────
 router.get('/:id', requireAuth, withOrgScope, async (req, res) => {
   try {
     const { id } = req.params;
-    const { orgId } = req.query;
+    const orgId  = req.orgId;
+    const userId = req.user.id;
 
-    if (!orgId) {
-      return res.status(400).json({ error: 'orgId is required' });
-    }
+    const membership = await prisma.membership.findUnique({
+      where: { userId_orgId: { userId, orgId } },
+      select: { role: true },
+    });
+    const isPrivileged = ['OWNER', 'ADMIN'].includes(membership?.role);
 
     const report = await prisma.report.findFirst({
-      where: {
-        id,
-        orgId
-      },
+      where: { id, orgId, ...(isPrivileged ? {} : { userId }) },
       include: {
-        user: {
-          select: {
-            id: true,
-            name: true,
-            email: true
-          }
-        },
-        project: {
-          select: {
-            id: true,
-            name: true,
-            color: true,
-            status: true,
-            budget: true
-          }
-        }
-      }
+        user:    { select: { id: true, name: true, email: true, image: true } },
+        project: { select: { id: true, name: true, color: true, status: true, budget: true } },
+      },
     });
 
-    if (!report) {
-      return res.status(404).json({ success: false, error: 'User report not found' });
-    }
-
-    // Format report for frontend
-    const formattedReport = {
-      id: report.id,
-      title: report.title,
-      description: report.description,
-      userName: report.userName,
-      image: report.image,
-      project: report.project ? {
-        id: report.project.id,
-        name: report.project.name,
-        color: report.project.color,
-        status: report.project.status,
-        budget: report.project.budget
-      } : null,
-      user: report.user,
-      createdAt: report.createdAt,
-      updatedAt: report.updatedAt
-    };
-
-    res.json({
-      success: true,
-      report: formattedReport
-    });
+    if (!report) return res.status(404).json({ success: false, error: 'Report not found or access denied' });
+    res.json({ success: true, report: formatReport(report) });
   } catch (error) {
     console.error('Error fetching user report:', error);
     res.status(500).json({ success: false, error: 'Failed to fetch user report' });
   }
 });
 
-// Delete a user report
+// ── DELETE /api/user-reports/:id ──────────────────────────────────────────────
+// OWNER/ADMIN can delete any report in the org; STAFF can only delete their own
 router.delete('/:id', requireAuth, withOrgScope, async (req, res) => {
   try {
     const { id } = req.params;
-    const { orgId } = req.query;
+    const orgId  = req.orgId;
     const userId = req.user.id;
 
-    if (!orgId) {
-      return res.status(400).json({ error: 'orgId is required' });
-    }
+    const membership = await prisma.membership.findUnique({
+      where: { userId_orgId: { userId, orgId } },
+      select: { role: true },
+    });
+    const isPrivileged = ['OWNER', 'ADMIN'].includes(membership?.role);
 
-    // Check if report exists and belongs to the user/org
-    const existingReport = await prisma.report.findFirst({
-      where: {
-        id,
-        orgId,
-        userId // Users can only delete their own reports
-      }
+    const report = await prisma.report.findFirst({
+      where: { id, orgId, ...(isPrivileged ? {} : { userId }) },
     });
 
-    if (!existingReport) {
-      return res.status(404).json({ success: false, error: 'User report not found or access denied' });
-    }
+    if (!report) return res.status(404).json({ success: false, error: 'Report not found or access denied' });
 
-    await prisma.report.delete({
-      where: { id }
-    });
-
-    console.log('🗑️ Deleted user report:', id);
-
-    res.json({
-      success: true,
-      message: 'User report deleted successfully'
-    });
+    await prisma.report.delete({ where: { id } });
+    console.log(`🗑️ Deleted report: ${id} by ${req.user.email}`);
+    res.json({ success: true, message: 'Report deleted successfully' });
   } catch (error) {
     console.error('Error deleting user report:', error);
     res.status(500).json({ success: false, error: 'Failed to delete user report' });
   }
 });
+
+// ── Helper ────────────────────────────────────────────────────────────────────
+function formatReport(r) {
+  return {
+    id:          r.id,
+    title:       r.title,
+    description: r.description,
+    userName:    r.userName,
+    image:       r.image,
+    project:     r.project ? {
+      id:     r.project.id,
+      name:   r.project.name,
+      color:  r.project.color,
+      status: r.project.status,
+      budget: r.project.budget,
+    } : null,
+    user: r.user ? {
+      id:    r.user.id,
+      name:  r.user.name,
+      email: r.user.email,
+      image: r.user.image,
+    } : null,
+    createdAt: r.createdAt,
+    updatedAt: r.updatedAt,
+  };
+}
 
 export default router;

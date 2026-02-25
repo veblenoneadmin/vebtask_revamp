@@ -195,7 +195,7 @@ export function Dashboard() {
       });
 
       setTasks(rt.tasks ?? []);
-      if (att.active) setAttendanceActive(att.active);
+      if (att.activeLog) setAttendanceActive(att.activeLog);
     } catch { /* silently ignore */ }
     finally { setLoading(false); }
   }, [session?.user?.id, currentOrg?.id]);

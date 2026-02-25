@@ -1,438 +1,217 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { useSession } from '../lib/auth-client';
 import { useApiClient } from '../lib/api-client';
 import { useOrganization } from '../contexts/OrganizationContext';
-import {
-  FileText,
-  Plus,
-  Users,
-  Target,
-  X,
-  Save,
-  Building2,
-  Trash2,
-  Calendar,
-} from 'lucide-react';
 import { createPortal } from 'react-dom';
+import {
+  FileText, Plus, Users, Target, X, Save, Building2, Trash2,
+  Calendar, Search, FolderOpen, Clock, TrendingUp,
+} from 'lucide-react';
 
+// ── VS Code Dark+ tokens ──────────────────────────────────────────────────────
 const VS = {
-  bg0: '#1e1e1e', bg1: '#252526', bg2: '#2d2d2d', bg3: '#333333',
+  bg0:    '#1e1e1e', bg1: '#252526', bg2: '#2d2d2d', bg3: '#333333',
   border: '#3c3c3c', text0: '#f0f0f0', text1: '#c0c0c0', text2: '#909090',
-  blue: '#569cd6', teal: '#4ec9b0', yellow: '#dcdcaa', orange: '#ce9178',
+  blue:   '#569cd6', teal: '#4ec9b0', yellow: '#dcdcaa', orange: '#ce9178',
   purple: '#c586c0', red: '#f44747', green: '#6a9955', accent: '#007acc',
 };
 
-interface Project {
+// ── Interfaces ────────────────────────────────────────────────────────────────
+interface Report {
   id: string;
-  name: string;
+  title: string | null;
   description: string;
-  status: string;
-  budget?: number;
-  spent?: number;
-  completion?: number;
-  color: string;
+  userName: string;
+  image: string | null;
+  project: { id: string; name: string; color: string; status: string; budget: number | null } | null;
+  user: { id: string; name: string | null; email: string; image: string | null } | null;
+  createdAt: string;
+  updatedAt: string;
+}
+interface ProjectItem { id: string; name: string; color: string; }
+interface MemberItem  { id: string; name: string; role: string; }
+interface Analytics   { total: number; thisWeek: number; uniqueProjects: number; uniqueMembers: number; }
+
+// ── Helpers ───────────────────────────────────────────────────────────────────
+function fmtDate(iso: string) {
+  return new Date(iso).toLocaleDateString('en-AU', { day: 'numeric', month: 'short', year: 'numeric' });
+}
+function fmtRelative(iso: string) {
+  const diff  = Date.now() - new Date(iso).getTime();
+  const mins  = Math.floor(diff / 60000);
+  const hours = Math.floor(diff / 3600000);
+  const days  = Math.floor(diff / 86400000);
+  if (mins  < 1)  return 'just now';
+  if (mins  < 60) return `${mins}m ago`;
+  if (hours < 24) return `${hours}h ago`;
+  if (days  < 7)  return `${days}d ago`;
+  return fmtDate(iso);
+}
+function getColor(color?: string | null): string {
+  if (!color) return '#6b7280';
+  if (color.startsWith('#')) return color;
+  const map: Record<string, string> = {
+    'bg-blue': '#3b82f6', 'bg-teal': '#14b8a6', 'bg-purple': '#8b5cf6',
+    'bg-green': '#22c55e', 'bg-red': '#ef4444', 'bg-orange': '#f97316',
+    'bg-yellow': '#eab308', 'bg-primary': '#3b82f6',
+  };
+  return map[color] || '#6b7280';
 }
 
-interface ReportModalProps {
-  isOpen: boolean;
-  onClose: () => void;
-  onSave: (report: any) => void;
+// ── Avatar ────────────────────────────────────────────────────────────────────
+function Avatar({ name, image, size = 28 }: { name: string; image?: string | null; size?: number }) {
+  const initials = name?.split(' ').map(n => n[0]).join('').slice(0, 2).toUpperCase() || '?';
+  const palette  = [VS.blue, VS.purple, VS.teal, VS.yellow, VS.orange, VS.accent];
+  const color    = palette[(name?.charCodeAt(0) ?? 0) % palette.length];
+  return image
+    ? <img src={image} alt={name} style={{ width: size, height: size, borderRadius: '50%', objectFit: 'cover', flexShrink: 0 }} />
+    : <div style={{ width: size, height: size, borderRadius: '50%', background: `${color}28`, border: `1px solid ${color}55`, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: size * 0.36, fontWeight: 700, color, flexShrink: 0 }}>{initials}</div>;
 }
 
-function ReportModal({ isOpen, onClose, onSave }: ReportModalProps) {
+// ── Stat card ─────────────────────────────────────────────────────────────────
+function StatCard({ label, value, sub, color, icon: Icon }: { label: string; value: string | number; sub?: string; color: string; icon: React.ElementType }) {
+  return (
+    <div className="rounded-xl p-4 flex flex-col gap-3" style={{ background: VS.bg1, border: `1px solid ${VS.border}` }}>
+      <div className="flex items-center justify-between">
+        <span className="text-[11px] font-semibold uppercase tracking-widest" style={{ color: VS.text2 }}>{label}</span>
+        <div className="h-8 w-8 rounded-lg flex items-center justify-center" style={{ background: `${color}18`, border: `1px solid ${color}33` }}>
+          <Icon className="h-4 w-4" style={{ color }} />
+        </div>
+      </div>
+      <div>
+        <div className="text-2xl font-bold tabular-nums leading-none" style={{ color: VS.text0 }}>{value}</div>
+        {sub && <div className="text-[11px] mt-1" style={{ color: VS.text2 }}>{sub}</div>}
+      </div>
+    </div>
+  );
+}
+
+// ── Report Create Modal ───────────────────────────────────────────────────────
+function ReportModal({ isOpen, onClose, onSave, projects }: {
+  isOpen: boolean; onClose: () => void;
+  onSave: (data: any) => Promise<void>; projects: ProjectItem[];
+}) {
   const { data: session } = useSession();
-  const { currentOrg } = useOrganization();
-  const apiClient = useApiClient();
-  const [projects, setProjects] = useState<Project[]>([]);
   const [selectedProject, setSelectedProject] = useState('');
-  const [userName, setUserName] = useState('');
-  const [description, setDescription] = useState('');
-  const [uploadedImage, setUploadedImage] = useState<string | null>(null);
-  const [loading, setLoading] = useState(false);
+  const [userName, setUserName]               = useState('');
+  const [description, setDescription]         = useState('');
+  const [uploadedImage, setUploadedImage]     = useState<string | null>(null);
+  const [saving, setSaving]                   = useState(false);
 
   useEffect(() => {
-    if (isOpen && session?.user?.id) {
-      fetchProjectsAndTasks();
+    if (isOpen && session?.user) {
+      setUserName(session.user.name || session.user.email?.split('@')[0] || '');
     }
-  }, [isOpen, session?.user?.id, currentOrg?.id]);
-
-  const fetchProjectsAndTasks = async () => {
-    if (!session?.user?.id) return;
-
-    setLoading(true);
-    try {
-      const orgId = currentOrg?.id || 'org_1757046595553';
-      console.log('🔧 Fetching projects with orgId:', orgId);
-
-      const projectsData = await apiClient.fetch(`/api/projects?userId=${session.user.id}&orgId=${orgId}&limit=100`);
-
-      if (projectsData.success) {
-        setProjects(projectsData.projects || []);
-        console.log('📊 Loaded projects for reports:', projectsData.projects?.length || 0);
-      } else {
-        console.warn('Failed to fetch projects:', projectsData.error);
-        setProjects([]);
-      }
-    } catch (error) {
-      console.error('Error fetching data:', error);
-      setProjects([]);
-    } finally {
-      setLoading(false);
-    }
-  };
+  }, [isOpen, session]);
 
   const handleImageUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (file) {
       const reader = new FileReader();
-      reader.onload = (event) => {
-        setUploadedImage(event.target?.result as string);
-      };
+      reader.onload = ev => setUploadedImage(ev.target?.result as string);
       reader.readAsDataURL(file);
     }
   };
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-
-    const selectedProjectData = projects.find(p => p.id === selectedProject);
-
-    const reportData = {
-      userName,
-      project: selectedProjectData,
-      description,
-      image: uploadedImage,
-      createdAt: new Date().toISOString()
-    };
-
-    onSave(reportData);
-
-    setSelectedProject('');
-    setUserName('');
-    setDescription('');
-    setUploadedImage(null);
-    onClose();
+    setSaving(true);
+    try {
+      await onSave({ userName, description, image: uploadedImage, projectId: selectedProject || null });
+      setSelectedProject(''); setUserName(''); setDescription(''); setUploadedImage(null);
+      onClose();
+    } catch (err: any) {
+      alert(err.message || 'Failed to save report');
+    } finally {
+      setSaving(false);
+    }
   };
 
   if (!isOpen) return null;
 
-  const labelStyle: React.CSSProperties = {
-    display: 'flex',
-    alignItems: 'center',
-    gap: 6,
-    fontSize: 11,
-    fontWeight: 600,
-    textTransform: 'uppercase',
-    letterSpacing: '0.06em',
-    color: VS.text2,
-    marginBottom: 6,
-  };
-
-  const inputStyle: React.CSSProperties = {
-    width: '100%',
-    background: VS.bg2,
-    border: `1px solid ${VS.border}`,
-    borderRadius: 8,
-    padding: '8px 12px',
-    color: VS.text0,
-    fontSize: 14,
-    outline: 'none',
-    boxSizing: 'border-box',
-  };
+  const inp: React.CSSProperties = { width: '100%', background: VS.bg2, border: `1px solid ${VS.border}`, borderRadius: 8, padding: '8px 12px', color: VS.text0, fontSize: 14, outline: 'none', boxSizing: 'border-box' };
+  const lbl: React.CSSProperties = { display: 'flex', alignItems: 'center', gap: 6, fontSize: 11, fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.06em', color: VS.text2, marginBottom: 6 };
 
   return createPortal(
-    <div
-      style={{
-        position: 'fixed',
-        inset: 0,
-        background: 'rgba(0,0,0,0.75)',
-        zIndex: 9999,
-        display: 'flex',
-        alignItems: 'center',
-        justifyContent: 'center',
-      }}
-      onClick={(e) => {
-        if (e.target === e.currentTarget) onClose();
-      }}
-    >
-      <div
-        style={{
-          background: VS.bg1,
-          border: `1px solid ${VS.border}`,
-          borderRadius: 12,
-          width: '95%',
-          maxWidth: 680,
-          maxHeight: '90vh',
-          overflowY: 'auto',
-          position: 'relative',
-        }}
-      >
+    <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.75)', zIndex: 9999, display: 'flex', alignItems: 'center', justifyContent: 'center' }}
+      onClick={e => { if (e.target === e.currentTarget) onClose(); }}>
+      <div style={{ background: VS.bg1, border: `1px solid ${VS.border}`, borderRadius: 12, width: '95%', maxWidth: 640, maxHeight: '90vh', overflowY: 'auto' }}>
+
         {/* Header */}
-        <div
-          style={{
-            background: VS.bg2,
-            borderBottom: `1px solid ${VS.border}`,
-            padding: '20px 24px',
-            borderRadius: '12px 12px 0 0',
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'space-between',
-          }}
-        >
+        <div style={{ background: VS.bg2, borderBottom: `1px solid ${VS.border}`, padding: '18px 24px', borderRadius: '12px 12px 0 0', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
-            <div
-              style={{
-                width: 40,
-                height: 40,
-                borderRadius: 8,
-                background: VS.bg3,
-                border: `1px solid ${VS.border}`,
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'center',
-                color: VS.blue,
-              }}
-            >
-              <FileText size={18} />
+            <div style={{ width: 38, height: 38, borderRadius: 8, background: VS.bg3, border: `1px solid ${VS.border}`, display: 'flex', alignItems: 'center', justifyContent: 'center', color: VS.blue }}>
+              <FileText size={17} />
             </div>
             <div>
-              <div style={{ fontSize: 16, fontWeight: 600, color: VS.text0 }}>Create New Report</div>
-              <div style={{ fontSize: 12, color: VS.text2, marginTop: 2 }}>
-                Generate a report with project and task breakdown
-              </div>
+              <div style={{ fontSize: 15, fontWeight: 600, color: VS.text0 }}>Create Report</div>
+              <div style={{ fontSize: 12, color: VS.text2, marginTop: 2 }}>Submit a progress report for a project</div>
             </div>
           </div>
-          <button
-            onClick={onClose}
-            style={{
-              background: 'transparent',
-              border: 'none',
-              color: VS.text2,
-              cursor: 'pointer',
-              padding: 6,
-              borderRadius: 6,
-              display: 'flex',
-              alignItems: 'center',
-            }}
-          >
+          <button onClick={onClose} style={{ background: 'transparent', border: 'none', color: VS.text2, cursor: 'pointer', padding: 6, borderRadius: 6, display: 'flex', alignItems: 'center' }}>
             <X size={18} />
           </button>
         </div>
 
         {/* Form */}
         <form onSubmit={handleSubmit} style={{ padding: 24 }}>
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 20 }}>
-            {/* User Name */}
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 18 }}>
+
             <div>
-              <label style={labelStyle}>
-                <Users size={13} />
-                Your Name *
-              </label>
-              <input
-                type="text"
-                value={userName}
-                onChange={(e) => setUserName(e.target.value)}
-                required
-                placeholder="Enter your name"
-                style={inputStyle}
-              />
+              <label style={lbl}><Users size={12} />Your Name *</label>
+              <input type="text" value={userName} onChange={e => setUserName(e.target.value)} required placeholder="Enter your name" style={inp} />
             </div>
 
-            {/* Project Selection */}
             <div>
-              <label style={labelStyle}>
-                <Building2 size={13} />
-                Select Project *
-              </label>
-              <select
-                value={selectedProject}
-                onChange={(e) => setSelectedProject(e.target.value)}
-                required
-                style={inputStyle}
-              >
-                <option value="" style={{ background: VS.bg2 }}>Choose a project...</option>
-                {projects.map((project) => (
-                  <option key={project.id} value={project.id} style={{ background: VS.bg2 }}>
-                    {project.name}
-                  </option>
-                ))}
+              <label style={lbl}><Building2 size={12} />Project *</label>
+              <select value={selectedProject} onChange={e => setSelectedProject(e.target.value)} required style={inp}>
+                <option value="" style={{ background: VS.bg2 }}>Choose a project…</option>
+                {projects.map(p => <option key={p.id} value={p.id} style={{ background: VS.bg2 }}>{p.name}</option>)}
               </select>
             </div>
 
-            {/* Description */}
             <div>
-              <label style={labelStyle}>
-                <FileText size={13} />
-                Report Description *
-              </label>
-              <textarea
-                value={description}
-                onChange={(e) => setDescription(e.target.value)}
-                required
-                placeholder="Describe the report details, progress, issues, or any relevant information..."
-                rows={4}
-                style={{ ...inputStyle, resize: 'none', fontFamily: 'inherit' }}
-              />
+              <label style={lbl}><FileText size={12} />Report Description *</label>
+              <textarea value={description} onChange={e => setDescription(e.target.value)} required
+                placeholder="Describe progress, blockers, or any relevant information…" rows={4}
+                style={{ ...inp, resize: 'none', fontFamily: 'inherit' }} />
             </div>
 
-            {/* Image Upload */}
             <div>
-              <label style={labelStyle}>
-                <Plus size={13} />
-                Upload Screenshot/Image
-              </label>
-              <input
-                type="file"
-                accept="image/*"
-                onChange={handleImageUpload}
-                style={{
-                  ...inputStyle,
-                  padding: '6px 12px',
-                  cursor: 'pointer',
-                  color: VS.text1,
-                }}
-              />
+              <label style={lbl}><Plus size={12} />Attach Screenshot (optional)</label>
+              <input type="file" accept="image/*" onChange={handleImageUpload}
+                style={{ ...inp, padding: '6px 12px', cursor: 'pointer', color: VS.text1 }} />
               {uploadedImage && (
                 <div style={{ marginTop: 10, position: 'relative' }}>
-                  <img
-                    src={uploadedImage}
-                    alt="Uploaded screenshot"
-                    style={{
-                      width: '100%',
-                      maxHeight: 320,
-                      objectFit: 'contain',
-                      borderRadius: 8,
-                      border: `1px solid ${VS.border}`,
-                    }}
-                  />
-                  <button
-                    type="button"
-                    onClick={() => setUploadedImage(null)}
-                    style={{
-                      position: 'absolute',
-                      top: 8,
-                      right: 8,
-                      background: VS.red,
-                      border: 'none',
-                      borderRadius: '50%',
-                      width: 24,
-                      height: 24,
-                      display: 'flex',
-                      alignItems: 'center',
-                      justifyContent: 'center',
-                      color: '#fff',
-                      cursor: 'pointer',
-                    }}
-                  >
-                    <X size={14} />
+                  <img src={uploadedImage} alt="Preview" style={{ width: '100%', maxHeight: 240, objectFit: 'contain', borderRadius: 8, border: `1px solid ${VS.border}` }} />
+                  <button type="button" onClick={() => setUploadedImage(null)}
+                    style={{ position: 'absolute', top: 8, right: 8, background: VS.red, border: 'none', borderRadius: '50%', width: 24, height: 24, display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#fff', cursor: 'pointer' }}>
+                    <X size={13} />
                   </button>
                 </div>
               )}
             </div>
 
-            {/* Project Breakdown */}
-            {selectedProject && (
-              <div>
-                <label style={labelStyle}>
-                  <Target size={13} />
-                  Project Breakdown
-                </label>
-                {(() => {
-                  const project = projects.find(p => p.id === selectedProject);
-                  return project ? (
-                    <div
-                      style={{
-                        background: VS.bg2,
-                        border: `1px solid ${VS.border}`,
-                        borderRadius: 8,
-                        padding: 16,
-                      }}
-                    >
-                      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 8 }}>
-                        <span style={{ fontWeight: 600, color: VS.text0 }}>{project.name}</span>
-                        <span
-                          style={{
-                            fontSize: 11,
-                            fontWeight: 600,
-                            padding: '2px 8px',
-                            borderRadius: 4,
-                            background: VS.bg3,
-                            color: VS.teal,
-                            border: `1px solid ${VS.border}`,
-                            textTransform: 'capitalize',
-                          }}
-                        >
-                          {project.status}
-                        </span>
-                      </div>
-                      <p style={{ fontSize: 13, color: VS.text2, margin: '0 0 10px 0' }}>{project.description}</p>
-                      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8, fontSize: 13 }}>
-                        {project.budget !== undefined && (
-                          <div>
-                            <span style={{ color: VS.text2 }}>Budget: </span>
-                            <span style={{ fontWeight: 600, color: VS.text0 }}>${project.budget.toLocaleString()}</span>
-                          </div>
-                        )}
-                        {project.completion !== undefined && (
-                          <div>
-                            <span style={{ color: VS.text2 }}>Progress: </span>
-                            <span style={{ fontWeight: 600, color: VS.text0 }}>{project.completion}%</span>
-                          </div>
-                        )}
-                      </div>
-                    </div>
-                  ) : null;
-                })()}
-              </div>
-            )}
+            {/* Project preview */}
+            {selectedProject && (() => {
+              const p = projects.find(x => x.id === selectedProject);
+              return p ? (
+                <div style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '10px 14px', background: VS.bg2, borderRadius: 8, border: `1px solid ${VS.border}` }}>
+                  <div style={{ width: 10, height: 10, borderRadius: '50%', background: getColor(p.color), flexShrink: 0 }} />
+                  <span style={{ fontSize: 13, fontWeight: 600, color: VS.text0 }}>{p.name}</span>
+                  <Target size={12} style={{ color: VS.text2, marginLeft: 'auto' }} />
+                </div>
+              ) : null;
+            })()}
           </div>
 
-          {/* Action Buttons */}
-          <div
-            style={{
-              display: 'flex',
-              justifyContent: 'flex-end',
-              gap: 10,
-              paddingTop: 20,
-              marginTop: 20,
-              borderTop: `1px solid ${VS.border}`,
-            }}
-          >
-            <button
-              type="button"
-              onClick={onClose}
-              style={{
-                background: VS.bg3,
-                color: VS.text1,
-                border: `1px solid ${VS.border}`,
-                borderRadius: 8,
-                padding: '8px 18px',
-                fontSize: 14,
-                cursor: 'pointer',
-              }}
-            >
+          <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 10, paddingTop: 20, marginTop: 20, borderTop: `1px solid ${VS.border}` }}>
+            <button type="button" onClick={onClose} style={{ background: VS.bg3, color: VS.text1, border: `1px solid ${VS.border}`, borderRadius: 8, padding: '8px 18px', fontSize: 14, cursor: 'pointer' }}>
               Cancel
             </button>
-            <button
-              type="submit"
-              disabled={loading || !userName || !selectedProject || !description}
-              style={{
-                background: VS.accent,
-                color: '#fff',
-                border: 'none',
-                borderRadius: 8,
-                padding: '8px 18px',
-                fontSize: 14,
-                fontWeight: 600,
-                cursor: loading || !userName || !selectedProject || !description ? 'not-allowed' : 'pointer',
-                opacity: loading || !userName || !selectedProject || !description ? 0.5 : 1,
-                display: 'flex',
-                alignItems: 'center',
-                gap: 7,
-              }}
-            >
-              <Save size={15} />
-              Create Report
+            <button type="submit" disabled={saving || !userName || !selectedProject || !description}
+              style={{ background: VS.accent, color: '#fff', border: 'none', borderRadius: 8, padding: '8px 18px', fontSize: 14, fontWeight: 600, cursor: saving ? 'not-allowed' : 'pointer', opacity: saving || !userName || !selectedProject || !description ? 0.5 : 1, display: 'flex', alignItems: 'center', gap: 7 }}>
+              <Save size={15} />{saving ? 'Saving…' : 'Submit Report'}
             </button>
           </div>
         </form>
@@ -442,542 +221,299 @@ function ReportModal({ isOpen, onClose, onSave }: ReportModalProps) {
   );
 }
 
+// ── Main component ────────────────────────────────────────────────────────────
 export function Reports() {
   const { data: session } = useSession();
-  const { currentOrg } = useOrganization();
-  const apiClient = useApiClient();
-  const [showReportModal, setShowReportModal] = useState(false);
-  const [reports, setReports] = useState<any[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [selectedDate, setSelectedDate] = useState<string>('');
+  const { currentOrg }    = useOrganization();
+  const apiClient         = useApiClient();
 
-  const fetchReports = async () => {
+  const [reports, setReports]           = useState<Report[]>([]);
+  const [analytics, setAnalytics]       = useState<Analytics>({ total: 0, thisWeek: 0, uniqueProjects: 0, uniqueMembers: 0 });
+  const [projects, setProjects]         = useState<ProjectItem[]>([]);
+  const [members, setMembers]           = useState<MemberItem[]>([]);
+  const [isPrivileged, setIsPrivileged] = useState(false);
+  const [userRole, setUserRole]         = useState('STAFF');
+  const [loading, setLoading]           = useState(true);
+  const [showModal, setShowModal]       = useState(false);
+
+  // Filters
+  const [search, setSearch]                 = useState('');
+  const [filterProject, setFilterProject]   = useState('');
+  const [filterMember, setFilterMember]     = useState('');
+  const [filterDateFrom, setFilterDateFrom] = useState('');
+  const [filterDateTo, setFilterDateTo]     = useState('');
+
+  // ── Fetch reports + metadata ───────────────────────────────────────────────
+  const fetchReports = useCallback(async () => {
     if (!session?.user?.id || !currentOrg?.id) return;
-
     setLoading(true);
     try {
-      const orgId = currentOrg.id;
-      console.log('🔧 Fetching reports with orgId:', orgId);
+      const params = new URLSearchParams({ orgId: currentOrg.id, limit: '200' });
+      if (filterProject)  params.set('projectId', filterProject);
+      if (filterMember)   params.set('memberId',  filterMember);
+      if (filterDateFrom) params.set('dateFrom',  filterDateFrom);
+      if (filterDateTo)   params.set('dateTo',    filterDateTo);
+      if (search)         params.set('search',    search);
 
-      const data = await apiClient.fetch(`/api/user-reports?orgId=${orgId}&limit=100`);
-
+      const data = await apiClient.fetch(`/api/user-reports?${params}`);
       if (data.success) {
         setReports(data.reports || []);
-        console.log('📊 Loaded reports:', data.reports?.length || 0);
-      } else {
-        console.warn('Failed to fetch reports:', data.error);
-        setReports([]);
+        setAnalytics(data.analytics || { total: 0, thisWeek: 0, uniqueProjects: 0, uniqueMembers: 0 });
+        setProjects(data.projects  || []);
+        setMembers(data.members    || []);
+        setIsPrivileged(data.isPrivileged ?? false);
+        setUserRole(data.role ?? 'STAFF');
       }
-    } catch (error) {
-      console.error('Error fetching reports:', error);
-      setReports([]);
+    } catch (err) {
+      console.error('Error fetching reports:', err);
     } finally {
       setLoading(false);
     }
-  };
+  }, [session?.user?.id, currentOrg?.id, filterProject, filterMember, filterDateFrom, filterDateTo, search]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  useEffect(() => {
-    fetchReports();
-  }, [session?.user?.id, currentOrg?.id]);
+  useEffect(() => { fetchReports(); }, [fetchReports]);
 
-  const handleSaveReport = async (reportData: any) => {
-    if (!session?.user?.id || !currentOrg?.id) {
-      console.error('No user or organization found');
-      alert('Please make sure you are logged in and have selected an organization.');
-      return;
-    }
-
-    try {
-      console.log('💾 Saving report:', reportData);
-
-      const requestPayload = {
-        title: reportData.project?.name || 'Project Report',
+  // ── Create ────────────────────────────────────────────────────────────────
+  const handleSave = async (reportData: any) => {
+    const projectName = projects.find(p => p.id === reportData.projectId)?.name;
+    const data = await apiClient.fetch('/api/user-reports', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        title:       projectName ? `${projectName} — Report` : 'Project Report',
         description: reportData.description,
-        userName: reportData.userName,
-        image: reportData.image,
-        projectId: reportData.project?.id || null
-      };
-
-      console.log('📤 Request payload:', requestPayload);
-
-      console.log('🔧 Using simple endpoint with any available user/org');
-      const data = await apiClient.fetch(`/api/simple/user-reports`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify(requestPayload),
-      });
-
-      if (data.success) {
-        console.log('✅ Report saved successfully');
-        alert('Report created successfully!');
-        await fetchReports();
-      } else {
-        console.error('Failed to save report:', data.error);
-        alert(`Failed to save report: ${data.error || 'Unknown error'}`);
-      }
-    } catch (error) {
-      console.error('Error saving report:', error);
-      alert(`Error saving report: ${error instanceof Error ? error.message : 'Unknown error'}`);
-    }
+        userName:    reportData.userName,
+        image:       reportData.image,
+        projectId:   reportData.projectId,
+      }),
+    });
+    if (!data.success) throw new Error(data.error || 'Failed to save');
+    await fetchReports();
   };
 
-  const handleDeleteReport = async (reportId: string) => {
-    if (!confirm('Are you sure you want to delete this report? This action cannot be undone.')) {
-      return;
-    }
-
-    if (!currentOrg?.id) {
-      alert('Please make sure you have selected an organization.');
-      return;
-    }
-
+  // ── Delete ────────────────────────────────────────────────────────────────
+  const handleDelete = async (id: string) => {
+    if (!confirm('Delete this report? This cannot be undone.')) return;
     try {
-      console.log('🗑️ Deleting report:', reportId);
-
-      const data = await apiClient.fetch(`/api/simple/user-reports/${reportId}`, {
-        method: 'DELETE',
-      });
-
-      if (data.success) {
-        console.log('✅ Report deleted successfully');
-        alert('Report deleted successfully!');
-        await fetchReports();
-      } else {
-        console.error('Failed to delete report:', data.error);
-        alert(`Failed to delete report: ${data.error || 'Unknown error'}`);
-      }
-    } catch (error) {
-      console.error('Error deleting report:', error);
-      alert(`Error deleting report: ${error instanceof Error ? error.message : 'Unknown error'}`);
+      const data = await apiClient.fetch(`/api/user-reports/${id}`, { method: 'DELETE' });
+      if (data.success) await fetchReports();
+      else alert(data.error || 'Failed to delete');
+    } catch (err: any) {
+      alert(err.message || 'Failed to delete');
     }
   };
 
-  const tailwindToHex = (tailwindClass: string): string => {
-    const colorMap: { [key: string]: string } = {
-      'bg-primary': '#3b82f6',
-      'bg-secondary': '#6b7280',
-      'bg-success': '#10b981',
-      'bg-warning': '#f59e0b',
-      'bg-danger': '#ef4444',
-      'bg-info': '#06b6d4',
-      'bg-purple': '#8b5cf6',
-      'bg-pink': '#ec4899',
-      'bg-indigo': '#6366f1',
-      'bg-green': '#22c55e',
-      'bg-red': '#ef4444',
-      'bg-blue': '#3b82f6',
-      'bg-yellow': '#eab308',
-      'bg-orange': '#f97316',
-      'bg-teal': '#14b8a6',
-      'bg-cyan': '#06b6d4',
-    };
-    return colorMap[tailwindClass] || '#6b7280';
+  const clearFilters = () => {
+    setSearch(''); setFilterProject(''); setFilterMember('');
+    setFilterDateFrom(''); setFilterDateTo('');
   };
-
-  const getProjectColor = (project?: any): string => {
-    if (!project?.color) return '#6b7280';
-    if (project.color.startsWith('#')) return project.color;
-    return tailwindToHex(project.color);
-  };
-
-  const filteredReports = selectedDate
-    ? reports.filter(report =>
-        new Date(report.createdAt).toDateString() === new Date(selectedDate).toDateString()
-      )
-    : reports;
+  const hasFilters = !!(search || filterProject || filterMember || filterDateFrom || filterDateTo);
 
   return (
     <div className="space-y-6">
-      {/* Header */}
-      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+
+      {/* ── Header ── */}
+      <div className="flex items-start justify-between gap-4">
         <div>
-          <h1 style={{ fontSize: 24, fontWeight: 700, color: VS.text0, margin: 0 }}>Reports</h1>
-          <p style={{ fontSize: 13, color: VS.text2, marginTop: 4 }}>Create and manage your project reports</p>
+          <h1 className="text-2xl font-bold" style={{ color: VS.text0 }}>Reports</h1>
+          <p className="text-[13px] mt-1" style={{ color: VS.text2 }}>
+            {isPrivileged
+              ? `All team reports · ${userRole.charAt(0) + userRole.slice(1).toLowerCase()} view`
+              : 'Your submitted reports'}
+          </p>
         </div>
-        <button
-          onClick={() => setShowReportModal(true)}
-          style={{
-            background: VS.accent,
-            color: '#fff',
-            border: 'none',
-            borderRadius: 8,
-            padding: '8px 16px',
-            fontSize: 14,
-            fontWeight: 600,
-            cursor: 'pointer',
-            display: 'flex',
-            alignItems: 'center',
-            gap: 7,
-          }}
-        >
-          <Plus size={16} />
-          Add Report
+        <button onClick={() => setShowModal(true)}
+          className="flex items-center gap-2 px-4 py-2 rounded-lg text-[13px] font-semibold"
+          style={{ background: VS.accent, color: '#fff', border: 'none', cursor: 'pointer' }}>
+          <Plus size={15} />New Report
         </button>
       </div>
 
-      {/* Date Filter */}
-      <div
-        className="rounded-xl p-5"
-        style={{ background: VS.bg1, border: `1px solid ${VS.border}` }}
-      >
-        <div style={{ display: 'flex', flexWrap: 'wrap', gap: 12, alignItems: 'center' }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-            <Calendar size={16} style={{ color: VS.blue }} />
-            <span style={{ fontSize: 13, fontWeight: 600, color: VS.text1 }}>Filter by Date:</span>
+      {/* ── Analytics strip ── */}
+      <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+        <StatCard label="Total Reports"    value={analytics.total}          sub="all time"          icon={FileText}   color={VS.blue}   />
+        <StatCard label="This Week"        value={analytics.thisWeek}       sub="reports submitted" icon={Clock}      color={VS.teal}   />
+        <StatCard label="Projects Covered" value={analytics.uniqueProjects} sub="with reports"      icon={FolderOpen} color={VS.orange} />
+        {isPrivileged
+          ? <StatCard label="Contributors" value={analytics.uniqueMembers} sub="team members"  icon={Users}      color={VS.purple} />
+          : <StatCard label="Your Reports" value={analytics.total}         sub="submitted by you" icon={TrendingUp} color={VS.yellow} />
+        }
+      </div>
+
+      {/* ── Filters ── */}
+      <div className="rounded-xl p-4 space-y-3" style={{ background: VS.bg1, border: `1px solid ${VS.border}` }}>
+
+        {/* Row 1: search + dropdowns */}
+        <div className="flex flex-wrap gap-3 items-center">
+          <div className="relative flex-1 min-w-[200px]">
+            <Search className="absolute left-3 top-2.5 h-4 w-4" style={{ color: VS.text2 }} />
+            <input type="text" placeholder="Search reports…" value={search} onChange={e => setSearch(e.target.value)}
+              className="w-full pl-9 pr-3 py-2 rounded-lg text-[13px] outline-none"
+              style={{ background: VS.bg2, border: `1px solid ${VS.border}`, color: VS.text0 }} />
           </div>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-            <input
-              type="date"
-              value={selectedDate ? new Date(selectedDate).toISOString().split('T')[0] : ''}
-              onChange={(e) => {
-                if (e.target.value) {
-                  const d = new Date(e.target.value + 'T00:00:00.000Z');
-                  setSelectedDate(d.toISOString());
-                } else {
-                  setSelectedDate('');
-                }
-              }}
-              title="Pick a date to filter reports"
-              style={{
-                background: VS.bg2,
-                border: `1px solid ${VS.border}`,
-                borderRadius: 8,
-                padding: '8px 12px',
-                color: VS.text0,
-                fontSize: 13,
-                outline: 'none',
-                colorScheme: 'dark',
-              }}
-            />
-            {selectedDate && (
-              <button
-                onClick={() => setSelectedDate('')}
-                style={{
-                  background: VS.bg3,
-                  color: VS.text1,
-                  border: `1px solid ${VS.border}`,
-                  borderRadius: 8,
-                  padding: '7px 13px',
-                  fontSize: 13,
-                  cursor: 'pointer',
-                  display: 'flex',
-                  alignItems: 'center',
-                  gap: 5,
-                }}
-              >
-                <X size={14} />
-                Clear Filter
-              </button>
-            )}
-          </div>
+
+          <select value={filterProject} onChange={e => setFilterProject(e.target.value)}
+            className="px-3 py-2 rounded-lg text-[13px] outline-none"
+            style={{ background: VS.bg2, border: `1px solid ${VS.border}`, color: filterProject ? VS.text0 : VS.text2 }}>
+            <option value="">All Projects</option>
+            {projects.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
+          </select>
+
+          {isPrivileged && (
+            <select value={filterMember} onChange={e => setFilterMember(e.target.value)}
+              className="px-3 py-2 rounded-lg text-[13px] outline-none"
+              style={{ background: VS.bg2, border: `1px solid ${VS.border}`, color: filterMember ? VS.text0 : VS.text2 }}>
+              <option value="">All Members</option>
+              {members.map(m => <option key={m.id} value={m.id}>{m.name} ({m.role.toLowerCase()})</option>)}
+            </select>
+          )}
+        </div>
+
+        {/* Row 2: date range + clear */}
+        <div className="flex flex-wrap gap-3 items-center">
+          <Calendar size={14} style={{ color: VS.text2 }} />
+          <span className="text-[12px]" style={{ color: VS.text2 }}>Date range:</span>
+          <input type="date" value={filterDateFrom} onChange={e => setFilterDateFrom(e.target.value)}
+            style={{ background: VS.bg2, border: `1px solid ${VS.border}`, borderRadius: 8, padding: '5px 10px', color: VS.text0, fontSize: 12, outline: 'none', colorScheme: 'dark' }} />
+          <span style={{ color: VS.text2, fontSize: 12 }}>→</span>
+          <input type="date" value={filterDateTo} onChange={e => setFilterDateTo(e.target.value)}
+            style={{ background: VS.bg2, border: `1px solid ${VS.border}`, borderRadius: 8, padding: '5px 10px', color: VS.text0, fontSize: 12, outline: 'none', colorScheme: 'dark' }} />
+          {hasFilters && (
+            <button onClick={clearFilters}
+              className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-[12px]"
+              style={{ background: VS.bg3, color: VS.text2, border: `1px solid ${VS.border}`, cursor: 'pointer' }}>
+              <X size={12} />Clear
+            </button>
+          )}
         </div>
       </div>
 
-      {/* Reports List */}
-      <div>
-        {loading ? (
-          <div
-            className="rounded-xl p-5"
-            style={{
-              background: VS.bg1,
-              border: `1px solid ${VS.border}`,
-              textAlign: 'center',
-              padding: '64px 24px',
-            }}
-          >
-            <div
-              style={{
-                width: 32,
-                height: 32,
-                border: `2px solid ${VS.border}`,
-                borderTopColor: VS.accent,
-                borderRadius: '50%',
-                animation: 'spin 0.8s linear infinite',
-                margin: '0 auto 16px',
-              }}
-            />
-            <div style={{ fontSize: 16, fontWeight: 600, color: VS.text0, marginBottom: 6 }}>Loading Reports...</div>
-            <div style={{ fontSize: 13, color: VS.text2 }}>Please wait while we fetch your reports.</div>
-            <style>{`@keyframes spin { to { transform: rotate(360deg); } }`}</style>
+      {/* ── Content ── */}
+      {loading ? (
+        <div className="flex flex-col items-center py-16 gap-3" style={{ background: VS.bg1, borderRadius: 12, border: `1px solid ${VS.border}` }}>
+          <div className="w-7 h-7 rounded-full border-2 animate-spin" style={{ borderColor: `${VS.accent}44`, borderTopColor: VS.accent }} />
+          <span className="text-[13px]" style={{ color: VS.text2 }}>Loading reports…</span>
+        </div>
+
+      ) : reports.length === 0 ? (
+        <div className="flex flex-col items-center py-16 gap-3" style={{ background: VS.bg1, borderRadius: 12, border: `1px solid ${VS.border}` }}>
+          <FileText size={44} style={{ color: VS.text2, opacity: 0.4 }} />
+          <p className="text-[15px] font-semibold" style={{ color: VS.text1 }}>
+            {hasFilters ? 'No reports match your filters' : 'No reports yet'}
+          </p>
+          <p className="text-[13px]" style={{ color: VS.text2 }}>
+            {hasFilters ? 'Try adjusting or clearing your filters' : 'Create the first report to get started'}
+          </p>
+          {hasFilters
+            ? <button onClick={clearFilters} className="mt-1 px-4 py-2 rounded-lg text-[13px] font-semibold"
+                style={{ background: VS.bg3, color: VS.text1, border: `1px solid ${VS.border}`, cursor: 'pointer' }}>Clear Filters</button>
+            : <button onClick={() => setShowModal(true)} className="mt-1 flex items-center gap-2 px-4 py-2 rounded-lg text-[13px] font-semibold"
+                style={{ background: `${VS.accent}18`, color: VS.accent, border: `1px solid ${VS.accent}33`, cursor: 'pointer' }}>
+                <Plus size={14} />Create Report</button>
+          }
+        </div>
+
+      ) : (
+        <>
+          <div className="flex items-center justify-between">
+            <span className="text-[11px] font-semibold uppercase tracking-widest" style={{ color: VS.text2 }}>
+              {reports.length} report{reports.length !== 1 ? 's' : ''}{hasFilters ? ' · filtered' : ''}
+            </span>
           </div>
-        ) : filteredReports.length === 0 ? (
-          <div
-            className="rounded-xl"
-            style={{
-              background: VS.bg1,
-              border: `1px solid ${VS.border}`,
-              textAlign: 'center',
-              padding: '64px 24px',
-            }}
-          >
-            <FileText size={52} style={{ color: VS.text2, margin: '0 auto 16px', opacity: 0.5 }} />
-            {selectedDate ? (
-              <>
-                <div style={{ fontSize: 18, fontWeight: 600, color: VS.text0, marginBottom: 8 }}>
-                  No Reports for Selected Date
-                </div>
-                <p style={{ fontSize: 13, color: VS.text2, marginBottom: 24 }}>
-                  No reports were created on{' '}
-                  {new Date(selectedDate).toLocaleDateString('en-US', {
-                    weekday: 'long',
-                    year: 'numeric',
-                    month: 'long',
-                    day: 'numeric',
-                  })}
-                  . Try selecting a different date or create a new report.
-                </p>
-                <div style={{ display: 'flex', gap: 10, justifyContent: 'center' }}>
-                  <button
-                    onClick={() => setSelectedDate('')}
-                    style={{
-                      background: VS.bg3,
-                      color: VS.text1,
-                      border: `1px solid ${VS.border}`,
-                      borderRadius: 8,
-                      padding: '8px 16px',
-                      fontSize: 14,
-                      cursor: 'pointer',
-                    }}
-                  >
-                    Show All Reports
-                  </button>
-                  <button
-                    onClick={() => setShowReportModal(true)}
-                    style={{
-                      background: VS.accent,
-                      color: '#fff',
-                      border: 'none',
-                      borderRadius: 8,
-                      padding: '8px 16px',
-                      fontSize: 14,
-                      fontWeight: 600,
-                      cursor: 'pointer',
-                      display: 'flex',
-                      alignItems: 'center',
-                      gap: 7,
-                    }}
-                  >
-                    <Plus size={15} />
-                    Create Report
-                  </button>
-                </div>
-              </>
-            ) : (
-              <>
-                <div style={{ fontSize: 18, fontWeight: 600, color: VS.text0, marginBottom: 8 }}>No Reports Yet</div>
-                <p style={{ fontSize: 13, color: VS.text2, marginBottom: 24 }}>
-                  Create your first report to get started with project analysis and documentation.
-                </p>
-                <button
-                  onClick={() => setShowReportModal(true)}
-                  style={{
-                    background: VS.accent,
-                    color: '#fff',
-                    border: 'none',
-                    borderRadius: 8,
-                    padding: '8px 18px',
-                    fontSize: 14,
-                    fontWeight: 600,
-                    cursor: 'pointer',
-                    display: 'inline-flex',
-                    alignItems: 'center',
-                    gap: 7,
-                  }}
-                >
-                  <Plus size={15} />
-                  Create First Report
-                </button>
-              </>
-            )}
-          </div>
-        ) : (
-          <div
-            style={{
-              display: 'grid',
-              gridTemplateColumns: 'repeat(auto-fill, minmax(280px, 1fr))',
-              gap: 20,
-            }}
-          >
-            {filteredReports.map((report) => {
-              const projectColor = getProjectColor(report.project);
+
+          <div className="grid gap-4" style={{ gridTemplateColumns: 'repeat(auto-fill, minmax(300px, 1fr))' }}>
+            {reports.map(report => {
+              const projectColor = getColor(report.project?.color);
+              const displayName  = report.user?.name || report.userName;
+              const isOwn        = report.user?.id === session?.user?.id;
 
               return (
-                <div
-                  key={report.id}
-                  style={{
-                    background: VS.bg1,
-                    border: `1px solid ${VS.border}`,
-                    borderRadius: 12,
-                    position: 'relative',
-                    overflow: 'hidden',
-                  }}
-                >
+                <div key={report.id} className="rounded-xl overflow-hidden"
+                  style={{ background: VS.bg1, border: `1px solid ${VS.border}`, position: 'relative' }}>
+
                   {/* Project color accent bar */}
-                  <div
-                    style={{
-                      position: 'absolute',
-                      left: 0,
-                      top: 0,
-                      bottom: 0,
-                      width: 4,
-                      background: projectColor,
-                    }}
-                  />
+                  <div style={{ position: 'absolute', top: 0, left: 0, bottom: 0, width: 3, background: projectColor }} />
 
-                  {/* Card Header */}
-                  <div
-                    style={{
-                      padding: '16px 16px 12px 20px',
-                      display: 'flex',
-                      alignItems: 'center',
-                      justifyContent: 'space-between',
-                      borderBottom: `1px solid ${VS.border}`,
-                    }}
-                  >
-                    <div
-                      style={{
-                        width: 36,
-                        height: 36,
-                        borderRadius: 8,
-                        background: VS.bg2,
-                        border: `1px solid ${VS.border}`,
-                        display: 'flex',
-                        alignItems: 'center',
-                        justifyContent: 'center',
-                        color: VS.blue,
-                      }}
-                    >
-                      <FileText size={16} />
-                    </div>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                      <span
-                        style={{
-                          fontSize: 11,
-                          fontWeight: 600,
-                          padding: '3px 8px',
-                          borderRadius: 4,
-                          background: VS.bg2,
-                          color: VS.green,
-                          border: `1px solid ${VS.border}`,
-                        }}
-                      >
-                        {new Date(report.createdAt).toLocaleDateString()}
-                      </span>
-                      <button
-                        onClick={() => handleDeleteReport(report.id)}
-                        title="Delete report"
-                        style={{
-                          background: 'transparent',
-                          border: 'none',
-                          color: VS.text2,
-                          cursor: 'pointer',
-                          padding: 5,
-                          borderRadius: 6,
-                          display: 'flex',
-                          alignItems: 'center',
-                          transition: 'color 0.15s',
-                        }}
-                        onMouseEnter={(e) => (e.currentTarget.style.color = VS.red)}
-                        onMouseLeave={(e) => (e.currentTarget.style.color = VS.text2)}
-                      >
-                        <Trash2 size={15} />
-                      </button>
-                    </div>
-                  </div>
-
-                  {/* Card Body */}
-                  <div style={{ padding: '14px 16px 16px 20px' }}>
-                    <div style={{ fontSize: 15, fontWeight: 600, color: VS.text0, marginBottom: 4 }}>
-                      {report.title || 'General Report'}
-                    </div>
-                    <div style={{ fontSize: 12, color: VS.text2, marginBottom: 10 }}>
-                      Created by {report.userName}
-                    </div>
-
-                    {report.description && (
-                      <div
-                        style={{
-                          fontSize: 13,
-                          color: VS.text1,
-                          background: VS.bg2,
-                          borderRadius: 6,
-                          padding: '8px 10px',
-                          marginBottom: 12,
-                          lineHeight: 1.5,
-                        }}
-                      >
-                        {report.description.length > 100
-                          ? `${report.description.substring(0, 100)}...`
-                          : report.description}
-                      </div>
-                    )}
-
-                    {report.image && (
-                      <div style={{ marginBottom: 12 }}>
-                        <img
-                          src={report.image}
-                          alt="Report screenshot"
-                          style={{
-                            width: '100%',
-                            maxHeight: 200,
-                            objectFit: 'contain',
-                            borderRadius: 8,
-                            border: `1px solid ${VS.border}`,
-                            cursor: 'pointer',
-                          }}
-                          onClick={() => window.open(report.image, '_blank')}
-                        />
-                      </div>
-                    )}
-
-                    {report.project && (
-                      <div style={{ display: 'flex', flexDirection: 'column', gap: 6, fontSize: 13 }}>
-                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                          <span style={{ color: VS.text2 }}>Status:</span>
-                          <span
-                            style={{
-                              fontSize: 11,
-                              fontWeight: 600,
-                              padding: '2px 8px',
-                              borderRadius: 4,
-                              background: VS.bg2,
-                              color:
-                                report.project.status === 'completed' ? VS.teal :
-                                report.project.status === 'active' ? VS.blue :
-                                VS.yellow,
-                              border: `1px solid ${VS.border}`,
-                              textTransform: 'capitalize',
-                            }}
-                          >
+                  {/* Top */}
+                  <div style={{ padding: '13px 15px 10px 18px', borderBottom: `1px solid ${VS.border}`, display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 8 }}>
+                    <div style={{ flex: 1, minWidth: 0 }}>
+                      {report.project && (
+                        <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 5 }}>
+                          <div style={{ width: 7, height: 7, borderRadius: '50%', background: projectColor, flexShrink: 0 }} />
+                          <span style={{ fontSize: 10, fontWeight: 700, color: projectColor, textTransform: 'uppercase', letterSpacing: '0.06em' }}>
+                            {report.project.name}
+                          </span>
+                          <span style={{ fontSize: 10, padding: '1px 6px', borderRadius: 3, background: `${VS.teal}18`, color: VS.teal, border: `1px solid ${VS.teal}30`, textTransform: 'capitalize', marginLeft: 'auto' }}>
                             {report.project.status}
                           </span>
                         </div>
-                        {report.project.budget && (
-                          <div style={{ display: 'flex', justifyContent: 'space-between' }}>
-                            <span style={{ color: VS.text2 }}>Budget:</span>
-                            <span style={{ fontWeight: 600, color: VS.text0 }}>
-                              ${report.project.budget.toLocaleString()}
-                            </span>
-                          </div>
+                      )}
+                      <div style={{ fontSize: 14, fontWeight: 600, color: VS.text0 }}>
+                        {report.title || 'Project Report'}
+                      </div>
+                    </div>
+                    {(isPrivileged || isOwn) && (
+                      <button onClick={() => handleDelete(report.id)}
+                        style={{ background: 'transparent', border: 'none', color: VS.text2, cursor: 'pointer', padding: 4, borderRadius: 6, display: 'flex', alignItems: 'center', flexShrink: 0 }}
+                        onMouseEnter={e => (e.currentTarget.style.color = VS.red)}
+                        onMouseLeave={e => (e.currentTarget.style.color = VS.text2)}>
+                        <Trash2 size={14} />
+                      </button>
+                    )}
+                  </div>
+
+                  {/* Body */}
+                  <div style={{ padding: '11px 15px 13px 18px' }}>
+
+                    {/* Submitter + timestamp */}
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 10 }}>
+                      <Avatar name={displayName} image={report.user?.image} size={24} />
+                      <span style={{ fontSize: 12, fontWeight: 600, color: VS.text1, flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                        {displayName}
+                        {isPrivileged && !isOwn && (
+                          <span style={{ fontSize: 10, marginLeft: 5, padding: '1px 5px', borderRadius: 3, background: `${VS.blue}18`, color: VS.blue, border: `1px solid ${VS.blue}25` }}>team</span>
                         )}
+                      </span>
+                      <span style={{ fontSize: 11, color: VS.text2, flexShrink: 0 }}>{fmtRelative(report.createdAt)}</span>
+                    </div>
+
+                    {/* Description */}
+                    <div style={{ fontSize: 13, color: VS.text1, lineHeight: 1.55, background: VS.bg2, borderRadius: 6, padding: '8px 10px', marginBottom: report.image ? 10 : 0 }}>
+                      {report.description.length > 150
+                        ? `${report.description.slice(0, 150)}…`
+                        : report.description}
+                    </div>
+
+                    {/* Attached image */}
+                    {report.image && (
+                      <div style={{ marginTop: 10 }}>
+                        <img src={report.image} alt="Attachment"
+                          style={{ width: '100%', maxHeight: 180, objectFit: 'contain', borderRadius: 6, border: `1px solid ${VS.border}`, cursor: 'zoom-in' }}
+                          onClick={() => window.open(report.image!, '_blank')} />
                       </div>
                     )}
+
+                    {/* Footer */}
+                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginTop: 10, paddingTop: 8, borderTop: `1px solid ${VS.border}` }}>
+                      <span style={{ fontSize: 11, color: VS.text2, display: 'flex', alignItems: 'center', gap: 4 }}>
+                        <Calendar size={11} />{fmtDate(report.createdAt)}
+                      </span>
+                      {report.project?.budget && (
+                        <span style={{ fontSize: 11, color: VS.text2 }}>
+                          Budget: <strong style={{ color: VS.text1 }}>${Number(report.project.budget).toLocaleString()}</strong>
+                        </span>
+                      )}
+                    </div>
                   </div>
                 </div>
               );
             })}
           </div>
-        )}
-      </div>
+        </>
+      )}
 
-      {/* Report Modal */}
-      <ReportModal
-        isOpen={showReportModal}
-        onClose={() => setShowReportModal(false)}
-        onSave={handleSaveReport}
-      />
+      {/* ── Modal ── */}
+      <ReportModal isOpen={showModal} onClose={() => setShowModal(false)} onSave={handleSave} projects={projects} />
     </div>
   );
 }

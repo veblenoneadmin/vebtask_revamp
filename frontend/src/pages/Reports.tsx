@@ -209,8 +209,8 @@ function ReportModal({ isOpen, onClose, onSave, projects }: {
             <button type="button" onClick={onClose} style={{ background: VS.bg3, color: VS.text1, border: `1px solid ${VS.border}`, borderRadius: 8, padding: '8px 18px', fontSize: 14, cursor: 'pointer' }}>
               Cancel
             </button>
-            <button type="submit" disabled={saving || !userName || !selectedProject || !description}
-              style={{ background: VS.accent, color: '#fff', border: 'none', borderRadius: 8, padding: '8px 18px', fontSize: 14, fontWeight: 600, cursor: saving ? 'not-allowed' : 'pointer', opacity: saving || !userName || !selectedProject || !description ? 0.5 : 1, display: 'flex', alignItems: 'center', gap: 7 }}>
+            <button type="submit" disabled={saving || !userName || !description}
+              style={{ background: VS.accent, color: '#fff', border: 'none', borderRadius: 8, padding: '8px 18px', fontSize: 14, fontWeight: 600, cursor: saving ? 'not-allowed' : 'pointer', opacity: saving || !userName || !description ? 0.5 : 1, display: 'flex', alignItems: 'center', gap: 7 }}>
               <Save size={15} />{saving ? 'Saving…' : 'Submit Report'}
             </button>
           </div>

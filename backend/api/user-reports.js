@@ -1,4 +1,4 @@
-// User Reports management API endpoints
+// User Reports API — full raw-SQL rewrite (no Prisma model joins)
 import express from 'express';
 import { randomUUID } from 'crypto';
 import { prisma } from '../lib/prisma.js';
@@ -6,108 +6,115 @@ import { requireAuth, withOrgScope } from '../lib/rbac.js';
 
 const router = express.Router();
 
-// ── GET /api/user-reports — role-aware list ───────────────────────────────────
+// ── helpers ──────────────────────────────────────────────────────────────────
+async function getRole(userId, orgId) {
+  const rows = await prisma.$queryRawUnsafe(
+    `SELECT role FROM memberships WHERE userId = ? AND orgId = ? LIMIT 1`,
+    userId, orgId
+  );
+  return rows[0]?.role || 'STAFF';
+}
+
+// ── GET /api/user-reports ─────────────────────────────────────────────────────
 router.get('/', requireAuth, withOrgScope, async (req, res) => {
   try {
     const userId = req.user.id;
     const orgId  = req.orgId;
-    const { limit = '100', offset = '0', projectId, memberId, search, dateFrom, dateTo } = req.query;
+    const { projectId: filterProjectId, memberId, search, dateFrom, dateTo } = req.query;
 
-    // Safe integer parsing for LIMIT/OFFSET (will be inlined, not bound)
-    const lim = Math.min(Math.max(parseInt(limit) || 50, 1), 500);
-    const off = Math.max(parseInt(offset) || 0, 0);
-
-    // ── Role lookup ──────────────────────────────────────────────────────────
-    const memberRows = await prisma.$queryRawUnsafe(
-      `SELECT role FROM memberships WHERE userId = ? AND orgId = ? LIMIT 1`,
-      userId, orgId
-    );
-    const role         = memberRows[0]?.role || 'STAFF';
+    const role         = await getRole(userId, orgId);
     const isPrivileged = role === 'OWNER' || role === 'ADMIN';
 
-    // ── Always fetch the project list first (needed for modal even if reports fail) ─
-    const projectList = await prisma.$queryRawUnsafe(
-      `SELECT id, name, color FROM projects WHERE orgId = ? ORDER BY name ASC`,
-      orgId
-    );
-
-    // ── Build dynamic WHERE clause ───────────────────────────────────────────
-    const conditions = [`r.orgId = ?`];
-    const params     = [orgId];
+    // ── Fetch all reports for this org (or just this user) ───────────────────
+    let sql    = `SELECT * FROM reports WHERE orgId = ?`;
+    let params = [orgId];
 
     if (!isPrivileged) {
-      conditions.push(`r.userId = ?`);
+      sql += ` AND userId = ?`;
       params.push(userId);
     } else if (memberId) {
-      conditions.push(`r.userId = ?`);
+      sql += ` AND userId = ?`;
       params.push(memberId);
     }
 
-    if (projectId) {
-      conditions.push(`r.projectId = ?`);
-      params.push(projectId);
-    }
+    sql += ` ORDER BY createdAt DESC LIMIT 500`;
 
+    let reports = await prisma.$queryRawUnsafe(sql, ...params);
+
+    // JS-side filtering (avoids complex dynamic SQL)
+    if (filterProjectId) reports = reports.filter(r => r.projectId === filterProjectId);
+    if (search) {
+      const s = search.toLowerCase();
+      reports = reports.filter(r =>
+        r.title?.toLowerCase().includes(s) ||
+        r.description?.toLowerCase().includes(s) ||
+        r.userName?.toLowerCase().includes(s)
+      );
+    }
     if (dateFrom) {
-      conditions.push(`r.createdAt >= ?`);
-      params.push(dateFrom);
+      const from = new Date(dateFrom);
+      reports = reports.filter(r => new Date(r.createdAt) >= from);
     }
     if (dateTo) {
-      conditions.push(`r.createdAt <= ?`);
-      params.push(new Date(new Date(dateTo).setHours(23, 59, 59, 999)).toISOString().slice(0, 19).replace('T', ' '));
+      const to = new Date(new Date(dateTo).setHours(23, 59, 59, 999));
+      reports = reports.filter(r => new Date(r.createdAt) <= to);
     }
 
-    if (search) {
-      conditions.push(`(r.title LIKE ? OR r.description LIKE ? OR r.userName LIKE ?)`);
-      const s = `%${search}%`;
-      params.push(s, s, s);
-    }
-
-    const whereSQL = conditions.join(' AND ');
-
-    // ── Fetch reports — inline LIMIT/OFFSET (MySQL2 doesn't reliably bind these) ─
-    const reports = await prisma.$queryRawUnsafe(
-      `SELECT * FROM reports r WHERE ${whereSQL} ORDER BY r.createdAt DESC LIMIT ${lim} OFFSET ${off}`,
-      ...params
-    );
-
-    const countRows = await prisma.$queryRawUnsafe(
-      `SELECT COUNT(*) AS cnt FROM reports r WHERE ${whereSQL}`,
-      ...params
-    );
-    const total = Number(countRows[0]?.cnt ?? 0);
-
-    // ── Enrich with user + project data (separate queries, no JOIN) ───────────
-    const userIds = [...new Set(reports.map(r => r.userId).filter(Boolean))];
-    const projIds = [...new Set(reports.map(r => r.projectId).filter(Boolean))];
-
-    const usersMap = {}, projsMap = {};
-
+    // ── Enrich: user data ────────────────────────────────────────────────────
+    const userIds  = [...new Set(reports.map(r => r.userId).filter(Boolean))];
+    const usersMap = {};
     if (userIds.length) {
       const ph    = userIds.map(() => '?').join(',');
       const users = await prisma.$queryRawUnsafe(
-        `SELECT id, name, email, image FROM user WHERE id IN (${ph})`,
-        ...userIds
+        `SELECT id, name, email, image FROM user WHERE id IN (${ph})`, ...userIds
       );
       users.forEach(u => { usersMap[u.id] = u; });
     }
 
+    // ── Enrich: project data ─────────────────────────────────────────────────
+    const projIds  = [...new Set(reports.map(r => r.projectId).filter(Boolean))];
+    const projsMap = {};
     if (projIds.length) {
       const ph    = projIds.map(() => '?').join(',');
       const projs = await prisma.$queryRawUnsafe(
-        `SELECT id, name, color, status, budget FROM projects WHERE id IN (${ph})`,
-        ...projIds
+        `SELECT id, name, color, status, budget FROM projects WHERE id IN (${ph})`, ...projIds
       );
       projs.forEach(p => { projsMap[p.id] = p; });
     }
 
-    // ── Analytics ────────────────────────────────────────────────────────────
-    const analyticsSQL    = isPrivileged ? `orgId = ?` : `orgId = ? AND userId = ?`;
-    const analyticsParams = isPrivileged ? [orgId] : [orgId, userId];
-    const allOrgReports   = await prisma.$queryRawUnsafe(
-      `SELECT userId, projectId, createdAt FROM reports WHERE ${analyticsSQL}`,
-      ...analyticsParams
+    // ── Project list for dropdown ────────────────────────────────────────────
+    const projectList = await prisma.$queryRawUnsafe(
+      `SELECT id, name, color FROM projects WHERE orgId = ? ORDER BY name ASC`, orgId
     );
+
+    // ── Member list (admin only) ─────────────────────────────────────────────
+    let members = [];
+    if (isPrivileged) {
+      const mRows    = await prisma.$queryRawUnsafe(
+        `SELECT userId, role FROM memberships WHERE orgId = ? AND role IN ('OWNER','ADMIN','STAFF')`, orgId
+      );
+      const mUserIds = mRows.map(m => m.userId).filter(Boolean);
+      const mMap     = {};
+      if (mUserIds.length) {
+        const ph = mUserIds.map(() => '?').join(',');
+        const mu = await prisma.$queryRawUnsafe(
+          `SELECT id, name, email FROM user WHERE id IN (${ph})`, ...mUserIds
+        );
+        mu.forEach(u => { mMap[u.id] = u; });
+      }
+      members = mRows.map(m => ({
+        id:   m.userId,
+        name: mMap[m.userId]?.name || mMap[m.userId]?.email || 'Unknown',
+        role: m.role,
+      }));
+    }
+
+    // ── Analytics ────────────────────────────────────────────────────────────
+    // Use the unfiltered reports set for stats
+    const allSql    = isPrivileged ? `SELECT userId, projectId, createdAt FROM reports WHERE orgId = ?`
+                                   : `SELECT userId, projectId, createdAt FROM reports WHERE orgId = ? AND userId = ?`;
+    const allParams = isPrivileged ? [orgId] : [orgId, userId];
+    const allRows   = await prisma.$queryRawUnsafe(allSql, ...allParams);
 
     const now       = new Date();
     const weekStart = new Date(now);
@@ -115,177 +122,87 @@ router.get('/', requireAuth, withOrgScope, async (req, res) => {
     weekStart.setHours(0, 0, 0, 0);
 
     const analytics = {
-      total:          allOrgReports.length,
-      thisWeek:       allOrgReports.filter(r => new Date(r.createdAt) >= weekStart).length,
-      uniqueProjects: new Set(allOrgReports.filter(r => r.projectId).map(r => r.projectId)).size,
-      uniqueMembers:  new Set(allOrgReports.map(r => r.userId)).size,
+      total:          allRows.length,
+      thisWeek:       allRows.filter(r => new Date(r.createdAt) >= weekStart).length,
+      uniqueProjects: new Set(allRows.map(r => r.projectId).filter(Boolean)).size,
+      uniqueMembers:  new Set(allRows.map(r => r.userId)).size,
     };
 
-    // ── Member list (admin only) ──────────────────────────────────────────────
-    let members = [];
-    if (isPrivileged) {
-      const mRows    = await prisma.$queryRawUnsafe(
-        `SELECT userId, role FROM memberships WHERE orgId = ? AND role IN ('OWNER','ADMIN','STAFF')`,
-        orgId
-      );
-      const mUserIds = mRows.map(m => m.userId).filter(Boolean);
-      const mUsersMap = {};
-      if (mUserIds.length) {
-        const ph     = mUserIds.map(() => '?').join(',');
-        const mUsers = await prisma.$queryRawUnsafe(
-          `SELECT id, name, email FROM user WHERE id IN (${ph})`,
-          ...mUserIds
-        );
-        mUsers.forEach(u => { mUsersMap[u.id] = u; });
-      }
-      members = mRows.map(m => ({
-        id:   m.userId,
-        name: mUsersMap[m.userId]?.name || mUsersMap[m.userId]?.email || 'Unknown',
-        role: m.role,
-      }));
-    }
-
-    // ── Format and respond ────────────────────────────────────────────────────
-    const formattedReports = reports.map(r => ({
+    // ── Format ───────────────────────────────────────────────────────────────
+    const formatted = reports.map(r => ({
       id:          r.id,
-      title:       r.title,
+      title:       r.title || null,
       description: r.description,
       userName:    r.userName,
-      image:       r.image,
-      project:     projsMap[r.projectId] ? {
-        id:     projsMap[r.projectId].id,
-        name:   projsMap[r.projectId].name,
-        color:  projsMap[r.projectId].color,
-        status: projsMap[r.projectId].status,
-        budget: projsMap[r.projectId].budget,
-      } : null,
-      user: usersMap[r.userId] ? {
-        id:    usersMap[r.userId].id,
-        name:  usersMap[r.userId].name,
-        email: usersMap[r.userId].email,
-        image: usersMap[r.userId].image,
-      } : null,
-      createdAt: r.createdAt,
-      updatedAt: r.updatedAt,
+      image:       r.image || null,
+      createdAt:   r.createdAt,
+      updatedAt:   r.updatedAt,
+      user:    usersMap[r.userId]  ? { id: usersMap[r.userId].id, name: usersMap[r.userId].name, email: usersMap[r.userId].email, image: usersMap[r.userId].image } : null,
+      project: projsMap[r.projectId] ? { id: projsMap[r.projectId].id, name: projsMap[r.projectId].name, color: projsMap[r.projectId].color, status: projsMap[r.projectId].status, budget: projsMap[r.projectId].budget } : null,
     }));
 
-    res.json({
-      success:     true,
-      role,
-      isPrivileged,
-      reports:     formattedReports,
-      total,
-      analytics,
-      members,
-      projects:    projectList,
-    });
-  } catch (error) {
-    console.error('Error fetching user reports:', error);
-    res.status(500).json({ success: false, error: 'Failed to fetch user reports', detail: error.message });
+    res.json({ success: true, role, isPrivileged, reports: formatted, total: formatted.length, analytics, members, projects: projectList });
+  } catch (err) {
+    console.error('GET /api/user-reports error:', err.message);
+    res.status(500).json({ success: false, error: err.message });
   }
 });
 
-// ── POST /api/user-reports — create a report ─────────────────────────────────
+// ── POST /api/user-reports ────────────────────────────────────────────────────
 router.post('/', requireAuth, withOrgScope, async (req, res) => {
   try {
-    const userId = req.user?.id;
+    const userId = req.user.id;
     const orgId  = req.orgId;
     const { title, description, userName, image, projectId } = req.body;
 
-    if (!userId) return res.status(401).json({ success: false, error: 'Authentication required' });
-    if (!orgId)  return res.status(400).json({ success: false, error: 'Organization ID is required' });
-    if (!description || !userName) {
-      return res.status(400).json({ success: false, error: 'Description and userName are required' });
-    }
+    if (!description?.trim()) return res.status(400).json({ success: false, error: 'Description is required' });
+    if (!userName?.trim())    return res.status(400).json({ success: false, error: 'userName is required' });
 
-    // Validate project if provided
+    // Verify project belongs to org (skip if no projectId)
     if (projectId) {
-      const projRows = await prisma.$queryRawUnsafe(
-        `SELECT orgId FROM projects WHERE id = ? LIMIT 1`, projectId
+      const pRows = await prisma.$queryRawUnsafe(
+        `SELECT id FROM projects WHERE id = ? AND orgId = ? LIMIT 1`, projectId, orgId
       );
-      if (!projRows.length)            return res.status(400).json({ success: false, error: 'Project not found' });
-      if (projRows[0].orgId !== orgId) return res.status(400).json({ success: false, error: 'Project belongs to different organization' });
+      if (!pRows.length) return res.status(400).json({ success: false, error: 'Project not found in this organization' });
     }
 
-    // Insert via raw SQL to avoid any Prisma schema column validation issues
     const id = randomUUID();
     await prisma.$executeRawUnsafe(
-      `INSERT INTO reports (id, title, description, userName, image, projectId, userId, orgId, createdAt, updatedAt)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, NOW(), NOW())`,
-      id,
-      title || null,
-      description,
-      userName,
-      image || null,
-      projectId || null,
-      userId,
-      orgId
+      `INSERT INTO reports (id, title, description, userName, image, projectId, userId, orgId, createdAt, updatedAt) VALUES (?, ?, ?, ?, ?, ?, ?, ?, NOW(), NOW())`,
+      id, title?.trim() || null, description.trim(), userName.trim(), image || null, projectId || null, userId, orgId
     );
 
-    console.log(`✅ Created report: ${id} by ${req.user.email}`);
-    res.status(201).json({ success: true, report: { id, title: title || null, description, userName, createdAt: new Date() } });
-  } catch (error) {
-    console.error('Error creating user report:', error);
-    res.status(500).json({ success: false, error: 'Failed to create user report', detail: error.message });
+    console.log(`✅ Report created: ${id} by ${req.user.email}`);
+    res.status(201).json({ success: true, report: { id } });
+  } catch (err) {
+    console.error('POST /api/user-reports error:', err.message);
+    res.status(500).json({ success: false, error: err.message });
   }
 });
 
-// ── GET /api/user-reports/:id ─────────────────────────────────────────────────
-router.get('/:id', requireAuth, withOrgScope, async (req, res) => {
-  try {
-    const { id } = req.params;
-    const orgId  = req.orgId;
-    const userId = req.user.id;
-
-    const memberRows   = await prisma.$queryRawUnsafe(
-      `SELECT role FROM memberships WHERE userId = ? AND orgId = ? LIMIT 1`,
-      userId, orgId
-    );
-    const isPrivileged = ['OWNER', 'ADMIN'].includes(memberRows[0]?.role);
-
-    const sql       = isPrivileged
-      ? `SELECT * FROM reports WHERE id = ? AND orgId = ? LIMIT 1`
-      : `SELECT * FROM reports WHERE id = ? AND orgId = ? AND userId = ? LIMIT 1`;
-    const sqlParams = isPrivileged ? [id, orgId] : [id, orgId, userId];
-
-    const rows = await prisma.$queryRawUnsafe(sql, ...sqlParams);
-    if (!rows.length) return res.status(404).json({ success: false, error: 'Report not found or access denied' });
-
-    const r = rows[0];
-    res.json({ success: true, report: { id: r.id, title: r.title, description: r.description, userName: r.userName, image: r.image, createdAt: r.createdAt, updatedAt: r.updatedAt } });
-  } catch (error) {
-    console.error('Error fetching user report:', error);
-    res.status(500).json({ success: false, error: 'Failed to fetch user report' });
-  }
-});
-
-// ── DELETE /api/user-reports/:id ──────────────────────────────────────────────
+// ── DELETE /api/user-reports/:id ─────────────────────────────────────────────
 router.delete('/:id', requireAuth, withOrgScope, async (req, res) => {
   try {
     const { id } = req.params;
-    const orgId  = req.orgId;
     const userId = req.user.id;
+    const orgId  = req.orgId;
 
-    const memberRows   = await prisma.$queryRawUnsafe(
-      `SELECT role FROM memberships WHERE userId = ? AND orgId = ? LIMIT 1`,
-      userId, orgId
-    );
-    const isPrivileged = ['OWNER', 'ADMIN'].includes(memberRows[0]?.role);
+    const role         = await getRole(userId, orgId);
+    const isPrivileged = role === 'OWNER' || role === 'ADMIN';
 
-    const sql       = isPrivileged
+    const checkSql = isPrivileged
       ? `SELECT id FROM reports WHERE id = ? AND orgId = ? LIMIT 1`
       : `SELECT id FROM reports WHERE id = ? AND orgId = ? AND userId = ? LIMIT 1`;
-    const sqlParams = isPrivileged ? [id, orgId] : [id, orgId, userId];
+    const checkParams = isPrivileged ? [id, orgId] : [id, orgId, userId];
 
-    const rows = await prisma.$queryRawUnsafe(sql, ...sqlParams);
+    const rows = await prisma.$queryRawUnsafe(checkSql, ...checkParams);
     if (!rows.length) return res.status(404).json({ success: false, error: 'Report not found or access denied' });
 
     await prisma.$executeRawUnsafe(`DELETE FROM reports WHERE id = ?`, id);
-    console.log(`🗑️ Deleted report: ${id} by ${req.user.email}`);
-    res.json({ success: true, message: 'Report deleted successfully' });
-  } catch (error) {
-    console.error('Error deleting user report:', error);
-    res.status(500).json({ success: false, error: 'Failed to delete user report' });
+    res.json({ success: true });
+  } catch (err) {
+    console.error('DELETE /api/user-reports/:id error:', err.message);
+    res.status(500).json({ success: false, error: err.message });
   }
 });
 

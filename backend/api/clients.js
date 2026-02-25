@@ -206,7 +206,7 @@ router.patch('/:id', requireAuth, withOrgScope, async (req, res) => {
     if (!existing) return res.status(404).json({ success: false, error: 'Client not found' });
 
     const allowed = ['name','email','phone','company','address','hourlyRate','contactPerson','industry','priority','notes','status'];
-    const updates: Record<string, any> = {};
+    const updates = {};
     for (const key of allowed) {
       if (req.body[key] !== undefined) {
         updates[key] = key === 'hourlyRate' ? (req.body[key] ? parseFloat(req.body[key]) : null) : req.body[key];

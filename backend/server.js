@@ -65,28 +65,20 @@ async function runDatabaseMigrations() {
   const { promisify } = await import('util');
   const execAsync = promisify(exec);
 
-  // Step 1: try migrate deploy (no-ops when there are no migration files)
+  // Run migrate deploy — applies any pending migration files in prisma/migrations/
   try {
     console.log('🔄 Running database migrations...');
-    const { stdout, stderr } = await execAsync('npx prisma migrate deploy');
+    const { stdout, stderr } = await execAsync(
+      'npx prisma migrate deploy',
+      { cwd: '/app/backend' }
+    );
     if (stdout) console.log('📋 Migration output:', stdout);
     if (stderr && !stderr.includes('INFO')) console.warn('⚠️  Migration warnings:', stderr);
     console.log('✅ Database migrations completed');
   } catch (error) {
     console.error('❌ Database migration failed:', error.message);
-  }
-
-  // Step 2: always push schema to ensure columns added directly in schema.prisma
-  // (no migration files) are present in the DB
-  try {
-    console.log('🔄 Syncing schema with prisma db push...');
-    const { stdout, stderr } = await execAsync('npx prisma db push --accept-data-loss');
-    if (stdout) console.log('📋 Schema sync output:', stdout);
-    if (stderr && !stderr.includes('INFO')) console.warn('⚠️  Schema sync warnings:', stderr);
-    console.log('✅ Database schema synchronized successfully');
-  } catch (pushError) {
-    console.warn('⚠️  Could not sync schema:', pushError.message);
-    console.log('📋 Server will continue — existing tables should still work');
+    if (error.stdout) console.log('stdout:', error.stdout);
+    if (error.stderr) console.log('stderr:', error.stderr);
   }
 }
 

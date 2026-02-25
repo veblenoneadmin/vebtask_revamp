@@ -24,6 +24,5 @@ RUN npm run build
 # Expose the port (Railway will set PORT env var dynamically)
 EXPOSE 3001
 
-# Start server immediately; let the server run migrations in background
-# Prisma client is already generated during the frontend/backend build step
-CMD ["node", "backend/server.js"]
+# Run migrations then start server
+CMD ["sh", "-c", "npx prisma migrate deploy --schema backend/prisma/schema.prisma && node backend/server.js"]

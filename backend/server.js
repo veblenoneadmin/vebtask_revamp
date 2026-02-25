@@ -59,6 +59,23 @@ async function ensureClientsSchema() {
   if (!process.env.DATABASE_URL) return;
   console.log('🔄 Checking clients table schema...');
 
+  // Wait for DB to be ready — Railway cold starts can take a few seconds
+  let dbReady = false;
+  for (let i = 0; i < 5; i++) {
+    try {
+      await prisma.$queryRaw`SELECT 1`;
+      dbReady = true;
+      break;
+    } catch (e) {
+      console.log(`⏳ DB not ready, retrying in 2s... (${i + 1}/5)`);
+      await new Promise(r => setTimeout(r, 2000));
+    }
+  }
+  if (!dbReady) {
+    console.warn('⚠️  DB not ready after retries, skipping clients schema check');
+    return;
+  }
+
   const cols = [
     { name: 'company',        def: "VARCHAR(255) NULL" },
     { name: 'status',         def: "VARCHAR(20) NOT NULL DEFAULT 'active'" },

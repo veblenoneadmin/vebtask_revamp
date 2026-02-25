@@ -42,14 +42,32 @@ router.get('/my', requireAuth, withOrgScope, async (req, res) => {
     const userId = req.user.id;
     const orgId  = req.orgId;
 
-    // SELECT * returns whatever columns exist — no P2022 if new columns are missing
-    // user_id is the DB column name (Prisma maps userId → user_id via @map)
-    const rows = await prisma.$queryRawUnsafe(
-      `SELECT * FROM clients WHERE user_id = ? AND orgId = ? LIMIT 1`,
-      userId, orgId
-    );
-
-    const raw = rows[0] || null;
+    // Try user_id lookup first; fall back to email if column doesn't exist yet
+    let raw = null;
+    try {
+      const rows = await prisma.$queryRawUnsafe(
+        `SELECT * FROM clients WHERE user_id = ? AND orgId = ? LIMIT 1`,
+        userId, orgId
+      );
+      raw = rows[0] || null;
+    } catch (e) {
+      // MySQL error 1054 = unknown column — user_id not added to DB yet
+      if (e.meta?.code === '1054' || e.code === 'P2010') {
+        const user = await prisma.user.findUnique({
+          where: { id: userId },
+          select: { email: true },
+        });
+        if (user?.email) {
+          const rows = await prisma.$queryRawUnsafe(
+            `SELECT * FROM clients WHERE email = ? AND orgId = ? LIMIT 1`,
+            user.email, orgId
+          );
+          raw = rows[0] || null;
+        }
+      } else {
+        throw e;
+      }
+    }
 
     if (!raw) {
       return res.json({ success: true, client: null, projects: [] });

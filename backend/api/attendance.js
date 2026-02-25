@@ -1,80 +1,74 @@
-// Attendance (Time In / Time Out) API endpoints
+// backend/api/attendance.js — Clock In / Clock Out API
 import express from 'express';
 import { prisma } from '../lib/prisma.js';
 import { requireAuth, withOrgScope } from '../lib/rbac.js';
 
 const router = express.Router();
 
-// Helper: get today's date string in YYYY-MM-DD (local to server)
-function todayString() {
-  const d = new Date();
-  return d.toISOString().slice(0, 10);
+// ── Helper: today's date string YYYY-MM-DD in user's local date ───────────────
+function todayStr() {
+  return new Date().toISOString().split('T')[0];
 }
 
-// GET /api/attendance/status
-// Returns the active (not clocked-out) attendance log for the user today, if any
+// ── GET /api/attendance/status — current clock-in status for a user ──────────
 router.get('/status', requireAuth, withOrgScope, async (req, res) => {
   try {
-    const { userId, orgId } = req.query;
-    if (!userId || !orgId) {
-      return res.status(400).json({ error: 'userId and orgId are required' });
-    }
+    const userId = req.user.id;
+    const orgId  = req.orgId;
 
+    // Find an open log (no timeOut yet) for this user/org
     const active = await prisma.attendanceLog.findFirst({
       where: { userId, orgId, timeOut: null },
       orderBy: { timeIn: 'desc' },
     });
 
-    res.json({ active: active || null });
-  } catch (error) {
-    console.error('Error fetching attendance status:', error);
-    res.status(500).json({ error: 'Failed to fetch attendance status' });
+    res.json({ clockedIn: !!active, activeLog: active || null });
+  } catch (err) {
+    console.error('[Attendance] status error:', err);
+    res.status(500).json({ error: 'Failed to get attendance status' });
   }
 });
 
-// POST /api/attendance/time-in
-// Clock in – creates a new AttendanceLog
-router.post('/time-in', requireAuth, withOrgScope, async (req, res) => {
+// ── POST /api/attendance/clock-in ────────────────────────────────────────────
+router.post('/clock-in', requireAuth, withOrgScope, async (req, res) => {
   try {
-    const { userId, orgId, notes } = req.body;
-    if (!userId || !orgId) {
-      return res.status(400).json({ error: 'userId and orgId are required' });
-    }
+    const userId = req.user.id;
+    const orgId  = req.orgId;
+    const { notes } = req.body;
 
     // Prevent double clock-in
     const existing = await prisma.attendanceLog.findFirst({
       where: { userId, orgId, timeOut: null },
     });
     if (existing) {
-      return res.status(409).json({ error: 'Already clocked in', active: existing });
+      return res.status(400).json({ error: 'Already clocked in', activeLog: existing });
     }
 
     const log = await prisma.attendanceLog.create({
       data: {
         userId,
         orgId,
-        timeIn: new Date(),
-        notes: notes || null,
-        date: todayString(),
+        timeIn:   new Date(),
+        duration: 0,
+        notes:    notes || null,
+        date:     todayStr(),
       },
     });
 
-    console.log(`✅ Time In: user ${userId}`);
-    res.status(201).json({ log, message: 'Clocked in successfully' });
-  } catch (error) {
-    console.error('Error clocking in:', error);
+    console.log(`[Attendance] ✅ Clock in: ${req.user.email} at ${log.timeIn}`);
+    res.status(201).json({ message: 'Clocked in successfully', log });
+  } catch (err) {
+    console.error('[Attendance] clock-in error:', err);
     res.status(500).json({ error: 'Failed to clock in' });
   }
 });
 
-// POST /api/attendance/time-out
-// Clock out – client sends breakDuration (seconds) so net duration excludes break time
-router.post('/time-out', requireAuth, withOrgScope, async (req, res) => {
+// ── POST /api/attendance/clock-out ───────────────────────────────────────────
+router.post('/clock-out', requireAuth, withOrgScope, async (req, res) => {
   try {
-    const { userId, orgId, notes, breakDuration = 0 } = req.body;
-    if (!userId || !orgId) {
-      return res.status(400).json({ error: 'userId and orgId are required' });
-    }
+    const userId = req.user.id;
+    const orgId  = req.orgId;
+    const { notes } = req.body;
 
     const active = await prisma.attendanceLog.findFirst({
       where: { userId, orgId, timeOut: null },
@@ -82,75 +76,105 @@ router.post('/time-out', requireAuth, withOrgScope, async (req, res) => {
     });
 
     if (!active) {
-      return res.status(404).json({ error: 'No active clock-in found' });
+      return res.status(400).json({ error: 'Not currently clocked in' });
     }
 
-    const now = new Date();
-    const gross = Math.floor((now.getTime() - active.timeIn.getTime()) / 1000);
-    const duration = Math.max(0, gross - (breakDuration || 0));
+    const now      = new Date();
+    const duration = Math.floor((now.getTime() - active.timeIn.getTime()) / 1000); // seconds
 
     const log = await prisma.attendanceLog.update({
       where: { id: active.id },
-      data: { timeOut: now, duration, notes: notes || active.notes },
+      data: {
+        timeOut:  now,
+        duration,
+        notes:    notes || active.notes,
+      },
     });
 
-    console.log(`⏹️ Time Out: user ${userId}, duration ${duration}s (break ${breakDuration}s)`);
-    res.json({ log, message: 'Clocked out successfully' });
-  } catch (error) {
-    console.error('Error clocking out:', error);
+    console.log(`[Attendance] ✅ Clock out: ${req.user.email}, duration ${Math.round(duration/60)}min`);
+    res.json({ message: 'Clocked out successfully', log });
+  } catch (err) {
+    console.error('[Attendance] clock-out error:', err);
     res.status(500).json({ error: 'Failed to clock out' });
   }
 });
 
-// GET /api/attendance/today
-// Returns all attendance logs for today for the user
-router.get('/today', requireAuth, withOrgScope, async (req, res) => {
+// ── GET /api/attendance/logs — fetch logs (role-aware) ───────────────────────
+// OWNER/ADMIN → all org logs with member info
+// STAFF       → own logs only
+router.get('/logs', requireAuth, withOrgScope, async (req, res) => {
   try {
-    const { userId, orgId } = req.query;
-    if (!userId || !orgId) {
-      return res.status(400).json({ error: 'userId and orgId are required' });
-    }
+    const userId = req.user.id;
+    const orgId  = req.orgId;
+    const limit  = parseInt(req.query.limit || '100');
 
-    const today = todayString();
-    const logs = await prisma.attendanceLog.findMany({
-      where: { userId, orgId, date: today },
-      orderBy: { timeIn: 'asc' },
+    // Check role
+    const membership = await prisma.membership.findUnique({
+      where: { userId_orgId: { userId, orgId } },
+      select: { role: true },
     });
+    const role         = membership?.role || 'STAFF';
+    const isPrivileged = role === 'OWNER' || role === 'ADMIN';
 
-    const totalSeconds = logs.reduce((sum, l) => sum + (l.duration || 0), 0);
+    let logs;
 
-    res.json({ logs, totalSeconds, date: today });
-  } catch (error) {
-    console.error('Error fetching today attendance:', error);
-    res.status(500).json({ error: 'Failed to fetch today attendance' });
+    if (isPrivileged) {
+      logs = await prisma.attendanceLog.findMany({
+        where:   { orgId },
+        orderBy: { timeIn: 'desc' },
+        take:    limit,
+        include: { user: { select: { id: true, name: true, email: true, image: true } } },
+      });
+
+      // Also grab roles for each member
+      const memberships = await prisma.membership.findMany({
+        where: { orgId },
+        select: { userId: true, role: true },
+      });
+      const roleMap = Object.fromEntries(memberships.map(m => [m.userId, m.role]));
+
+      return res.json({
+        role,
+        isPrivileged: true,
+        logs: logs.map(l => formatLog(l, l.user, roleMap[l.userId] || 'STAFF')),
+      });
+    } else {
+      logs = await prisma.attendanceLog.findMany({
+        where:   { userId, orgId },
+        orderBy: { timeIn: 'desc' },
+        take:    limit,
+        include: { user: { select: { id: true, name: true, email: true, image: true } } },
+      });
+
+      return res.json({
+        role,
+        isPrivileged: false,
+        logs: logs.map(l => formatLog(l, l.user, role)),
+      });
+    }
+  } catch (err) {
+    console.error('[Attendance] logs error:', err);
+    res.status(500).json({ error: 'Failed to fetch attendance logs' });
   }
 });
 
-// GET /api/attendance/history
-// Returns paginated attendance history for the user
-router.get('/history', requireAuth, withOrgScope, async (req, res) => {
-  try {
-    const { userId, orgId, limit = 30, offset = 0 } = req.query;
-    if (!userId || !orgId) {
-      return res.status(400).json({ error: 'userId and orgId are required' });
-    }
-
-    const logs = await prisma.attendanceLog.findMany({
-      where: { userId, orgId, timeOut: { not: null } },
-      orderBy: { timeIn: 'desc' },
-      take: parseInt(limit),
-      skip: parseInt(offset),
-    });
-
-    const total = await prisma.attendanceLog.count({
-      where: { userId, orgId, timeOut: { not: null } },
-    });
-
-    res.json({ logs, total });
-  } catch (error) {
-    console.error('Error fetching attendance history:', error);
-    res.status(500).json({ error: 'Failed to fetch attendance history' });
-  }
-});
+function formatLog(log, user, memberRole) {
+  const durationMins = log.duration ? Math.round(log.duration / 60) : null;
+  return {
+    id:           log.id,
+    date:         log.date,
+    timeIn:       log.timeIn,
+    timeOut:      log.timeOut,
+    duration:     log.duration,     // seconds
+    durationMins,
+    notes:        log.notes,
+    isActive:     !log.timeOut,
+    memberId:     log.userId,
+    memberName:   user?.name || user?.email || 'Unknown',
+    memberEmail:  user?.email || '',
+    memberImage:  user?.image || null,
+    memberRole,
+  };
+}
 
 export default router;

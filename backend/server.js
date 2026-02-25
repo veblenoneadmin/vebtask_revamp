@@ -87,25 +87,23 @@ async function ensureClientsSchema() {
     { name: 'user_id',        def: "VARCHAR(36) NULL" },
   ];
 
+  // Try to ADD each column directly — MySQL error 1060 means it already exists, which is fine.
+  // This is more reliable than INFORMATION_SCHEMA checks (which can have case/permission issues).
   let added = 0;
   for (const col of cols) {
     try {
-      const rows = await prisma.$queryRawUnsafe(
-        `SELECT COUNT(*) AS cnt FROM INFORMATION_SCHEMA.COLUMNS
-         WHERE TABLE_SCHEMA = DATABASE()
-           AND TABLE_NAME   = 'clients'
-           AND COLUMN_NAME  = '${col.name}'`
+      await prisma.$executeRawUnsafe(
+        `ALTER TABLE clients ADD COLUMN ${col.name} ${col.def}`
       );
-      const cnt = Number(rows[0]?.cnt ?? rows[0]?.CNT ?? 0);
-      if (cnt === 0) {
-        await prisma.$executeRawUnsafe(
-          `ALTER TABLE clients ADD COLUMN ${col.name} ${col.def}`
-        );
-        console.log(`  ✅ Added column: clients.${col.name}`);
-        added++;
-      }
+      console.log(`  ✅ Added column: clients.${col.name}`);
+      added++;
     } catch (e) {
-      console.warn(`  ⚠️  clients.${col.name}: ${e.message}`);
+      const msg = e.message || '';
+      if (msg.includes('Duplicate column') || msg.includes('1060')) {
+        // Column already exists — that's fine
+      } else {
+        console.warn(`  ⚠️  clients.${col.name}: ${msg}`);
+      }
     }
   }
 

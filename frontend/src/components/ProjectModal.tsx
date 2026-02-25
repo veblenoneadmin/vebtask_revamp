@@ -1,7 +1,7 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { createPortal } from 'react-dom';
 import type { Project } from '../hooks/useTasks';
-import { X, Save, Building2, Star, Calendar, DollarSign, Users, Target, Zap } from 'lucide-react';
+import { X, Save, Building2, Star, Calendar, DollarSign, Users, Target, Zap, Search, ChevronDown } from 'lucide-react';
 
 const VS = {
   bg1: '#252526', bg2: '#2d2d2d', bg3: '#333333',
@@ -10,12 +10,20 @@ const VS = {
   red: '#f44747', green: '#6a9955', accent: '#007acc',
 };
 
+interface ClientOption {
+  id: string;
+  name: string;
+  email?: string;
+  company?: string;
+}
+
 interface ProjectModalProps {
   isOpen: boolean;
   onClose: () => void;
   onSave: (project: Omit<Project, 'id' | 'createdAt' | 'updatedAt'>) => void;
   onUpdate?: (projectId: string, updates: Partial<Project>) => void;
   project?: Project;
+  clients?: ClientOption[];
 }
 
 const PROJECT_COLORS = [
@@ -62,12 +70,13 @@ const labelStyle: React.CSSProperties = {
   marginBottom: 6,
 };
 
-export function ProjectModal({ isOpen, onClose, onSave, onUpdate, project }: ProjectModalProps) {
+export function ProjectModal({ isOpen, onClose, onSave, onUpdate, project, clients = [] }: ProjectModalProps) {
   const [formData, setFormData] = useState({
     name: '',
     description: '',
     color: PROJECT_COLORS[0].color,
     status: 'planning' as 'planning' | 'active' | 'completed' | 'on_hold' | 'cancelled',
+    clientId: '' as string,
     clientName: '',
     budget: '',
     startDate: '',
@@ -76,27 +85,63 @@ export function ProjectModal({ isOpen, onClose, onSave, onUpdate, project }: Pro
   });
   const [selectedColorIndex, setSelectedColorIndex] = useState(0);
 
+  // Client dropdown state
+  const [clientSearch, setClientSearch] = useState('');
+  const [clientDropdownOpen, setClientDropdownOpen] = useState(false);
+  const [dropdownPos, setDropdownPos] = useState({ top: 0, left: 0, width: 0 });
+  const clientBtnRef = useRef<HTMLButtonElement>(null);
+  const clientDropdownRef = useRef<HTMLDivElement>(null);
+
+  const openClientDropdown = () => {
+    if (clientBtnRef.current) {
+      const rect = clientBtnRef.current.getBoundingClientRect();
+      setDropdownPos({ top: rect.bottom + 2, left: rect.left, width: rect.width });
+    }
+    setClientDropdownOpen(true);
+  };
+
+  // Close dropdown on outside click
+  useEffect(() => {
+    const handler = (e: MouseEvent) => {
+      if (
+        clientDropdownRef.current && !clientDropdownRef.current.contains(e.target as Node) &&
+        clientBtnRef.current && !clientBtnRef.current.contains(e.target as Node)
+      ) {
+        setClientDropdownOpen(false);
+      }
+    };
+    document.addEventListener('mousedown', handler);
+    return () => document.removeEventListener('mousedown', handler);
+  }, []);
+
   useEffect(() => {
     if (project) {
+      // Try to find matching client from the list by name
+      const matchedClient = clients.find(c =>
+        c.name === project.clientName || c.company === project.clientName
+      );
       setFormData({
         name: project.name,
         description: project.description,
         color: project.color,
         status: project.status,
+        clientId: matchedClient?.id || '',
         clientName: project.clientName || '',
         budget: '',
         startDate: project.startDate ? new Date(project.startDate).toISOString().split('T')[0] : '',
         deadline: project.endDate ? new Date(project.endDate).toISOString().split('T')[0] : '',
         priority: 'medium',
       });
+      setClientSearch(project.clientName || '');
       const idx = PROJECT_COLORS.findIndex(c => c.color === project.color);
       setSelectedColorIndex(idx >= 0 ? idx : 0);
     } else {
       setFormData({
         name: '', description: '', color: PROJECT_COLORS[0].color,
-        status: 'planning', clientName: '', budget: '',
+        status: 'planning', clientId: '', clientName: '', budget: '',
         startDate: '', deadline: '', priority: 'medium',
       });
+      setClientSearch('');
       setSelectedColorIndex(0);
     }
   }, [project, isOpen]);
@@ -112,7 +157,7 @@ export function ProjectModal({ isOpen, onClose, onSave, onUpdate, project }: Pro
       budget: formData.budget ? parseFloat(formData.budget) : null,
       startDate: formData.startDate ? new Date(formData.startDate).toISOString() : null,
       endDate: formData.deadline ? new Date(formData.deadline).toISOString() : null,
-      clientId: null,
+      clientId: formData.clientId || null,
       clientName: formData.clientName,
     };
     if (project && onUpdate) {
@@ -214,14 +259,140 @@ export function ProjectModal({ isOpen, onClose, onSave, onUpdate, project }: Pro
           {/* Client + Priority */}
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 14 }}>
             <div>
-              <label style={labelStyle}><Users size={13} /> Client Name</label>
-              <input
-                type="text"
-                value={formData.clientName}
-                onChange={e => setFormData(prev => ({ ...prev, clientName: e.target.value }))}
-                placeholder="Client or company name"
-                style={fieldStyle}
-              />
+              <label style={labelStyle}><Users size={13} /> Client</label>
+              {/* Trigger button */}
+              <button
+                ref={clientBtnRef}
+                type="button"
+                onClick={openClientDropdown}
+                style={{
+                  ...fieldStyle,
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'space-between',
+                  cursor: 'pointer',
+                  textAlign: 'left',
+                }}
+              >
+                <span style={{ color: formData.clientName ? VS.text0 : VS.text2, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                  {formData.clientName || 'Select a client…'}
+                </span>
+                <ChevronDown size={13} style={{ color: VS.text2, flexShrink: 0, marginLeft: 4 }} />
+              </button>
+
+              {/* Dropdown panel — rendered via portal to escape overflowY: auto clipping */}
+              {clientDropdownOpen && createPortal(
+                <div
+                  ref={clientDropdownRef}
+                  style={{
+                    position: 'fixed',
+                    top: dropdownPos.top,
+                    left: dropdownPos.left,
+                    width: dropdownPos.width,
+                    zIndex: 999999,
+                    background: VS.bg1,
+                    border: `1px solid ${VS.border}`,
+                    borderRadius: 4,
+                    boxShadow: '0 8px 24px rgba(0,0,0,0.5)',
+                    maxHeight: 220,
+                    display: 'flex',
+                    flexDirection: 'column',
+                  }}
+                >
+                  {/* Search box */}
+                  <div style={{ padding: '8px 10px', borderBottom: `1px solid ${VS.border}`, display: 'flex', alignItems: 'center', gap: 6 }}>
+                    <Search size={12} style={{ color: VS.text2, flexShrink: 0 }} />
+                    <input
+                      autoFocus
+                      type="text"
+                      value={clientSearch}
+                      onChange={e => setClientSearch(e.target.value)}
+                      placeholder="Search clients…"
+                      style={{ flex: 1, background: 'transparent', border: 'none', outline: 'none', color: VS.text0, fontSize: 12, fontFamily: 'inherit' }}
+                    />
+                  </div>
+
+                  {/* Options list */}
+                  <div style={{ overflowY: 'auto', flex: 1 }}>
+                    {/* Clear option */}
+                    <div
+                      onClick={() => {
+                        setFormData(prev => ({ ...prev, clientId: '', clientName: '' }));
+                        setClientSearch('');
+                        setClientDropdownOpen(false);
+                      }}
+                      style={{
+                        padding: '8px 12px',
+                        fontSize: 12,
+                        color: VS.text2,
+                        cursor: 'pointer',
+                        borderBottom: `1px solid ${VS.border}`,
+                        fontStyle: 'italic',
+                      }}
+                      onMouseEnter={e => (e.currentTarget.style.background = VS.bg3)}
+                      onMouseLeave={e => (e.currentTarget.style.background = 'transparent')}
+                    >
+                      No client
+                    </div>
+
+                    {clients
+                      .filter(c => {
+                        const q = clientSearch.toLowerCase();
+                        return (
+                          c.name.toLowerCase().includes(q) ||
+                          (c.email ?? '').toLowerCase().includes(q) ||
+                          (c.company ?? '').toLowerCase().includes(q)
+                        );
+                      })
+                      .map(c => {
+                        const isSelected = formData.clientId === c.id;
+                        return (
+                          <div
+                            key={c.id}
+                            onClick={() => {
+                              setFormData(prev => ({ ...prev, clientId: c.id, clientName: c.company || c.name }));
+                              setClientSearch('');
+                              setClientDropdownOpen(false);
+                            }}
+                            style={{
+                              padding: '8px 12px',
+                              cursor: 'pointer',
+                              background: isSelected ? `${VS.accent}22` : 'transparent',
+                              borderLeft: isSelected ? `2px solid ${VS.accent}` : '2px solid transparent',
+                            }}
+                            onMouseEnter={e => { if (!isSelected) e.currentTarget.style.background = VS.bg3; }}
+                            onMouseLeave={e => { if (!isSelected) e.currentTarget.style.background = 'transparent'; }}
+                          >
+                            <div style={{ fontSize: 12, color: VS.text0, fontWeight: isSelected ? 600 : 400 }}>{c.name}</div>
+                            {c.company && c.company !== c.name && (
+                              <div style={{ fontSize: 11, color: VS.text2 }}>{c.company}</div>
+                            )}
+                            {c.email && (
+                              <div style={{ fontSize: 11, color: VS.text2 }}>{c.email}</div>
+                            )}
+                          </div>
+                        );
+                      })
+                    }
+
+                    {clients.filter(c => {
+                      const q = clientSearch.toLowerCase();
+                      return c.name.toLowerCase().includes(q) || (c.email ?? '').toLowerCase().includes(q) || (c.company ?? '').toLowerCase().includes(q);
+                    }).length === 0 && clientSearch && (
+                      <div style={{ padding: '10px 12px', fontSize: 12, color: VS.text2, textAlign: 'center' }}>
+                        No clients match "{clientSearch}"
+                      </div>
+                    )}
+
+                    {clients.length === 0 && !clientSearch && (
+                      <div style={{ padding: '10px 12px', fontSize: 12, color: VS.text2, textAlign: 'center' }}>
+                        No clients found
+                      </div>
+                    )}
+                  </div>
+                </div>,
+                document.body
+              )}
             </div>
             <div>
               <label style={labelStyle}>{getPriorityIcon(formData.priority)} Priority</label>

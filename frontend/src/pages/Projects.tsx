@@ -115,12 +115,23 @@ export function Projects() {
   const apiClient = useApiClient();
 
   const [projects, setProjects] = useState<DatabaseProject[]>([]);
+  const [clients, setClients] = useState<{ id: string; name: string; email?: string; company?: string }[]>([]);
   const [loading, setLoading] = useState(true);
   const [showNewProjectModal, setShowNewProjectModal] = useState(false);
   const [editingProject, setEditingProject] = useState<DatabaseProject | null>(null);
   const [openMenuId, setOpenMenuId] = useState<string | null>(null);
   const [filterStatus, setFilterStatus] = useState('all');
   const [filterPriority, setFilterPriority] = useState('all');
+
+  const fetchClients = async () => {
+    try {
+      const data = await apiClient.fetch('/api/clients/slim');
+      if (data.success) setClients(data.clients || []);
+      else console.warn('fetchClients failed:', data);
+    } catch (err) {
+      console.error('fetchClients error:', err);
+    }
+  };
 
   const fetchProjects = async () => {
     if (!session?.user?.id) return;
@@ -134,7 +145,10 @@ export function Projects() {
     finally { setLoading(false); }
   };
 
-  useEffect(() => { fetchProjects(); }, [session?.user?.id, currentOrg?.id]);
+  useEffect(() => {
+    fetchProjects();
+    fetchClients();
+  }, [session?.user?.id, currentOrg?.id]);
 
   const handleDeleteProject = async (project: DatabaseProject) => {
     if (!confirm(`Delete "${project.name}"? This cannot be undone.`)) return;
@@ -162,6 +176,7 @@ export function Projects() {
           startDate: projectData.startDate ? new Date(projectData.startDate).toISOString() : undefined,
           endDate: projectData.endDate ? new Date(projectData.endDate).toISOString() : undefined,
           color: projectData.color || 'bg-primary',
+          clientId: projectData.clientId || undefined,
         }),
       });
       if (data.success) { await fetchProjects(); setEditingProject(null); }
@@ -185,6 +200,7 @@ export function Projects() {
           startDate: projectData.startDate ? new Date(projectData.startDate).toISOString() : undefined,
           endDate: projectData.endDate ? new Date(projectData.endDate).toISOString() : undefined,
           color: projectData.color || 'bg-primary',
+          clientId: projectData.clientId || undefined,
         }),
       });
       if (data.success) { await fetchProjects(); setShowNewProjectModal(false); }
@@ -507,11 +523,13 @@ export function Projects() {
         isOpen={showNewProjectModal}
         onClose={() => setShowNewProjectModal(false)}
         onSave={handleCreateProject}
+        clients={clients}
       />
       <ProjectModal
         isOpen={!!editingProject}
         onClose={() => setEditingProject(null)}
         onSave={handleUpdateProject}
+        clients={clients}
         project={editingProject ? {
           id: editingProject.id,
           name: editingProject.name,

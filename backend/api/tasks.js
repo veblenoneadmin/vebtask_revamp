@@ -23,6 +23,38 @@ router.get('/', requireAuth, withOrgScope, validateQuery(commonSchemas.paginatio
     if (priority) where.priority = priority;
     if (userId) where.userId = userId;
 
+    // If requester is CLIENT role, restrict to tasks from their assigned projects only
+    const clientMembership = await prisma.membership.findFirst({
+      where: { userId: req.user.id, orgId, role: 'CLIENT' }
+    });
+    if (clientMembership) {
+      let clientRows = [];
+      try {
+        clientRows = await prisma.$queryRawUnsafe(
+          `SELECT id FROM clients WHERE user_id = ? AND orgId = ? LIMIT 1`,
+          req.user.id, orgId
+        );
+      } catch (e) {
+        // user_id column may not exist yet, fall back to email lookup
+        const userRecord = await prisma.user.findUnique({ where: { id: req.user.id }, select: { email: true } });
+        if (userRecord?.email) {
+          clientRows = await prisma.$queryRawUnsafe(
+            `SELECT id FROM clients WHERE email = ? AND orgId = ? LIMIT 1`,
+            userRecord.email, orgId
+          );
+        }
+      }
+      let clientProjectIds = [];
+      if (clientRows.length > 0) {
+        const projects = await prisma.project.findMany({
+          where: { clientId: clientRows[0].id, orgId },
+          select: { id: true }
+        });
+        clientProjectIds = projects.map(p => p.id);
+      }
+      where.projectId = { in: clientProjectIds.length > 0 ? clientProjectIds : ['__none__'] };
+    }
+
     const tasks = await prisma.macroTask.findMany({
       where,
       include: {
@@ -97,12 +129,41 @@ router.get('/recent', requireAuth, withOrgScope, validateQuery(commonSchemas.pag
       return res.status(400).json({ error: 'orgId is required' });
     }
     
+    // If requester is CLIENT role, restrict to tasks from their assigned projects only
+    let recentWhere = { orgId, ...(userId ? { userId } : {}) };
+    const recentClientMembership = await prisma.membership.findFirst({
+      where: { userId: req.user.id, orgId, role: 'CLIENT' }
+    });
+    if (recentClientMembership) {
+      let clientRows = [];
+      try {
+        clientRows = await prisma.$queryRawUnsafe(
+          `SELECT id FROM clients WHERE user_id = ? AND orgId = ? LIMIT 1`,
+          req.user.id, orgId
+        );
+      } catch (e) {
+        const userRecord = await prisma.user.findUnique({ where: { id: req.user.id }, select: { email: true } });
+        if (userRecord?.email) {
+          clientRows = await prisma.$queryRawUnsafe(
+            `SELECT id FROM clients WHERE email = ? AND orgId = ? LIMIT 1`,
+            userRecord.email, orgId
+          );
+        }
+      }
+      let clientProjectIds = [];
+      if (clientRows.length > 0) {
+        const projects = await prisma.project.findMany({
+          where: { clientId: clientRows[0].id, orgId },
+          select: { id: true }
+        });
+        clientProjectIds = projects.map(p => p.id);
+      }
+      recentWhere.projectId = { in: clientProjectIds.length > 0 ? clientProjectIds : ['__none__'] };
+    }
+
     // EMERGENCY FIX: Remove relations causing collation mismatch
     const tasks = await prisma.macroTask.findMany({
-      where: {
-        orgId: orgId,
-        ...(userId ? { userId: userId } : {})
-      },
+      where: recentWhere,
       orderBy: [
         { updatedAt: 'desc' },
         { createdAt: 'desc' }

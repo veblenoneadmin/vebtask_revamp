@@ -160,22 +160,89 @@ router.get('/my', requireAuth, withOrgScope, async (req, res) => {
 });
 
 // ── GET /api/clients ──────────────────────────────────────────────────────────
+// Uses raw SQL to avoid P2022 when extended columns haven't been added yet.
 router.get('/', requireAuth, withOrgScope, validateQuery(commonSchemas.pagination), async (req, res) => {
   try {
     if (!(await checkDatabaseConnection(res))) return;
     const { limit = 100 } = req.query;
     const orgId = req.orgId;
 
-    const clients = await prisma.client.findMany({
-      where:   { orgId },
-      include: { projects: { select: { id: true } } },
-      orderBy: [{ updatedAt: 'desc' }, { createdAt: 'desc' }],
-      take:    parseInt(limit),
-    });
+    // Raw SQL: fetch clients without Prisma column validation
+    const clients = await prisma.$queryRawUnsafe(
+      `SELECT * FROM clients WHERE orgId = ? ORDER BY updatedAt DESC, createdAt DESC LIMIT ?`,
+      orgId, parseInt(limit)
+    );
 
-    res.json({ success: true, clients: clients.map(formatClient), total: clients.length });
+    // Count projects per client via a separate query (no JOIN = no collation risk)
+    const projectCounts = await prisma.$queryRawUnsafe(
+      `SELECT clientId, COUNT(*) AS cnt FROM projects WHERE orgId = ? AND clientId IS NOT NULL GROUP BY clientId`,
+      orgId
+    );
+    const countMap = {};
+    for (const row of projectCounts) {
+      countMap[row.clientId] = Number(row.cnt ?? 0);
+    }
+
+    const formatted = clients.map(c => ({
+      id:            c.id,
+      name:          c.name          || '',
+      email:         c.email         || '',
+      phone:         c.phone         || '',
+      address:       c.address       || '',
+      company:       c.company       || '',
+      status:        c.status        || 'active',
+      hourlyRate:    c.hourly_rate   ? Number(c.hourly_rate) : 0,
+      contactPerson: c.contact_person || '',
+      industry:      c.industry      || '',
+      priority:      c.priority      || 'medium',
+      notes:         c.notes         || '',
+      userId:        c.user_id       || null,
+      orgId:         c.orgId,
+      totalProjects: countMap[c.id]  || 0,
+      totalHours:    0,
+      totalEarnings: 0,
+      lastActivity:  c.updatedAt,
+      createdAt:     c.createdAt,
+      updatedAt:     c.updatedAt,
+    }));
+
+    res.json({ success: true, clients: formatted, total: formatted.length });
   } catch (error) {
     return handleDatabaseError(error, res, 'fetch clients');
+  }
+});
+
+// ── GET /api/clients/slim ─────────────────────────────────────────────────────
+// Lightweight endpoint for dropdowns — raw SQL, no JOINs, returns id/name/email/company only
+router.get('/slim', requireAuth, withOrgScope, async (req, res) => {
+  try {
+    const orgId = req.orgId;
+    let rows;
+    try {
+      // Try with company column first (exists after ensureClientsSchema runs)
+      rows = await prisma.$queryRawUnsafe(
+        `SELECT id, name, email, company FROM clients WHERE orgId = ? ORDER BY name ASC`,
+        orgId
+      );
+    } catch (e) {
+      // company column not yet added — fall back to base columns only
+      rows = await prisma.$queryRawUnsafe(
+        `SELECT id, name, email FROM clients WHERE orgId = ? ORDER BY name ASC`,
+        orgId
+      );
+    }
+    res.json({
+      success: true,
+      clients: rows.map(r => ({
+        id:      r.id,
+        name:    r.name    || '',
+        email:   r.email   || '',
+        company: r.company || '',
+      }))
+    });
+  } catch (error) {
+    console.error('Error fetching slim clients:', error);
+    res.status(500).json({ success: false, clients: [], error: 'Failed to fetch clients' });
   }
 });
 
@@ -186,30 +253,29 @@ router.get('/:id/projects', requireAuth, withOrgScope, async (req, res) => {
     const { id } = req.params;
     const orgId  = req.orgId;
 
-    const client = await prisma.client.findFirst({
-      where: { id, orgId },
+    // Use raw SQL to check client exists (avoids P2022 on missing columns)
+    const clientRows = await prisma.$queryRawUnsafe(
+      `SELECT id FROM clients WHERE id = ? AND orgId = ? LIMIT 1`, id, orgId
+    );
+    if (!clientRows.length) return res.status(404).json({ success: false, error: 'Client not found' });
+
+    const projects = await prisma.project.findMany({
+      where:   { clientId: id, orgId },
+      orderBy: { name: 'asc' },
       include: {
-        projects: {
+        tasks: {
           where:   { orgId },
-          orderBy: { name: 'asc' },
-          include: {
-            tasks: {
-              where:   { orgId },
-              orderBy: { createdAt: 'desc' },
-              select: {
-                id: true, title: true, status: true, priority: true,
-                estimatedHours: true, actualHours: true,
-                dueDate: true, createdAt: true, updatedAt: true,
-              },
-            },
+          orderBy: { createdAt: 'desc' },
+          select: {
+            id: true, title: true, status: true, priority: true,
+            estimatedHours: true, actualHours: true,
+            dueDate: true, createdAt: true, updatedAt: true,
           },
         },
       },
     });
 
-    if (!client) return res.status(404).json({ success: false, error: 'Client not found' });
-
-    res.json({ success: true, projects: client.projects });
+    res.json({ success: true, projects });
   } catch (error) {
     return handleDatabaseError(error, res, 'fetch client projects');
   }
@@ -226,26 +292,44 @@ router.post('/', requireAuth, withOrgScope, validateBody(clientSchemas.create), 
       return res.status(400).json({ error: 'name and email are required' });
     }
 
-    const client = await prisma.client.create({
-      data: {
-        orgId,
-        name,
-        email,
-        company:       company       || null,
-        phone:         phone         || null,
-        address:       address       || null,
-        hourlyRate:    hourlyRate    ? parseFloat(hourlyRate) : null,
-        contactPerson: contactPerson || null,
-        industry:      industry      || null,
-        priority:      priority      || 'medium',
-        notes:         notes         || null,
-        status:        'active',
-        userId:        userId        || null,
-      },
-    });
+    const clientId = randomUUID();
+    // Insert base columns first (always exist)
+    await prisma.$executeRawUnsafe(
+      `INSERT INTO clients (id, name, email, orgId, createdAt, updatedAt) VALUES (?, ?, ?, ?, NOW(), NOW())`,
+      clientId, name, email, orgId
+    );
+    // Then set extended columns separately (added by ensureClientsSchema — may not exist on first deploy)
+    const extFields = [
+      ['company',        company        || null],
+      ['phone',          phone          || null],
+      ['address',        address        || null],
+      ['hourly_rate',    hourlyRate     ? parseFloat(hourlyRate) : null],
+      ['contact_person', contactPerson  || null],
+      ['industry',       industry       || null],
+      ['priority',       priority       || 'medium'],
+      ['notes',          notes          || null],
+      ['status',         'active'],
+      ['user_id',        userId         || null],
+    ];
+    for (const [col, val] of extFields) {
+      try {
+        await prisma.$executeRawUnsafe(
+          `UPDATE clients SET ${col} = ? WHERE id = ?`, val, clientId
+        );
+      } catch (_) { /* column not yet added — ensureClientsSchema will handle it */ }
+    }
 
+    const rows = await prisma.$queryRawUnsafe(`SELECT * FROM clients WHERE id = ? LIMIT 1`, clientId);
+    const raw = rows[0] || {};
     console.log(`✅ Created client: ${name}`);
-    res.status(201).json({ success: true, client: formatClient(client) });
+    res.status(201).json({
+      success: true,
+      client: {
+        id: raw.id, name: raw.name || '', email: raw.email || '',
+        company: raw.company || '', status: raw.status || 'active',
+        orgId: raw.orgId, createdAt: raw.createdAt, updatedAt: raw.updatedAt,
+      }
+    });
   } catch (error) {
     return handleDatabaseError(error, res, 'create client');
   }
@@ -258,21 +342,43 @@ router.patch('/:id', requireAuth, withOrgScope, async (req, res) => {
     const { id } = req.params;
     const orgId  = req.orgId;
 
-    // Verify client belongs to this org
-    const existing = await prisma.client.findFirst({ where: { id, orgId } });
-    if (!existing) return res.status(404).json({ success: false, error: 'Client not found' });
+    // Verify client belongs to this org (raw SQL — avoids P2022)
+    const existing = await prisma.$queryRawUnsafe(
+      `SELECT id FROM clients WHERE id = ? AND orgId = ? LIMIT 1`, id, orgId
+    );
+    if (!existing.length) return res.status(404).json({ success: false, error: 'Client not found' });
 
-    const allowed = ['name','email','phone','company','address','hourlyRate','contactPerson','industry','priority','notes','status'];
-    const updates = {};
-    for (const key of allowed) {
+    // Map camelCase request fields → snake_case DB columns
+    const colMap = {
+      name: 'name', email: 'email', phone: 'phone', address: 'address',
+      company: 'company', contactPerson: 'contact_person', industry: 'industry',
+      priority: 'priority', notes: 'notes', status: 'status', hourlyRate: 'hourly_rate',
+    };
+    for (const [key, col] of Object.entries(colMap)) {
       if (req.body[key] !== undefined) {
-        updates[key] = key === 'hourlyRate' ? (req.body[key] ? parseFloat(req.body[key]) : null) : req.body[key];
+        const val = key === 'hourlyRate' ? (req.body[key] ? parseFloat(req.body[key]) : null) : req.body[key];
+        try {
+          await prisma.$executeRawUnsafe(`UPDATE clients SET ${col} = ?, updatedAt = NOW() WHERE id = ?`, val, id);
+        } catch (_) { /* column not yet added */ }
       }
     }
+    await prisma.$executeRawUnsafe(`UPDATE clients SET updatedAt = NOW() WHERE id = ?`, id);
 
-    const client = await prisma.client.update({ where: { id }, data: updates });
+    const rows = await prisma.$queryRawUnsafe(`SELECT * FROM clients WHERE id = ? LIMIT 1`, id);
+    const raw = rows[0] || {};
     console.log(`📝 Updated client ${id}`);
-    res.json({ success: true, client: formatClient(client), message: 'Client updated' });
+    res.json({
+      success: true,
+      client: {
+        id: raw.id, name: raw.name || '', email: raw.email || '',
+        company: raw.company || '', status: raw.status || 'active',
+        hourlyRate: raw.hourly_rate ? Number(raw.hourly_rate) : 0,
+        contactPerson: raw.contact_person || '', industry: raw.industry || '',
+        priority: raw.priority || 'medium', notes: raw.notes || '',
+        orgId: raw.orgId, createdAt: raw.createdAt, updatedAt: raw.updatedAt,
+      },
+      message: 'Client updated'
+    });
   } catch (error) {
     return handleDatabaseError(error, res, 'update client');
   }
@@ -285,10 +391,12 @@ router.delete('/:id', requireAuth, withOrgScope, async (req, res) => {
     const { id } = req.params;
     const orgId  = req.orgId;
 
-    const existing = await prisma.client.findFirst({ where: { id, orgId } });
-    if (!existing) return res.status(404).json({ success: false, error: 'Client not found' });
+    const existing = await prisma.$queryRawUnsafe(
+      `SELECT id FROM clients WHERE id = ? AND orgId = ? LIMIT 1`, id, orgId
+    );
+    if (!existing.length) return res.status(404).json({ success: false, error: 'Client not found' });
 
-    await prisma.client.delete({ where: { id } });
+    await prisma.$executeRawUnsafe(`DELETE FROM clients WHERE id = ?`, id);
     console.log(`🗑️ Deleted client ${id}`);
     res.json({ success: true, message: 'Client deleted' });
   } catch (error) {

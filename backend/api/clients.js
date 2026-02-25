@@ -67,20 +67,45 @@ router.get('/my', requireAuth, withOrgScope, async (req, res) => {
     const userId = req.user.id;
     const orgId  = req.orgId;
 
+    // Fetch client with only safe/original fields — avoids column-name
+    // mismatches on newly-added fields (hourlyRate, contactPerson, etc.)
     const client = await prisma.client.findFirst({
       where: { userId, orgId },
-      include: {
+      select: {
+        id:        true,
+        name:      true,
+        email:     true,
+        phone:     true,
+        address:   true,
+        company:   true,
+        status:    true,
+        industry:  true,
+        priority:  true,
+        notes:     true,
+        orgId:     true,
+        createdAt: true,
+        updatedAt: true,
         projects: {
-          where:   { orgId },
-          orderBy: { name: 'asc' },
-          include: {
+          where:    { orgId },
+          orderBy:  { name: 'asc' },
+          select: {
+            id:     true,
+            name:   true,
+            color:  true,
+            status: true,
             tasks: {
               where:   { orgId },
               orderBy: { createdAt: 'desc' },
               select: {
-                id: true, title: true, status: true, priority: true,
-                estimatedHours: true, actualHours: true,
-                dueDate: true, createdAt: true, updatedAt: true,
+                id:             true,
+                title:          true,
+                status:         true,
+                priority:       true,
+                estimatedHours: true,
+                actualHours:    true,
+                dueDate:        true,
+                createdAt:      true,
+                updatedAt:      true,
               },
             },
           },
@@ -94,7 +119,19 @@ router.get('/my', requireAuth, withOrgScope, async (req, res) => {
 
     res.json({
       success:  true,
-      client:   formatClient(client),
+      client: {
+        id:       client.id,
+        name:     client.name,
+        email:    client.email    || null,
+        company:  client.company  || null,
+        phone:    client.phone    || null,
+        address:  client.address  || null,
+        status:   client.status   || 'active',
+        priority: client.priority || 'medium',
+        notes:    client.notes    || null,
+        industry: client.industry || null,
+        orgId:    client.orgId,
+      },
       projects: client.projects,
     });
   } catch (error) {

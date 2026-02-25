@@ -254,6 +254,30 @@ export function TaskDetailPanel({ task, orgId: _orgId, onClose, onTaskUpdated: _
           body: JSON.stringify({ name: file.name, mimeType: file.type, size: file.size, data, category: 'report' }),
         });
       }
+
+      // Also create a user-report entry so it appears on the Reports page
+      try {
+        const firstImg = reportFiles.find(f => f.type.startsWith('image/'));
+        let imageData: string | undefined;
+        if (firstImg) {
+          const b64 = await toBase64(firstImg);
+          imageData = `data:${firstImg.type};base64,${b64}`;
+        }
+        const userName = session?.user?.name || (session?.user as any)?.email || 'Unknown';
+        await api.fetch('/api/user-reports', {
+          method: 'POST',
+          body: JSON.stringify({
+            title: reportTitle || undefined,
+            description: reportDesc,
+            userName,
+            projectId: task.projectId || undefined,
+            image: imageData,
+          }),
+        });
+      } catch (err) {
+        console.error('❌ Failed to create user-report entry:', err);
+      }
+
       await fetchAttachments();
       setReportSuccess(true);
       setTimeout(() => { setShowReport(false); setReportSuccess(false); setReportTitle(''); setReportDesc(''); setReportFiles([]); }, 1500);

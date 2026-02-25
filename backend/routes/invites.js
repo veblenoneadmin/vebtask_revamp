@@ -1,6 +1,7 @@
 import express from 'express';
 import { z } from 'zod';
 import crypto from 'crypto';
+import { randomUUID } from 'crypto';
 import { Role } from '@prisma/client';
 import { prisma } from '../lib/prisma.js';
 import { 
@@ -352,10 +353,33 @@ router.post('/accept', requireAuth, async (req, res) => {
       return membership;
     });
 
+    // Auto-create Client record when invite role is CLIENT
+    if (invite.role === 'CLIENT') {
+      try {
+        const existing = await prisma.$queryRawUnsafe(
+          `SELECT id FROM clients WHERE email = ? AND orgId = ? LIMIT 1`,
+          req.user.email, invite.orgId
+        );
+        if (!existing.length) {
+          const clientId = randomUUID();
+          await prisma.$executeRawUnsafe(
+            `INSERT INTO clients (id, name, email, orgId, createdAt, updatedAt) VALUES (?, ?, ?, ?, NOW(), NOW())`,
+            clientId, req.user.name || req.user.email, req.user.email, invite.orgId
+          );
+          try {
+            await prisma.$executeRawUnsafe(`UPDATE clients SET user_id = ? WHERE id = ?`, req.user.id, clientId);
+          } catch (_) { /* user_id column may not exist yet */ }
+          console.log(`👤 Auto-created Client record for invited user ${req.user.email}`);
+        }
+      } catch (e) {
+        console.warn(`⚠️  Could not auto-create client record for invite: ${e.message}`);
+      }
+    }
+
     // Send welcome email
     try {
       const dashboardUrl = `${process.env.VITE_APP_URL || 'http://localhost:5173'}/dashboard`;
-      
+
       await sendWelcomeEmail(req.user.email, {
         name: req.user.name,
         orgName: invite.org.name,

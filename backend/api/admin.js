@@ -282,6 +282,24 @@ router.patch('/users/:userId/role', requireAuth, withOrgScope, requireRole('ADMI
       include: { user: { select: { name: true, email: true } } }
     });
 
+    // Auto-create Client record when role is changed to CLIENT
+    if (role === 'CLIENT' && updatedMembership.user) {
+      try {
+        const exists = await clientExistsForEmail(updatedMembership.user.email, req.orgId);
+        if (!exists) {
+          await createClientRecord(
+            updatedMembership.user.name || updatedMembership.user.email,
+            updatedMembership.user.email,
+            userId,
+            req.orgId
+          );
+          console.log(`👤 Auto-created Client record for role-changed user ${updatedMembership.user.email}`);
+        }
+      } catch (e) {
+        console.warn(`⚠️  Could not auto-create client record on role change: ${e.message}`);
+      }
+    }
+
     res.json({
       success: true,
       message: 'User role updated successfully',

@@ -8,31 +8,66 @@ import { checkDatabaseConnection, handleDatabaseError } from '../lib/api-error-h
 const router = express.Router();
 
 // ── Startup migration — add columns that may not exist yet ────────────────────
-(async () => {
+// Uses INFORMATION_SCHEMA to check before adding (works on all MySQL versions).
+async function ensureClientsColumns() {
   if (!process.env.DATABASE_URL) return;
-  try {
-    const cols = [
-      "ALTER TABLE clients ADD COLUMN IF NOT EXISTS company       VARCHAR(255) NULL",
-      "ALTER TABLE clients ADD COLUMN IF NOT EXISTS status        VARCHAR(20)  NOT NULL DEFAULT 'active'",
-      "ALTER TABLE clients ADD COLUMN IF NOT EXISTS hourly_rate   DECIMAL(10,2) NULL",
-      "ALTER TABLE clients ADD COLUMN IF NOT EXISTS contact_person VARCHAR(255) NULL",
-      "ALTER TABLE clients ADD COLUMN IF NOT EXISTS industry      VARCHAR(255) NULL",
-      "ALTER TABLE clients ADD COLUMN IF NOT EXISTS priority      VARCHAR(20)  NOT NULL DEFAULT 'medium'",
-      "ALTER TABLE clients ADD COLUMN IF NOT EXISTS notes         TEXT NULL",
-      "ALTER TABLE clients ADD COLUMN IF NOT EXISTS user_id       VARCHAR(36) NULL",
-    ];
-    for (const sql of cols) {
-      await prisma.$executeRawUnsafe(sql);
+
+  const cols = [
+    { name: 'company',        def: "VARCHAR(255) NULL" },
+    { name: 'status',         def: "VARCHAR(20) NOT NULL DEFAULT 'active'" },
+    { name: 'hourly_rate',    def: "DECIMAL(10,2) NULL" },
+    { name: 'contact_person', def: "VARCHAR(255) NULL" },
+    { name: 'industry',       def: "VARCHAR(255) NULL" },
+    { name: 'priority',       def: "VARCHAR(20) NOT NULL DEFAULT 'medium'" },
+    { name: 'notes',          def: "TEXT NULL" },
+    { name: 'user_id',        def: "VARCHAR(36) NULL" },
+  ];
+
+  let added = 0;
+  for (const col of cols) {
+    try {
+      const rows = await prisma.$queryRawUnsafe(
+        `SELECT COUNT(*) AS cnt FROM INFORMATION_SCHEMA.COLUMNS
+         WHERE TABLE_SCHEMA = DATABASE()
+           AND TABLE_NAME   = 'clients'
+           AND COLUMN_NAME  = '${col.name}'`
+      );
+      const exists = Number(rows[0]?.cnt ?? rows[0]?.CNT ?? 0) > 0;
+      if (!exists) {
+        await prisma.$executeRawUnsafe(
+          `ALTER TABLE clients ADD COLUMN ${col.name} ${col.def}`
+        );
+        added++;
+        console.log(`  ✅ Added column clients.${col.name}`);
+      }
+    } catch (e) {
+      console.warn(`  ⚠️  clients.${col.name}: ${e.message}`);
     }
-    // Add index on user_id if missing
-    await prisma.$executeRawUnsafe(
-      `CREATE INDEX IF NOT EXISTS clients_user_id_idx ON clients(user_id)`
-    ).catch(() => {});
-    console.log('✅ clients table columns ensured');
-  } catch (e) {
-    console.warn('⚠️  clients migration warning:', e.message);
   }
-})();
+
+  // Index on user_id (try/catch — older MySQL lacks IF NOT EXISTS for indexes)
+  try {
+    const idxRows = await prisma.$queryRawUnsafe(
+      `SELECT COUNT(*) AS cnt FROM INFORMATION_SCHEMA.STATISTICS
+       WHERE TABLE_SCHEMA = DATABASE()
+         AND TABLE_NAME   = 'clients'
+         AND INDEX_NAME   = 'clients_user_id_idx'`
+    );
+    const idxExists = Number(idxRows[0]?.cnt ?? idxRows[0]?.CNT ?? 0) > 0;
+    if (!idxExists) {
+      await prisma.$executeRawUnsafe(
+        `CREATE INDEX clients_user_id_idx ON clients(user_id)`
+      );
+    }
+  } catch (e) {
+    console.warn(`  ⚠️  clients user_id index: ${e.message}`);
+  }
+
+  if (added > 0) console.log(`✅ clients table: ${added} column(s) added`);
+  else console.log('✅ clients table columns already up to date');
+}
+
+ensureClientsColumns().catch(e => console.warn('⚠️  clients migration:', e.message));
 
 // ── Helper ────────────────────────────────────────────────────────────────────
 function formatClient(c) {

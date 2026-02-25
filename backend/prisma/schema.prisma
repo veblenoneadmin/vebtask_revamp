@@ -244,12 +244,12 @@ model Client {
   address       String?   @db.Text
   company       String?   @db.VarChar(255)
   status        String    @default("active") @db.VarChar(20)
-  hourlyRate    Decimal?  @db.Decimal(10, 2)
-  contactPerson String?   @db.VarChar(255)
+  hourlyRate    Decimal?  @db.Decimal(10, 2) @map("hourly_rate")
+  contactPerson String?   @db.VarChar(255)   @map("contact_person")
   industry      String?   @db.VarChar(255)
   priority      String    @default("medium") @db.VarChar(20)
   notes         String?   @db.Text
-  userId        String?   // Link to User account with CLIENT role
+  userId        String?   @map("user_id")    // Link to User account with CLIENT role
   orgId         String
   createdAt     DateTime  @default(now())
   updatedAt     DateTime  @updatedAt

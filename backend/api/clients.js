@@ -1,5 +1,6 @@
 // Client management API endpoints
 import express from 'express';
+import { randomUUID } from 'crypto';
 import { prisma } from '../lib/prisma.js';
 import { requireAuth, withOrgScope } from '../lib/rbac.js';
 import { validateBody, validateQuery, commonSchemas, clientSchemas } from '../lib/validation.js';
@@ -66,6 +67,44 @@ router.get('/my', requireAuth, withOrgScope, async (req, res) => {
         }
       } else {
         throw e;
+      }
+    }
+
+    // If no client record found, auto-create one for CLIENT role users
+    if (!raw) {
+      try {
+        const membership = await prisma.membership.findFirst({
+          where: { userId, orgId, role: 'CLIENT' },
+        });
+        if (membership) {
+          const user = await prisma.user.findUnique({
+            where: { id: userId },
+            select: { name: true, email: true },
+          });
+          if (user) {
+            const clientId = randomUUID();
+            const clientName = user.name || user.email || 'Client';
+            // Insert only original columns that always exist
+            await prisma.$executeRawUnsafe(
+              `INSERT INTO clients (id, name, email, orgId, createdAt, updatedAt)
+               VALUES (?, ?, ?, ?, NOW(), NOW())`,
+              clientId, clientName, user.email || '', orgId
+            );
+            // Link user_id once the column exists (silently skip if not yet)
+            try {
+              await prisma.$executeRawUnsafe(
+                `UPDATE clients SET user_id = ? WHERE id = ?`, userId, clientId
+              );
+            } catch (_) { /* user_id column not yet added — will link on next restart */ }
+            const newRows = await prisma.$queryRawUnsafe(
+              `SELECT * FROM clients WHERE id = ? LIMIT 1`, clientId
+            );
+            raw = newRows[0] || null;
+            console.log(`👤 Auto-created Client record for ${user.email}`);
+          }
+        }
+      } catch (e) {
+        console.warn(`⚠️  Could not auto-create client record: ${e.message}`);
       }
     }
 

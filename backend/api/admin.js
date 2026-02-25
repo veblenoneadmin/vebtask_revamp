@@ -1,10 +1,36 @@
 import express from 'express';
 import { z } from 'zod';
+import { randomUUID } from 'crypto';
 import { prisma } from '../lib/prisma.js';
 import { auth } from '../auth.js'; // Better Auth instance - handles hashing correctly
 import { requireAuth, withOrgScope, requireAdmin, requireRole } from '../lib/rbac.js';
 import { checkDatabaseConnection, handleDatabaseError } from '../lib/api-error-handler.js';
 import crypto from 'crypto';
+
+// Create a Client record via raw SQL — safe even when extended columns don't exist yet
+async function createClientRecord(name, email, userId, orgId) {
+  const clientId = randomUUID();
+  await prisma.$executeRawUnsafe(
+    `INSERT INTO clients (id, name, email, orgId, createdAt, updatedAt)
+     VALUES (?, ?, ?, ?, NOW(), NOW())`,
+    clientId, name, email, orgId
+  );
+  // Link user_id if the column exists (silently skip if not)
+  try {
+    await prisma.$executeRawUnsafe(
+      `UPDATE clients SET user_id = ? WHERE id = ?`, userId, clientId
+    );
+  } catch (_) { /* user_id column not yet added */ }
+  return clientId;
+}
+
+// Check if a client record exists for this email+org (raw SQL, no Prisma column dependency)
+async function clientExistsForEmail(email, orgId) {
+  const rows = await prisma.$queryRawUnsafe(
+    `SELECT id FROM clients WHERE email = ? AND orgId = ? LIMIT 1`, email, orgId
+  );
+  return rows.length > 0;
+}
 
 const router = express.Router();
 
@@ -54,11 +80,14 @@ router.post('/users/create', requireAuth, withOrgScope, requireRole('ADMIN'), as
       });
       // Auto-create Client record for existing user added as CLIENT
       if (role === 'CLIENT') {
-        const ec = await prisma.client.findFirst({ where: { userId: existing.id, orgId: req.orgId } });
-        if (!ec) {
-          await prisma.client.create({
-            data: { name: existing.name || existing.email, email: existing.email, userId: existing.id, orgId: req.orgId, status: 'active', priority: 'medium' },
-          });
+        try {
+          const exists = await clientExistsForEmail(existing.email, req.orgId);
+          if (!exists) {
+            await createClientRecord(existing.name || existing.email, existing.email, existing.id, req.orgId);
+            console.log(`👤 Auto-created Client record for ${existing.email}`);
+          }
+        } catch (e) {
+          console.warn(`⚠️  Could not auto-create client record: ${e.message}`);
         }
       }
       return res.status(201).json({ success: true, message: 'Existing user added to organization', userId: existing.id });
@@ -84,14 +113,14 @@ router.post('/users/create', requireAuth, withOrgScope, requireRole('ADMIN'), as
 
     // Auto-create Client record when role is CLIENT
     if (role === 'CLIENT') {
-      const existingClient = await prisma.client.findFirst({
-        where: { userId, orgId: req.orgId },
-      });
-      if (!existingClient) {
-        await prisma.client.create({
-          data: { name, email, userId, orgId: req.orgId, status: 'active', priority: 'medium' },
-        });
-        console.log(`👤 Auto-created Client record for ${email}`);
+      try {
+        const exists = await clientExistsForEmail(email, req.orgId);
+        if (!exists) {
+          await createClientRecord(name, email, userId, req.orgId);
+          console.log(`👤 Auto-created Client record for ${email}`);
+        }
+      } catch (e) {
+        console.warn(`⚠️  Could not auto-create client record: ${e.message}`);
       }
     }
 

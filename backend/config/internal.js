@@ -5,7 +5,7 @@ export const INTERNAL_CONFIG = {
     name: 'Veblen',
     slug: 'veblen',
     ownerId: '53ebe8d8-4700-43b0-aae7-f30608cd3b66', // Tony's user ID
-    ownerEmail: 'tony@opusautomations.com'
+    ownerEmail: 'brelvin75@gmail.com'
   },
   
   // System mode - INTERNAL ONLY
@@ -56,7 +56,7 @@ export const INTERNAL_CONFIG = {
 // Check if user is system administrator
 export const isSystemAdmin = (userEmail) => {
   const adminEmails = [
-    'tony@opusautomations.com',
+    'brelvin75@gmail.com',
     'admin@veblen.com.au'
   ];
   return adminEmails.includes(userEmail?.toLowerCase());

@@ -6,7 +6,6 @@ import { auth } from './auth.js';
 import { prisma } from './lib/prisma.js';
 
 // Import new route modules
-import { startKPIScheduler } from './services/kpiEmailScheduler.js';
 import authRoutes from './routes/auth.js';
 import organizationRoutes from './routes/organizations.js';
 import memberRoutes from './routes/members.js';
@@ -25,9 +24,6 @@ import onboardingRoutes from './api/onboarding.js';
 import adminRoutes from './api/admin.js';
 import passwordResetRoutes from './routes/password-reset.js';
 import invitationRoutes from './api/invitations.js';
-import attendanceRoutes from './api/attendance.js';
-import kpiRoutes from './api/kpi.js';
-import kpiReportRoutes from './api/kpi-report.js';
 import { 
   blockPublicRegistration, 
   addInternalBranding, 
@@ -55,130 +51,42 @@ if (missingEnvVars.length > 0) {
   console.log('✅ All required environment variables are configured');
 }
 
-// Database schema sync — uses db push (no migrations folder required)
+// Database migration function
 async function runDatabaseMigrations() {
   if (!process.env.DATABASE_URL) {
-    console.warn('⚠️  DATABASE_URL not found, skipping schema sync');
+    console.warn('⚠️  DATABASE_URL not found, skipping migrations');
     return;
   }
 
   try {
-    console.log('🔄 Syncing database schema with prisma db push...');
+    console.log('🔄 Running database migrations...');
     const { exec } = await import('child_process');
     const { promisify } = await import('util');
     const execAsync = promisify(exec);
-
-    const { stdout, stderr } = await execAsync(
-      'node /app/node_modules/.bin/prisma db push --accept-data-loss --skip-generate',
-      { cwd: '/app/backend' }
-    );
-    if (stdout) console.log('📋 Schema sync output:', stdout);
-    if (stderr && !stderr.includes('INFO')) console.warn('⚠️  Schema sync warnings:', stderr);
-
-    console.log('✅ Database schema synced successfully');
+    
+    const { stdout, stderr } = await execAsync('npx prisma migrate deploy');
+    if (stdout) console.log('📋 Migration output:', stdout);
+    if (stderr && !stderr.includes('INFO')) console.warn('⚠️  Migration warnings:', stderr);
+    
+    console.log('✅ Database migrations completed successfully');
   } catch (error) {
-    console.warn('⚠️  Schema sync failed (tables may already exist):', error.message);
-    // Non-fatal — server continues, existing tables are still usable
-  }
-
-  // Ensure new tables exist — each in its own try/catch, no FK constraints to avoid name-case issues
-  try {
-    await prisma.$executeRawUnsafe(`
-      CREATE TABLE IF NOT EXISTS task_comments (
-        id        VARCHAR(36)  NOT NULL,
-        taskId    VARCHAR(50)  NOT NULL,
-        userId    VARCHAR(36)  NOT NULL,
-        orgId     VARCHAR(36)  NOT NULL,
-        content   TEXT         NOT NULL,
-        createdAt DATETIME(3)  NOT NULL DEFAULT CURRENT_TIMESTAMP(3),
-        updatedAt DATETIME(3)  NOT NULL DEFAULT CURRENT_TIMESTAMP(3) ON UPDATE CURRENT_TIMESTAMP(3),
-        PRIMARY KEY (id),
-        KEY idx_tc_task (taskId),
-        KEY idx_tc_org  (orgId)
-      ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
-    `);
-    console.log('✅ task_comments table ensured');
-  } catch (err) {
-    console.warn('⚠️  task_comments table ensure failed:', err.message);
-  }
-  try {
-    await prisma.$executeRawUnsafe(`
-      CREATE TABLE IF NOT EXISTS task_attachments (
-        id        VARCHAR(36)  NOT NULL,
-        taskId    VARCHAR(50)  NOT NULL,
-        userId    VARCHAR(36)  NOT NULL,
-        orgId     VARCHAR(36)  NOT NULL,
-        name      VARCHAR(255) NOT NULL,
-        mimeType  VARCHAR(100) NOT NULL DEFAULT 'application/octet-stream',
-        size      INT          NOT NULL DEFAULT 0,
-        data      LONGTEXT     NOT NULL,
-        category  VARCHAR(20)  NOT NULL DEFAULT 'attachment',
-        createdAt DATETIME(3)  NOT NULL DEFAULT CURRENT_TIMESTAMP(3),
-        PRIMARY KEY (id),
-        KEY idx_ta_task (taskId),
-        KEY idx_ta_org  (orgId)
-      ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
-    `);
-    console.log('✅ task_attachments table ensured');
-  } catch (err) {
-    console.warn('⚠️  task_attachments table ensure failed:', err.message);
-  }
-
-}
-
-// Auto-seed initial test account if database is empty
-async function seedInitialData() {
-  if (!process.env.DATABASE_URL) return;
-
-  try {
-    const userCount = await prisma.user.count();
-    if (userCount > 0) {
-      console.log('ℹ️  Database has existing users, skipping initial seed');
-      return;
+    console.error('❌ Database migration failed:', error.message);
+    
+    // Check if it's a baseline issue (P3005)
+    if (error.message.includes('P3005') || error.message.includes('database schema is not empty')) {
+      console.log('🔄 Database schema exists, checking migration status...');
+      try {
+        // Try to push the current schema state to match Prisma expectations
+        await execAsync('npx prisma db push --accept-data-loss');
+        console.log('✅ Database schema synchronized successfully');
+      } catch (pushError) {
+        console.warn('⚠️  Could not sync schema:', pushError.message);
+        console.log('📋 Database schema exists and server will continue normally');
+        console.log('💡 Manual fix: Run "npx prisma migrate resolve --applied <migration_name>" in Railway console');
+      }
     }
-
-    console.log('🌱 Empty database detected — seeding initial test account...');
-    const { default: bcrypt } = await import('bcryptjs');
-    const hashedPassword = await bcrypt.hash('Test@1234', 10);
-
-    const user = await prisma.user.create({
-      data: {
-        email: 'admin@vebtask.com',
-        name: 'VebTask Admin',
-        emailVerified: true,
-      }
-    });
-
-    await prisma.account.create({
-      data: {
-        accountId: user.email,
-        userId: user.id,
-        providerId: 'credential',
-        password: hashedPassword,
-      }
-    });
-
-    const org = await prisma.organization.create({
-      data: {
-        name: 'VebTask Demo',
-        slug: 'vebtask-demo',
-        createdById: user.id,
-      }
-    });
-
-    await prisma.membership.create({
-      data: {
-        userId: user.id,
-        orgId: org.id,
-        role: 'OWNER',
-      }
-    });
-
-    console.log('✅ Test account seeded:');
-    console.log('   Email: admin@vebtask.com');
-    console.log('   Password: Test@1234');
-  } catch (error) {
-    console.warn('⚠️  Initial seed failed (non-fatal):', error.message);
+    
+    // Don't exit - let the server start anyway, tables might already exist
   }
 }
 
@@ -382,7 +290,7 @@ app.use('/api', async (req, res, next) => {
         // TODO: Remove this after fixing session management
         try {
           const existingUser = await prisma.user.findFirst({
-            where: { email: 'tony@opusautomations.com' },
+            where: { email: 'brelvin75@gmail.com' },
             select: { id: true, email: true, name: true }
           });
           
@@ -445,9 +353,6 @@ app.use('/api/onboarding', onboardingRoutes);
 app.use('/api/admin', adminRoutes);
 app.use('/api/auth', passwordResetRoutes);
 app.use('/api/invitations', invitationRoutes);
-app.use('/api/attendance', attendanceRoutes);
-app.use('/api/kpi', kpiRoutes);
-app.use('/api/kpi-report', kpiReportRoutes);
 
 // Test routes for debugging (NO AUTH - REMOVE IN PRODUCTION)
 import testProjectsRoutes from './api/test-projects.js';
@@ -1221,7 +1126,7 @@ app.get('/api/emergency/setup-user-org', async (req, res) => {
 
     const requiredUserId = '53ebe8d8-4700-43b0-aae7-f30608cd3b66';
     const requiredOrgId = 'org_1757046595553';
-    const userEmail = 'tony@opusautomations.com';
+    const userEmail = 'brelvin75@gmail.com';
 
     // Step 1: Ensure user exists
     let user = await prisma.user.findUnique({
@@ -1344,7 +1249,7 @@ app.get('/api/inspect/database', async (req, res) => {
       where: {
         OR: [
           { id: userId },
-          { email: 'tony@opusautomations.com' }
+          { email: 'brelvin75@gmail.com' }
         ]
       },
       select: { id: true, email: true, name: true }
@@ -2067,7 +1972,7 @@ app.post('/api/ai/process-brain-dump', async (req, res) => {
         'Content-Type': 'application/json',
       },
       body: JSON.stringify({
-        model: 'openai/gpt-4o-mini',
+        model: 'openai/gpt-5-nano',
         messages: [{
           role: 'system',
           content: getAISystemPrompt(preferences)
@@ -2076,13 +1981,12 @@ app.post('/api/ai/process-brain-dump', async (req, res) => {
           content: content
         }],
         temperature: 0.3,
-        max_tokens: 6000
+        max_tokens: 2000
       })
     });
 
     if (!response.ok) {
-      const errBody = await response.text();
-      console.error(`OpenRouter API error: ${response.status} ${response.statusText}`, errBody);
+      console.error(`OpenRouter API error: ${response.status} ${response.statusText}`);
       // Fallback to simulation on API error
       const result = simulateAIProcessing(content, preferences);
       return res.status(200).json(result);
@@ -2096,7 +2000,7 @@ app.post('/api/ai/process-brain-dump', async (req, res) => {
       const result = {
         ...parsed,
         processingTimestamp: new Date().toISOString(),
-        aiModel: 'gpt-4o-mini'
+        aiModel: 'gpt-5-nano'
       };
       
       console.log('✅ Brain dump processed successfully with AI');
@@ -2260,29 +2164,24 @@ CRITICAL: Return ONLY the JSON object. No additional text, explanations, or form
 }
 
 function simulateAIProcessing(content, preferences = {}) {
-  // Split by newlines, sentence endings, bullet points, AND commas before action verbs
-  const rawSegments = content
-    .split(/[\n\r]+|(?<=[.!?])\s+|•|-\s+/)
-    .flatMap(segment => {
-      // Further split comma-separated items if they look like multiple tasks
-      const parts = segment.split(/,\s+(?=\w)/);
-      return parts.length > 1 ? parts : [segment];
-    });
-  const segments = rawSegments.map(s => s.trim()).filter(s => s.length >= 5);
+  const lines = content.split('\n').filter(line => line.trim());
   const tasks = [];
-
-  segments.forEach((segment) => {
-    if (isTaskLike(segment)) {
-      const priority = determinePriority(segment);
+  
+  lines.forEach((line) => {
+    const trimmedLine = line.trim();
+    if (trimmedLine.length < 5) return;
+    
+    if (isTaskLike(trimmedLine)) {
+      const priority = determinePriority(trimmedLine);
       const estimatedTime = Math.random() * 4 + 1;
-
+      
       tasks.push({
         id: generateSimpleId(),
-        title: extractSimpleTitle(segment),
-        description: segment,
+        title: extractSimpleTitle(trimmedLine),
+        description: trimmedLine,
         priority,
         estimatedHours: Math.round(estimatedTime * 10) / 10,
-        category: 'General',
+        category: 'general',
         tags: [],
         microTasks: []
       });
@@ -2292,11 +2191,11 @@ function simulateAIProcessing(content, preferences = {}) {
   if (tasks.length === 0) {
     tasks.push({
       id: generateSimpleId(),
-      title: extractSimpleTitle(content.substring(0, 60)),
+      title: extractSimpleTitle(content.substring(0, 50)),
       description: content,
-      priority: 'Medium',
+      priority: 'medium',
       estimatedHours: 2,
-      category: 'General',
+      category: 'general',
       tags: [],
       microTasks: []
     });
@@ -2558,55 +2457,95 @@ async function getDbPool() {
 // Save brain dump tasks to database with optimal scheduling
 app.post('/api/brain-dump/save-tasks', async (req, res) => {
   try {
-    const { extractedTasks, userId } = req.body;
+    const { extractedTasks, dailySchedule, userId } = req.body;
 
     if (!extractedTasks || !userId) {
       return res.status(400).json({ error: 'extractedTasks and userId are required' });
     }
 
-    // Get the user's active org from their membership
-    const membership = await prisma.membership.findFirst({
-      where: { userId },
-      select: { orgId: true }
-    });
-
-    if (!membership?.orgId) {
-      return res.status(400).json({ error: 'User has no organization membership' });
-    }
-
-    const orgId = membership.orgId;
+    const pool = await getDbPool();
     const savedTasks = [];
 
-    for (const task of extractedTasks) {
-      const created = await prisma.macroTask.create({
-        data: {
-          title: task.title || 'Untitled Task',
-          description: task.description || '',
+    // Begin transaction
+    const connection = await pool.getConnection();
+    await connection.beginTransaction();
+
+    try {
+      // Save tasks to macro_tasks table
+      for (const task of extractedTasks) {
+        const taskId = task.id || `${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+        
+        // Insert into macro_tasks
+        await connection.execute(
+          `INSERT INTO macro_tasks (
+            id, title, description, userId, createdBy, priority, estimatedHours, 
+            status, category, tags, createdAt
+          ) VALUES (?, ?, ?, ?, ?, ?, ?, 'not_started', ?, ?, NOW())`,
+          [
+            taskId,
+            task.title,
+            task.description,
+            userId,
+            userId,
+            task.priority,
+            task.estimatedHours,
+            task.category,
+            JSON.stringify({
+              tags: task.tags || [],
+              microTasks: task.microTasks || [],
+              energyLevel: task.energyLevel,
+              focusType: task.focusType,
+              optimalTimeSlot: task.optimalTimeSlot,
+              suggestedDay: task.suggestedDay
+            })
+          ]
+        );
+
+        savedTasks.push({
+          id: taskId,
+          ...task
+        });
+
+      }
+
+      // Save brain dump record
+      const brainDumpId = `dump-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+      await connection.execute(
+        `INSERT INTO brain_dumps (
+          id, userId, rawContent, processedContent, processingStatus, 
+          aiModel, processedAt, createdAt
+        ) VALUES (?, ?, ?, ?, 'completed', 'ai-scheduler', NOW(), NOW())`,
+        [
+          brainDumpId,
           userId,
-          orgId,
-          createdBy: userId,
-          priority: task.priority || 'Medium',
-          estimatedHours: parseFloat(task.estimatedHours) || 0,
-          status: 'not_started',
-          category: task.category || 'General',
-          tags: {
-            tags: task.tags || [],
-            microTasks: task.microTasks || [],
-            energyLevel: task.energyLevel,
-            focusType: task.focusType,
-            optimalTimeSlot: task.optimalTimeSlot,
-            suggestedDay: task.suggestedDay
-          }
+          req.body.originalContent || '',
+          JSON.stringify({
+            extractedTasks,
+            dailySchedule,
+            savedAt: new Date().toISOString()
+          })
+        ]
+      );
+
+      await connection.commit();
+
+      res.json({
+        success: true,
+        message: 'Tasks and schedule saved successfully',
+        data: {
+          brainDumpId,
+          savedTasks,
+          dailySchedule,
+          totalTasksCreated: savedTasks.length
         }
       });
-      savedTasks.push(created);
-    }
 
-    res.json({
-      success: true,
-      message: `${savedTasks.length} tasks imported successfully`,
-      data: { savedTasks, totalTasksCreated: savedTasks.length }
-    });
+    } catch (error) {
+      await connection.rollback();
+      throw error;
+    } finally {
+      connection.release();
+    }
 
   } catch (error) {
     console.error('❌ Brain dump save error:', error);
@@ -2928,30 +2867,21 @@ app.get('*', (req, res) => {
   res.sendFile(path.join(__dirname, '..', 'frontend', 'dist', 'index.html'));
 });
 
-// Start server first, then run migrations in background
+// Run migrations and start server
 async function startServer() {
-  // Bind to port
-  await new Promise((resolve, reject) => {
-    app.listen(PORT, '0.0.0.0', () => {
-      console.log(`✅ Server running on port ${PORT}`);
-      console.log(`🔐 Auth endpoints available at /api/auth/*`);
-      console.log(`📱 React app available at /`);
-      console.log(`🏥 Health check available at /health-simple`);
-      console.log(`🌐 Environment: ${process.env.NODE_ENV || 'development'}`);
-      console.log(`📊 Database URL configured: ${!!process.env.DATABASE_URL}`);
-      resolve();
-    }).on('error', reject);
+  await runDatabaseMigrations();
+  
+  app.listen(PORT, '0.0.0.0', () => {
+    console.log(`✅ Server running on port ${PORT}`);
+    console.log(`🔐 Auth endpoints available at /api/auth/*`);
+    console.log(`📱 React app available at /`);
+    console.log(`🏥 Health check available at /health-simple`);
+    console.log(`🌐 Environment: ${process.env.NODE_ENV || 'development'}`);
+    console.log(`📊 Database URL configured: ${!!process.env.DATABASE_URL}`);
+  }).on('error', (err) => {
+    console.error('❌ Server startup error:', err);
+    process.exit(1);
   });
-
-  // ── Start KPI email scheduler ──────────────────────────────────────────────
-  startKPIScheduler();
-
-  // Run full migrations + seed in background after server starts
-  runDatabaseMigrations()
-    .then(() => seedInitialData())
-    .catch(err => {
-      console.warn('⚠️  Background setup error (server still running):', err.message);
-    });
 }
 
 // Start the server

@@ -209,11 +209,19 @@ router.get('/recent', requireAuth, withOrgScope, validateQuery(commonSchemas.pag
       return res.status(400).json({ error: 'userId is required' });
     }
 
+    // Use req.user.id if available, fall back to query userId
+    const effectiveUserId = req.user?.id || userId;
+    const effectiveOrgId = req.orgId || orgId;
+
+    console.log('[TimeLogs] /recent:', { queryUserId: userId, queryOrgId: orgId, effectiveUserId, effectiveOrgId, userEmail: req.user?.email });
+
     // Check the requesting user's role in this org
     const membership = await prisma.membership.findUnique({
-      where: { userId_orgId: { userId: req.user.id, orgId: req.orgId } },
+      where: { userId_orgId: { userId: effectiveUserId, orgId: effectiveOrgId } },
       select: { role: true }
     });
+
+    console.log('[TimeLogs] membership:', { found: !!membership, role: membership?.role });
 
     const role = membership?.role || 'STAFF';
     const isPrivileged = role === 'OWNER' || role === 'ADMIN';
@@ -223,7 +231,7 @@ router.get('/recent', requireAuth, withOrgScope, validateQuery(commonSchemas.pag
     if (isPrivileged) {
       // Fetch ALL time logs for the org
       entries = await prisma.timeLog.findMany({
-        where: { orgId: req.orgId },
+        where: { orgId: effectiveOrgId },
         orderBy: { begin: 'desc' },
         take: parseInt(limit),
         include: {
@@ -237,7 +245,7 @@ router.get('/recent', requireAuth, withOrgScope, validateQuery(commonSchemas.pag
 
       // Fetch all member user info for name lookup
       const memberships = await prisma.membership.findMany({
-        where: { orgId: req.orgId },
+        where: { orgId: effectiveOrgId },
         include: { user: { select: { id: true, name: true, email: true, image: true } } }
       });
       const userMap = Object.fromEntries(memberships.map(m => [m.userId, { ...m.user, role: m.role }]));

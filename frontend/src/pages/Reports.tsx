@@ -163,9 +163,9 @@ function ReportModal({ isOpen, onClose, onSave, projects }: {
             </div>
 
             <div>
-              <label style={lbl}><Building2 size={12} />Project *</label>
-              <select value={selectedProject} onChange={e => setSelectedProject(e.target.value)} required style={inp}>
-                <option value="" style={{ background: VS.bg2 }}>Choose a project…</option>
+              <label style={lbl}><Building2 size={12} />Project (optional)</label>
+              <select value={selectedProject} onChange={e => setSelectedProject(e.target.value)} style={inp}>
+                <option value="" style={{ background: VS.bg2 }}>No project / General report</option>
                 {projects.map(p => <option key={p.id} value={p.id} style={{ background: VS.bg2 }}>{p.name}</option>)}
               </select>
             </div>
@@ -278,13 +278,12 @@ export function Reports() {
     const projectName = projects.find(p => p.id === reportData.projectId)?.name;
     const data = await apiClient.fetch('/api/user-reports', {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
-        title:       projectName ? `${projectName} — Report` : 'Project Report',
+        title:       projectName ? `${projectName} — Report` : undefined,
         description: reportData.description,
         userName:    reportData.userName,
         image:       reportData.image,
-        projectId:   reportData.projectId,
+        projectId:   reportData.projectId || undefined,
       }),
     });
     if (!data.success) throw new Error(data.error || 'Failed to save');

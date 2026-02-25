@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import { useSession } from '../lib/auth-client';
 import { useApiClient } from '../lib/api-client';
+import { useOrganization } from '../contexts/OrganizationContext';
 import {
   CheckCircle2, Clock, Folder, AlertCircle, ChevronDown, ChevronRight,
   Loader2, ListTodo, Calendar,
@@ -65,6 +66,7 @@ function dueDateColor(dueDate?: string) {
 
 export function ClientDashboard() {
   const { data: session } = useSession();
+  const { currentOrg } = useOrganization();
   const apiClient = useApiClient();
   const [client, setClient]   = useState<ClientInfo | null>(null);
   const [projects, setProjects] = useState<Project[]>([]);
@@ -73,7 +75,7 @@ export function ClientDashboard() {
   const [expanded, setExpanded] = useState<Record<string, boolean>>({});
 
   useEffect(() => {
-    if (!session?.user?.id) return;
+    if (!session?.user?.id || !currentOrg?.id) return;
     (async () => {
       try {
         setLoading(true);
@@ -92,12 +94,12 @@ export function ClientDashboard() {
         setLoading(false);
       }
     })();
-  }, [session?.user?.id]);
+  }, [session?.user?.id, currentOrg?.id]);
 
   if (loading) {
     return (
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: 240, color: VS.text1 }}>
-        <Loader2 size={24} style={{ marginRight: 10, animation: 'spin 1s linear infinite' }} />
+        <Loader2 size={24} className="animate-spin" style={{ marginRight: 10 }} />
         Loading your projects…
       </div>
     );

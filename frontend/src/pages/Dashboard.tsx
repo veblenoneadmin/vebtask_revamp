@@ -282,8 +282,6 @@ export function Dashboard() {
   };
 
   // ── Early returns ──────────────────────────────────────────────────────────
-  if (currentOrg?.role === 'CLIENT') return <ClientDashboard />;
-
   if (!session || orgLoading || !currentOrg) {
     return (
       <div className="min-h-screen flex items-center justify-center" style={{ background: VS.bg0 }}>
@@ -294,6 +292,9 @@ export function Dashboard() {
       </div>
     );
   }
+
+  // CLIENT role — render dedicated client view (session + org are guaranteed here)
+  if (currentOrg.role === 'CLIENT') return <ClientDashboard />;
 
   const userName = session?.user?.email?.split('@')[0]?.replace(/[^a-zA-Z]/g, '') || 'User';
   const displayName = userName.charAt(0).toUpperCase() + userName.slice(1);

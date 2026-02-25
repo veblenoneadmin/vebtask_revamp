@@ -24,5 +24,5 @@ RUN npm run build
 # Expose the port (Railway will set PORT env var dynamically)
 EXPOSE 3001
 
-# Run migrations then start server
-CMD ["sh", "-c", "npx prisma migrate deploy --schema backend/prisma/schema.prisma && node backend/server.js"]
+# Start server — migrations run inside server.js before app.listen()
+CMD ["node", "backend/server.js"]

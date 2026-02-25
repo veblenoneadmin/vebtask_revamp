@@ -93,8 +93,6 @@ interface Task {
   title: string;
   status: string;
   priority: string;
-  estimatedHours: number;
-  actualHours: number;
   dueDate?: string;
   createdAt: string;
   updatedAt: string;
@@ -566,8 +564,7 @@ export function ClientDashboard() {
             <div className="space-y-2">
               {[
                 { label: 'My Projects',  href: '/projects', color: VS.orange, icon: FolderOpen  },
-                { label: 'All Tasks',    href: '/tasks',    color: VS.blue,   icon: CheckSquare },
-                { label: 'View Reports', href: '/reports',  color: VS.purple, icon: BarChart3   },
+                { label: 'All Tasks', href: '/tasks', color: VS.blue, icon: CheckSquare },
               ].map(a => {
                 const Icon = a.icon;
                 return (

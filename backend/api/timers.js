@@ -198,33 +198,104 @@ router.get('/stats', requireAuth, withOrgScope, validateQuery(commonSchemas.pagi
   }
 });
 
-// Get recent time entries
+// Get recent time entries — role-aware:
+// OWNER/ADMIN → all org logs with member info
+// STAFF/CLIENT → own logs only
 router.get('/recent', requireAuth, withOrgScope, validateQuery(commonSchemas.pagination), async (req, res) => {
   try {
-    const { userId, orgId, limit = 10 } = req.query;
-    
+    const { userId, orgId, limit = 50 } = req.query;
+
     if (!userId) {
       return res.status(400).json({ error: 'userId is required' });
     }
-    
-    const entries = await timerService.getRecentEntries(userId, orgId, parseInt(limit));
 
-    res.json({
-      entries: entries.map(entry => ({
-        id: entry.id,
-        taskId: entry.taskId,
-        taskTitle: entry.task?.title || 'Untitled Task',
-        projectName: entry.task?.project?.name || 'General',
-        projectId: entry.task?.projectId,
-        clientName: entry.task?.project?.client?.name || 'Internal',
-        description: entry.description,
-        category: entry.category,
-        startTime: entry.begin,
-        endTime: entry.end,
-        duration: entry.duration,
-        status: entry.end ? 'stopped' : 'running'
-      }))
+    // Check the requesting user's role in this org
+    const membership = await prisma.membership.findUnique({
+      where: { userId_orgId: { userId: req.user.id, orgId: req.orgId } },
+      select: { role: true }
     });
+
+    const role = membership?.role || 'STAFF';
+    const isPrivileged = role === 'OWNER' || role === 'ADMIN';
+
+    let entries;
+
+    if (isPrivileged) {
+      // Fetch ALL time logs for the org
+      entries = await prisma.timeLog.findMany({
+        where: { orgId: req.orgId },
+        orderBy: { begin: 'desc' },
+        take: parseInt(limit),
+        include: {
+          task: {
+            include: {
+              project: { include: { client: true } }
+            }
+          }
+        }
+      });
+
+      // Fetch all member user info for name lookup
+      const memberships = await prisma.membership.findMany({
+        where: { orgId: req.orgId },
+        include: { user: { select: { id: true, name: true, email: true, image: true } } }
+      });
+      const userMap = Object.fromEntries(memberships.map(m => [m.userId, { ...m.user, role: m.role }]));
+
+      return res.json({
+        role,
+        isPrivileged: true,
+        entries: entries.map(entry => ({
+          id: entry.id,
+          taskId: entry.taskId,
+          taskTitle: entry.task?.title || 'Untitled Task',
+          projectName: entry.task?.project?.name || 'General',
+          projectId: entry.task?.projectId,
+          clientName: entry.task?.project?.client?.name || 'Internal',
+          description: entry.description,
+          category: entry.category,
+          startTime: entry.begin,
+          endTime: entry.end,
+          duration: entry.duration,
+          isBillable: entry.isBillable,
+          status: entry.end ? 'stopped' : 'running',
+          // Member info for admin view
+          memberId: entry.userId,
+          memberName: userMap[entry.userId]?.name || userMap[entry.userId]?.email || 'Unknown',
+          memberEmail: userMap[entry.userId]?.email || '',
+          memberImage: userMap[entry.userId]?.image || null,
+          memberRole: userMap[entry.userId]?.role || 'STAFF',
+        }))
+      });
+    } else {
+      // STAFF/CLIENT — own logs only
+      entries = await timerService.getRecentEntries(userId, orgId, parseInt(limit));
+
+      return res.json({
+        role,
+        isPrivileged: false,
+        entries: entries.map(entry => ({
+          id: entry.id,
+          taskId: entry.taskId,
+          taskTitle: entry.task?.title || 'Untitled Task',
+          projectName: entry.task?.project?.name || 'General',
+          projectId: entry.task?.projectId,
+          clientName: entry.task?.project?.client?.name || 'Internal',
+          description: entry.description,
+          category: entry.category,
+          startTime: entry.begin,
+          endTime: entry.end,
+          duration: entry.duration,
+          isBillable: entry.isBillable,
+          status: entry.end ? 'stopped' : 'running',
+          memberId: entry.userId,
+          memberName: req.user.name || req.user.email,
+          memberEmail: req.user.email,
+          memberImage: req.user.image || null,
+          memberRole: role,
+        }))
+      });
+    }
   } catch (error) {
     console.error('Error fetching recent entries:', error);
     res.status(500).json({ error: 'Failed to fetch recent entries' });

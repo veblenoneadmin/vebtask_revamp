@@ -7,67 +7,6 @@ import { checkDatabaseConnection, handleDatabaseError } from '../lib/api-error-h
 
 const router = express.Router();
 
-// ── Startup migration — add columns that may not exist yet ────────────────────
-// Uses INFORMATION_SCHEMA to check before adding (works on all MySQL versions).
-async function ensureClientsColumns() {
-  if (!process.env.DATABASE_URL) return;
-
-  const cols = [
-    { name: 'company',        def: "VARCHAR(255) NULL" },
-    { name: 'status',         def: "VARCHAR(20) NOT NULL DEFAULT 'active'" },
-    { name: 'hourly_rate',    def: "DECIMAL(10,2) NULL" },
-    { name: 'contact_person', def: "VARCHAR(255) NULL" },
-    { name: 'industry',       def: "VARCHAR(255) NULL" },
-    { name: 'priority',       def: "VARCHAR(20) NOT NULL DEFAULT 'medium'" },
-    { name: 'notes',          def: "TEXT NULL" },
-    { name: 'user_id',        def: "VARCHAR(36) NULL" },
-  ];
-
-  let added = 0;
-  for (const col of cols) {
-    try {
-      const rows = await prisma.$queryRawUnsafe(
-        `SELECT COUNT(*) AS cnt FROM INFORMATION_SCHEMA.COLUMNS
-         WHERE TABLE_SCHEMA = DATABASE()
-           AND TABLE_NAME   = 'clients'
-           AND COLUMN_NAME  = '${col.name}'`
-      );
-      const exists = Number(rows[0]?.cnt ?? rows[0]?.CNT ?? 0) > 0;
-      if (!exists) {
-        await prisma.$executeRawUnsafe(
-          `ALTER TABLE clients ADD COLUMN ${col.name} ${col.def}`
-        );
-        added++;
-        console.log(`  ✅ Added column clients.${col.name}`);
-      }
-    } catch (e) {
-      console.warn(`  ⚠️  clients.${col.name}: ${e.message}`);
-    }
-  }
-
-  // Index on user_id (try/catch — older MySQL lacks IF NOT EXISTS for indexes)
-  try {
-    const idxRows = await prisma.$queryRawUnsafe(
-      `SELECT COUNT(*) AS cnt FROM INFORMATION_SCHEMA.STATISTICS
-       WHERE TABLE_SCHEMA = DATABASE()
-         AND TABLE_NAME   = 'clients'
-         AND INDEX_NAME   = 'clients_user_id_idx'`
-    );
-    const idxExists = Number(idxRows[0]?.cnt ?? idxRows[0]?.CNT ?? 0) > 0;
-    if (!idxExists) {
-      await prisma.$executeRawUnsafe(
-        `CREATE INDEX clients_user_id_idx ON clients(user_id)`
-      );
-    }
-  } catch (e) {
-    console.warn(`  ⚠️  clients user_id index: ${e.message}`);
-  }
-
-  if (added > 0) console.log(`✅ clients table: ${added} column(s) added`);
-  else console.log('✅ clients table columns already up to date');
-}
-
-ensureClientsColumns().catch(e => console.warn('⚠️  clients migration:', e.message));
 
 // ── Helper ────────────────────────────────────────────────────────────────────
 function formatClient(c) {
@@ -96,78 +35,69 @@ function formatClient(c) {
 }
 
 // ── GET /api/clients/my ───────────────────────────────────────────────────────
-// Returns the Client record linked to the logged-in CLIENT user, with projects+tasks
+// Returns the Client record linked to the logged-in CLIENT user, with projects+tasks.
+// Uses raw SQL so it works even when extended columns haven't been added yet.
 router.get('/my', requireAuth, withOrgScope, async (req, res) => {
   try {
     const userId = req.user.id;
     const orgId  = req.orgId;
 
-    // Fetch client with only safe/original fields — avoids column-name
-    // mismatches on newly-added fields (hourlyRate, contactPerson, etc.)
-    const client = await prisma.client.findFirst({
-      where: { userId, orgId },
+    // SELECT * returns whatever columns exist — no P2022 if new columns are missing
+    // user_id is the DB column name (Prisma maps userId → user_id via @map)
+    const rows = await prisma.$queryRawUnsafe(
+      `SELECT * FROM clients WHERE user_id = ? AND orgId = ? LIMIT 1`,
+      userId, orgId
+    );
+
+    const raw = rows[0] || null;
+
+    if (!raw) {
+      return res.json({ success: true, client: null, projects: [] });
+    }
+
+    // Fetch projects via Prisma (projects table has no missing columns)
+    const projects = await prisma.project.findMany({
+      where:   { clientId: raw.id, orgId },
+      orderBy: { name: 'asc' },
       select: {
-        id:        true,
-        name:      true,
-        email:     true,
-        phone:     true,
-        address:   true,
-        company:   true,
-        status:    true,
-        industry:  true,
-        priority:  true,
-        notes:     true,
-        orgId:     true,
-        createdAt: true,
-        updatedAt: true,
-        projects: {
-          where:    { orgId },
-          orderBy:  { name: 'asc' },
+        id:     true,
+        name:   true,
+        color:  true,
+        status: true,
+        tasks: {
+          where:   { orgId },
+          orderBy: { createdAt: 'desc' },
           select: {
-            id:     true,
-            name:   true,
-            color:  true,
-            status: true,
-            tasks: {
-              where:   { orgId },
-              orderBy: { createdAt: 'desc' },
-              select: {
-                id:             true,
-                title:          true,
-                status:         true,
-                priority:       true,
-                estimatedHours: true,
-                actualHours:    true,
-                dueDate:        true,
-                createdAt:      true,
-                updatedAt:      true,
-              },
-            },
+            id:             true,
+            title:          true,
+            status:         true,
+            priority:       true,
+            estimatedHours: true,
+            actualHours:    true,
+            dueDate:        true,
+            createdAt:      true,
+            updatedAt:      true,
           },
         },
       },
     });
 
-    if (!client) {
-      return res.json({ success: true, client: null, projects: [] });
-    }
-
     res.json({
-      success:  true,
+      success: true,
       client: {
-        id:       client.id,
-        name:     client.name,
-        email:    client.email    || null,
-        company:  client.company  || null,
-        phone:    client.phone    || null,
-        address:  client.address  || null,
-        status:   client.status   || 'active',
-        priority: client.priority || 'medium',
-        notes:    client.notes    || null,
-        industry: client.industry || null,
-        orgId:    client.orgId,
+        id:       raw.id,
+        name:     raw.name,
+        email:    raw.email    || null,
+        company:  raw.company  || null,
+        phone:    raw.phone    || null,
+        address:  raw.address  || null,
+        status:   raw.status   || 'active',
+        priority: raw.priority || 'medium',
+        notes:    raw.notes    || null,
+        industry: raw.industry || null,
+        orgId:    raw.orgId,
       },
-      projects: client.projects,
+      projects,
     });
   } catch (error) {
     return handleDatabaseError(error, res, 'fetch my client');

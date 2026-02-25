@@ -54,32 +54,67 @@ if (missingEnvVars.length > 0) {
   console.log('✅ All required environment variables are configured');
 }
 
-// Database migration function
-async function runDatabaseMigrations() {
-  if (!process.env.DATABASE_URL) {
-    console.warn('⚠️  DATABASE_URL not found, skipping migrations');
-    return;
+// Ensure clients table has all required columns (raw SQL, no Prisma schema dependency)
+async function ensureClientsSchema() {
+  if (!process.env.DATABASE_URL) return;
+  console.log('🔄 Checking clients table schema...');
+
+  const cols = [
+    { name: 'company',        def: "VARCHAR(255) NULL" },
+    { name: 'status',         def: "VARCHAR(20) NOT NULL DEFAULT 'active'" },
+    { name: 'hourly_rate',    def: "DECIMAL(10,2) NULL" },
+    { name: 'contact_person', def: "VARCHAR(255) NULL" },
+    { name: 'industry',       def: "VARCHAR(255) NULL" },
+    { name: 'priority',       def: "VARCHAR(20) NOT NULL DEFAULT 'medium'" },
+    { name: 'notes',          def: "TEXT NULL" },
+    { name: 'user_id',        def: "VARCHAR(36) NULL" },
+  ];
+
+  let added = 0;
+  for (const col of cols) {
+    try {
+      const rows = await prisma.$queryRawUnsafe(
+        `SELECT COUNT(*) AS cnt FROM INFORMATION_SCHEMA.COLUMNS
+         WHERE TABLE_SCHEMA = DATABASE()
+           AND TABLE_NAME   = 'clients'
+           AND COLUMN_NAME  = '${col.name}'`
+      );
+      const cnt = Number(rows[0]?.cnt ?? rows[0]?.CNT ?? 0);
+      if (cnt === 0) {
+        await prisma.$executeRawUnsafe(
+          `ALTER TABLE clients ADD COLUMN ${col.name} ${col.def}`
+        );
+        console.log(`  ✅ Added column: clients.${col.name}`);
+        added++;
+      }
+    } catch (e) {
+      console.warn(`  ⚠️  clients.${col.name}: ${e.message}`);
+    }
   }
 
-  const { exec } = await import('child_process');
-  const { promisify } = await import('util');
-  const execAsync = promisify(exec);
-
-  // Run migrate deploy — applies any pending migration files in prisma/migrations/
+  // Add index on user_id if missing
   try {
-    console.log('🔄 Running database migrations...');
-    const { stdout, stderr } = await execAsync(
-      'npx prisma migrate deploy',
-      { cwd: '/app/backend' }
+    const idxRows = await prisma.$queryRawUnsafe(
+      `SELECT COUNT(*) AS cnt FROM INFORMATION_SCHEMA.STATISTICS
+       WHERE TABLE_SCHEMA = DATABASE()
+         AND TABLE_NAME   = 'clients'
+         AND INDEX_NAME   = 'clients_user_id_idx'`
     );
-    if (stdout) console.log('📋 Migration output:', stdout);
-    if (stderr && !stderr.includes('INFO')) console.warn('⚠️  Migration warnings:', stderr);
-    console.log('✅ Database migrations completed');
-  } catch (error) {
-    console.error('❌ Database migration failed:', error.message);
-    if (error.stdout) console.log('stdout:', error.stdout);
-    if (error.stderr) console.log('stderr:', error.stderr);
+    const idxCnt = Number(idxRows[0]?.cnt ?? idxRows[0]?.CNT ?? 0);
+    if (idxCnt === 0) {
+      await prisma.$executeRawUnsafe(
+        `CREATE INDEX clients_user_id_idx ON clients(user_id)`
+      );
+      console.log('  ✅ Added index: clients_user_id_idx');
+    }
+  } catch (e) {
+    console.warn(`  ⚠️  clients_user_id_idx: ${e.message}`);
   }
+
+  console.log(added > 0
+    ? `✅ clients schema: ${added} column(s) added`
+    : '✅ clients schema: already up to date'
+  );
 }
 
 // CORS headers with environment-aware configuration
@@ -2864,8 +2899,8 @@ app.get('*', (req, res) => {
 
 // Run migrations and start server
 async function startServer() {
-  await runDatabaseMigrations();
-  
+  await ensureClientsSchema();
+
   app.listen(PORT, '0.0.0.0', () => {
     console.log(`✅ Server running on port ${PORT}`);
     console.log(`🔐 Auth endpoints available at /api/auth/*`);

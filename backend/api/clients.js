@@ -217,20 +217,22 @@ router.get('/', requireAuth, withOrgScope, validateQuery(commonSchemas.paginatio
 router.get('/slim', requireAuth, withOrgScope, async (req, res) => {
   try {
     const orgId = req.orgId;
-    let rows;
+    // Check if company column exists before selecting it
+    let hasCompany = false;
     try {
-      // Try with company column first (exists after ensureClientsSchema runs)
-      rows = await prisma.$queryRawUnsafe(
-        `SELECT id, name, email, company FROM clients WHERE orgId = ? ORDER BY name ASC`,
-        orgId
+      const cols = await prisma.$queryRawUnsafe(
+        `SELECT COLUMN_NAME FROM INFORMATION_SCHEMA.COLUMNS
+         WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'clients' AND COLUMN_NAME = 'company'`
       );
-    } catch (e) {
-      // company column not yet added — fall back to base columns only
-      rows = await prisma.$queryRawUnsafe(
-        `SELECT id, name, email FROM clients WHERE orgId = ? ORDER BY name ASC`,
-        orgId
-      );
-    }
+      hasCompany = cols.length > 0;
+    } catch { /* ignore */ }
+
+    const rows = await prisma.$queryRawUnsafe(
+      hasCompany
+        ? `SELECT id, name, email, company FROM clients WHERE orgId = ? ORDER BY name ASC`
+        : `SELECT id, name, email FROM clients WHERE orgId = ? ORDER BY name ASC`,
+      orgId
+    );
     res.json({
       success: true,
       clients: rows.map(r => ({

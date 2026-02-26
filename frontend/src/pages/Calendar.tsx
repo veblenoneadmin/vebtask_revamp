@@ -6,7 +6,7 @@ import listPlugin from '@fullcalendar/list';
 import interactionPlugin from '@fullcalendar/interaction';
 import type { EventInput, EventClickArg, EventChangeArg, EventSourceFuncArg } from '@fullcalendar/core';
 import type { DateClickArg } from '@fullcalendar/interaction';
-import { useSession, signIn } from '../lib/auth-client';
+import { useSession, authClient } from '../lib/auth-client';
 import { useApiClient } from '../lib/api-client';
 import { useOrganization } from '../contexts/OrganizationContext';
 import {
@@ -99,9 +99,12 @@ export function Calendar() {
   const handleConnectGoogle = async () => {
     setConnectingGoogle(true);
     try {
-      await signIn.social({ provider: 'google', callbackURL: '/calendar' });
+      await authClient.linkSocial({
+        provider: 'google',
+        callbackURL: '/calendar',
+      });
     } catch (err) {
-      console.error('Google sign in error:', err);
+      console.error('Google calendar connect error:', err);
       setConnectingGoogle(false);
     }
   };

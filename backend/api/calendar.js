@@ -63,6 +63,11 @@ async function ensureTables() {
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
+/** Format a date as MySQL DATETIME string — avoids Prisma auto-detecting ISO strings */
+function toMySQL(d) {
+  return new Date(d).toISOString().slice(0, 19).replace('T', ' ');
+}
+
 async function replaceAttendees(eventId, userIds, orgId) {
   await prisma.$executeRawUnsafe('DELETE FROM calendar_event_attendees WHERE eventId = ?', eventId);
   for (const userId of userIds) {
@@ -135,8 +140,8 @@ router.get('/events', requireAuth, withOrgScope, async (req, res) => {
 
     let whereClause = 'WHERE orgId = ?';
     const params = [req.orgId];
-    if (start) { whereClause += ' AND endAt >= ?';   params.push(new Date(start)); }
-    if (end)   { whereClause += ' AND startAt <= ?'; params.push(new Date(end));   }
+    if (start) { whereClause += ' AND endAt >= ?';   params.push(toMySQL(start)); }
+    if (end)   { whereClause += ' AND startAt <= ?'; params.push(toMySQL(end));   }
 
     const events = await prisma.$queryRawUnsafe(
       `SELECT * FROM calendar_events ${whereClause} ORDER BY startAt ASC`,
@@ -205,7 +210,7 @@ router.post('/events', requireAuth, withOrgScope, async (req, res) => {
       '(id, title, description, location, startAt, endAt, allDay, color, meetLink, createdById, orgId, syncedToGoogle, createdAt, updatedAt) ' +
       'VALUES (?, ?, ?, ?, ?, ?, ?, ?, NULL, ?, ?, 0, NOW(3), NOW(3))',
       id, title, description || null, location || null,
-      start, end, allDay ? 1 : 0, color,
+      toMySQL(start), toMySQL(end), allDay ? 1 : 0, color,
       req.user.id, req.orgId
     );
 
@@ -272,7 +277,7 @@ router.put('/events/:id', requireAuth, withOrgScope, async (req, res) => {
 
     await prisma.$executeRawUnsafe(
       'UPDATE calendar_events SET title=?, description=?, location=?, startAt=?, endAt=?, allDay=?, color=?, updatedAt=NOW(3) WHERE id=?',
-      newTitle, newDesc || null, newLoc || null, newStart, newEnd, newAllDay, newColor, id
+      newTitle, newDesc || null, newLoc || null, toMySQL(newStart), toMySQL(newEnd), newAllDay, newColor, id
     );
 
     if (Array.isArray(attendeeIds)) {

@@ -6,7 +6,7 @@ import listPlugin from '@fullcalendar/list';
 import interactionPlugin from '@fullcalendar/interaction';
 import type { EventInput, EventClickArg, EventChangeArg, EventSourceFuncArg } from '@fullcalendar/core';
 import type { DateClickArg } from '@fullcalendar/interaction';
-import { useSession } from '../lib/auth-client';
+import { useSession, signIn } from '../lib/auth-client';
 import { useApiClient } from '../lib/api-client';
 import { useOrganization } from '../contexts/OrganizationContext';
 import {
@@ -210,12 +210,12 @@ export function Calendar() {
               <Check size={12} /> Google Connected
             </span>
           ) : (
-            <a
-              href="/api/auth/sign-in/social?provider=google"
-              style={{ fontSize: 12, color: VS.text2, textDecoration: 'underline', cursor: 'pointer' }}
+            <button
+              onClick={() => signIn.social({ provider: 'google', callbackURL: '/calendar' })}
+              style={{ fontSize: 12, color: VS.text2, textDecoration: 'underline', cursor: 'pointer', background: 'none', border: 'none', padding: 0 }}
             >
               Connect Google Calendar
-            </a>
+            </button>
           )}
           <button
             onClick={() => openCreateModal()}
@@ -608,9 +608,12 @@ function EventModal({
             }}>
               <div style={{ fontSize: 12, color: VS.text2, display: 'flex', alignItems: 'center', gap: 6 }}>
                 <Video size={12} />
-                <a href="/api/auth/sign-in/social?provider=google" style={{ color: VS.accent, textDecoration: 'underline' }}>
+                <button
+                  onClick={() => signIn.social({ provider: 'google', callbackURL: '/calendar' })}
+                  style={{ color: VS.accent, textDecoration: 'underline', background: 'none', border: 'none', padding: 0, cursor: 'pointer', fontSize: 12 }}
+                >
                   Connect Google Calendar
-                </a>
+                </button>
                 {' '}to generate Meet links
               </div>
             </div>

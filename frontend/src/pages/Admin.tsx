@@ -206,7 +206,6 @@ export function Admin() {
   // ── KPI stats ───────────────────────────────────────────────────────────────
   const pendingInvites = invites.filter(i => i.status === 'PENDING').length;
   const totalTasks     = users.reduce((a, u) => a + (u._count?.macroTasks ?? 0), 0);
-  const totalTimeLogs  = 0; // attendance logs not tracked per-user in this view
 
   // ── Loading ──────────────────────────────────────────────────────────────────
   if (loading) {

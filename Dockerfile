@@ -7,9 +7,6 @@ RUN apt-get update && apt-get install -y openssl ca-certificates && rm -rf /var/
 # Set working directory
 WORKDIR /app
 
-# Cache bust - increment to force clean rebuild
-ARG CACHE_BUST=2
-
 # Copy package files and backend prisma schema
 COPY package*.json ./
 COPY backend/prisma/ ./backend/prisma/
@@ -20,6 +17,12 @@ RUN npm ci
 # Copy source code (frontend and backend)
 COPY frontend/ ./frontend/
 COPY backend/ ./backend/
+
+# Delete stale TypeScript build cache to prevent false errors
+RUN rm -f frontend/node_modules/.tmp/tsconfig.app.tsbuildinfo
+
+# Cache bust - increment to force clean rebuild
+ARG CACHE_BUST=3
 
 # Build the application (frontend build)
 RUN npm run build

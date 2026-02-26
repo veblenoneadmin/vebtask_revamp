@@ -114,7 +114,7 @@ export function Calendar() {
 
   // FullCalendar event source function
   const fetchEvents = useCallback((info: EventSourceFuncArg, success: (events: EventInput[]) => void, failure: (err: Error) => void) => {
-    api.fetch(`/api/calendar/events?start=${info.startStr}&end=${info.endStr}`)
+    api.fetch(`/api/calendar/events?start=${encodeURIComponent(info.startStr)}&end=${encodeURIComponent(info.endStr)}`)
       .then((d: { events: EventInput[] }) => success(d.events))
       .catch((e: Error) => failure(e));
   }, [currentOrg]);

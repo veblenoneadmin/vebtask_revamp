@@ -94,6 +94,17 @@ export function Calendar() {
   const [saving, setSaving] = useState(false);
   const [deleting, setDeleting] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [connectingGoogle, setConnectingGoogle] = useState(false);
+
+  const handleConnectGoogle = async () => {
+    setConnectingGoogle(true);
+    try {
+      await signIn.social({ provider: 'google', callbackURL: '/calendar' });
+    } catch (err) {
+      console.error('Google sign in error:', err);
+      setConnectingGoogle(false);
+    }
+  };
 
   useEffect(() => {
     if (!currentOrg) return;
@@ -211,10 +222,11 @@ export function Calendar() {
             </span>
           ) : (
             <button
-              onClick={() => signIn.social({ provider: 'google', callbackURL: '/calendar' })}
-              style={{ fontSize: 12, color: VS.text2, textDecoration: 'underline', cursor: 'pointer', background: 'none', border: 'none', padding: 0 }}
+              onClick={handleConnectGoogle}
+              disabled={connectingGoogle}
+              style={{ fontSize: 12, color: VS.text2, textDecoration: 'underline', cursor: connectingGoogle ? 'wait' : 'pointer', background: 'none', border: 'none', padding: 0, opacity: connectingGoogle ? 0.6 : 1 }}
             >
-              Connect Google Calendar
+              {connectingGoogle ? 'Connecting…' : 'Connect Google Calendar'}
             </button>
           )}
           <button
@@ -274,6 +286,8 @@ export function Calendar() {
           onSave={handleSave}
           onDelete={handleDelete}
           onClose={() => setShowModal(false)}
+          onConnectGoogle={handleConnectGoogle}
+          connectingGoogle={connectingGoogle}
         />
       )}
     </div>
@@ -293,12 +307,15 @@ interface EventModalProps {
   editingExtended: CalEventExtended | null;
   onSave: () => void;
   onDelete: () => void;
+  onConnectGoogle: () => void;
+  connectingGoogle: boolean;
   onClose: () => void;
 }
 
 function EventModal({
   form, setForm, members, googleConnected, isEdit,
   saving, deleting, error, editingExtended, onSave, onDelete, onClose,
+  onConnectGoogle, connectingGoogle,
 }: EventModalProps) {
   const [memberSearch, setMemberSearch] = useState('');
   const [showMemberList, setShowMemberList] = useState(false);
@@ -609,10 +626,11 @@ function EventModal({
               <div style={{ fontSize: 12, color: VS.text2, display: 'flex', alignItems: 'center', gap: 6 }}>
                 <Video size={12} />
                 <button
-                  onClick={() => signIn.social({ provider: 'google', callbackURL: '/calendar' })}
-                  style={{ color: VS.accent, textDecoration: 'underline', background: 'none', border: 'none', padding: 0, cursor: 'pointer', fontSize: 12 }}
+                  onClick={onConnectGoogle}
+                  disabled={connectingGoogle}
+                  style={{ color: VS.accent, textDecoration: 'underline', background: 'none', border: 'none', padding: 0, cursor: connectingGoogle ? 'wait' : 'pointer', fontSize: 12, opacity: connectingGoogle ? 0.6 : 1 }}
                 >
-                  Connect Google Calendar
+                  {connectingGoogle ? 'Connecting…' : 'Connect Google Calendar'}
                 </button>
                 {' '}to generate Meet links
               </div>

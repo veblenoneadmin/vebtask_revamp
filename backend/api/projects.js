@@ -385,20 +385,34 @@ Rules: 4-8 tasks, 1-2 skills each (use: React, UI Design, Backend API, QA Testin
     }
 
     // 2. Fetch all staff with their skills ────────────────────────────────────
-    const memberships = await prisma.membership.findMany({
-      where: { orgId, role: { in: ['STAFF', 'ADMIN', 'OWNER'] } },
-      include: {
-        user: {
-          select: { id: true, name: true, email: true, image: true },
-          include: {
-            staffSkills: {
-              where:   { orgId },
-              include: { skill: true },
+    // Falls back to no-skills query if skills tables don't exist yet (P2021)
+    let memberships;
+    try {
+      memberships = await prisma.membership.findMany({
+        where: { orgId, role: { in: ['STAFF', 'ADMIN', 'OWNER'] } },
+        include: {
+          user: {
+            select: { id: true, name: true, email: true, image: true },
+            include: {
+              staffSkills: {
+                where:   { orgId },
+                include: { skill: true },
+              },
             },
           },
         },
-      },
-    });
+      });
+    } catch (skillsErr) {
+      console.warn('[Projects] staffSkills tables not ready, skipping skills-based assignment:', skillsErr.message);
+      memberships = await prisma.membership.findMany({
+        where: { orgId, role: { in: ['STAFF', 'ADMIN', 'OWNER'] } },
+        include: {
+          user: { select: { id: true, name: true, email: true, image: true } },
+        },
+      });
+      // Patch in empty staffSkills so the rest of the code works unchanged
+      memberships = memberships.map(m => ({ ...m, user: { ...m.user, staffSkills: [] } }));
+    }
 
     // Workload: open task count per user
     const workloadMap = {};

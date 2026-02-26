@@ -93,22 +93,27 @@ export function Skills() {
 
   const headers = useCallback(() => ({ 'x-org-id': orgId, 'Content-Type': 'application/json' }), [orgId]);
 
+  // Authenticated fetch wrapper — always sends session cookie
+  const apiFetch = useCallback((url: string, options: RequestInit = {}) =>
+    fetch(url, { ...options, headers: { ...headers(), ...(options.headers as object) }, credentials: 'include' }),
+  [headers]);
+
   // ── Fetch data ───────────────────────────────────────────────────────────
   const fetchAll = useCallback(async () => {
     if (!orgId || !session?.user?.id) return;
     setLoading(true);
     try {
       const [libRes, myRes, teamRes] = await Promise.all([
-        fetch(`/api/skills/library`, { headers: headers() }),
-        fetch(`/api/skills/staff/${session.user.id}`, { headers: headers() }),
-        fetch(`/api/skills/team`, { headers: headers() }),
+        apiFetch(`/api/skills/library`),
+        apiFetch(`/api/skills/staff/${session.user.id}`),
+        apiFetch(`/api/skills/team`),
       ]);
       if (libRes.ok) { const d = await libRes.json(); setLibrary(d.skills || []); }
       if (myRes.ok) { const d = await myRes.json(); setMySkills(d.staffSkills || []); }
       if (teamRes.ok) { const d = await teamRes.json(); setTeam(d.team || []); }
     } catch (err) { console.error(err); }
     finally { setLoading(false); }
-  }, [orgId, session, headers]);
+  }, [orgId, session, apiFetch]);
 
   useEffect(() => { fetchAll(); }, [fetchAll]);
 
@@ -117,9 +122,8 @@ export function Skills() {
     if (!selectedSkillId) return;
     setSaving(true);
     try {
-      const res = await fetch('/api/skills/staff', {
+      const res = await apiFetch('/api/skills/staff', {
         method: 'PUT',
-        headers: headers(),
         body: JSON.stringify({ skillId: selectedSkillId, level: selectedLevel, yearsExp: parseFloat(selectedYears) || 0, notes: skillNotes }),
       });
       if (res.ok) {
@@ -133,7 +137,7 @@ export function Skills() {
   // ── Remove skill from my profile ──────────────────────────────────────────
   const handleRemoveSkill = async (skillId: string) => {
     try {
-      await fetch(`/api/skills/staff/${skillId}`, { method: 'DELETE', headers: headers() });
+      await apiFetch(`/api/skills/staff/${skillId}`, { method: 'DELETE' });
       await fetchAll();
     } catch (err) { console.error(err); }
   };
@@ -142,9 +146,8 @@ export function Skills() {
   const handleAddToLibrary = async () => {
     if (!newSkillName.trim()) return;
     try {
-      const res = await fetch('/api/skills/library', {
+      const res = await apiFetch('/api/skills/library', {
         method: 'POST',
-        headers: headers(),
         body: JSON.stringify({ name: newSkillName.trim(), category: newSkillCategory }),
       });
       if (res.ok) { await fetchAll(); setNewSkillName(''); setShowAddLibrary(false); }
@@ -355,7 +358,7 @@ export function Skills() {
                             <span>{s.name}</span>
                             <span className="text-xs text-muted-foreground">({s._count?.staffSkills || 0})</span>
                             {isPrivileged && (
-                              <button onClick={async () => { await fetch(`/api/skills/library/${s.id}`, { method: 'DELETE', headers: headers() }); fetchAll(); }}
+                              <button onClick={async () => { await apiFetch(`/api/skills/library/${s.id}`, { method: 'DELETE' }); fetchAll(); }}
                                 className="text-muted-foreground hover:text-red-400 transition-colors">
                                 <X className="h-3 w-3" />
                               </button>

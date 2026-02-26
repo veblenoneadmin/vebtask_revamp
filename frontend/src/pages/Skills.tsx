@@ -74,6 +74,9 @@ export function Skills() {
   const [showAddLibrary, setShowAddLibrary] = useState(false);
   const [newSkillName, setNewSkillName] = useState('');
   const [newSkillCategory, setNewSkillCategory] = useState('Technical');
+  const [savingLibrary, setSavingLibrary] = useState(false);
+  const [libError, setLibError] = useState('');
+  const [skillError, setSkillError] = useState('');
 
   // Team expand
   const [expandedMember, setExpandedMember] = useState<string | null>(null);
@@ -81,7 +84,7 @@ export function Skills() {
   // ── Fetch org ────────────────────────────────────────────────────────────
   useEffect(() => {
     if (!session?.user?.id) return;
-    fetch(`/api/organizations?userId=${session.user.id}`)
+    fetch(`/api/organizations?userId=${session.user.id}`, { credentials: 'include' })
       .then(r => r.json())
       .then(d => {
         if (d.organizations?.[0]) {
@@ -121,6 +124,7 @@ export function Skills() {
   const handleAddSkill = async () => {
     if (!selectedSkillId) return;
     setSaving(true);
+    setSkillError('');
     try {
       const res = await apiFetch('/api/skills/staff', {
         method: 'PUT',
@@ -130,8 +134,11 @@ export function Skills() {
         await fetchAll();
         setShowAddSkill(false);
         setSelectedSkillId(''); setSelectedLevel(3); setSelectedYears(''); setSkillNotes(''); setSkillSearch('');
+      } else {
+        const d = await res.json().catch(() => ({}));
+        setSkillError(d.error || `Error ${res.status}`);
       }
-    } catch (err) { console.error(err); } finally { setSaving(false); }
+    } catch (err: any) { setSkillError(err.message || 'Failed to save skill'); } finally { setSaving(false); }
   };
 
   // ── Remove skill from my profile ──────────────────────────────────────────
@@ -145,13 +152,23 @@ export function Skills() {
   // ── Add skill to library ──────────────────────────────────────────────────
   const handleAddToLibrary = async () => {
     if (!newSkillName.trim()) return;
+    setSavingLibrary(true);
+    setLibError('');
     try {
       const res = await apiFetch('/api/skills/library', {
         method: 'POST',
         body: JSON.stringify({ name: newSkillName.trim(), category: newSkillCategory }),
       });
-      if (res.ok) { await fetchAll(); setNewSkillName(''); setShowAddLibrary(false); }
-    } catch (err) { console.error(err); }
+      if (res.ok) {
+        await fetchAll();
+        setNewSkillName('');
+        setShowAddLibrary(false);
+      } else {
+        const d = await res.json().catch(() => ({}));
+        setLibError(d.error || `Error ${res.status}`);
+      }
+    } catch (err: any) { setLibError(err.message || 'Failed to add skill'); }
+    finally { setSavingLibrary(false); }
   };
 
   // ── Skills not yet in my profile (for add dropdown) ──────────────────────
@@ -437,8 +454,9 @@ export function Skills() {
                   placeholder="e.g. Certified, main stack, etc." className="w-full px-4 py-2 glass-surface border border-border rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-primary" />
               </div>
 
+              {skillError && <p className="text-sm text-red-400">{skillError}</p>}
               <div className="flex gap-3 pt-2">
-                <Button variant="outline" className="flex-1 glass-surface" onClick={() => setShowAddSkill(false)}>Cancel</Button>
+                <Button variant="outline" className="flex-1 glass-surface" onClick={() => { setShowAddSkill(false); setSkillError(''); }}>Cancel</Button>
                 <Button className="flex-1 bg-gradient-primary text-white" disabled={!selectedSkillId || saving} onClick={handleAddSkill}>
                   {saving ? 'Saving...' : 'Add Skill'}
                 </Button>
@@ -455,13 +473,14 @@ export function Skills() {
             <CardHeader>
               <div className="flex items-center justify-between">
                 <h2 className="text-xl font-semibold">Add Skill to Library</h2>
-                <button onClick={() => setShowAddLibrary(false)} className="text-muted-foreground hover:text-foreground"><X className="h-5 w-5" /></button>
+                <button onClick={() => { setShowAddLibrary(false); setLibError(''); }} className="text-muted-foreground hover:text-foreground"><X className="h-5 w-5" /></button>
               </div>
             </CardHeader>
             <CardContent className="space-y-4">
               <div>
                 <label className="text-sm font-medium mb-2 block">Skill Name</label>
                 <input value={newSkillName} onChange={e => setNewSkillName(e.target.value)}
+                  onKeyDown={e => e.key === 'Enter' && handleAddToLibrary()}
                   placeholder="e.g. React, Project Management, Figma..."
                   className="w-full px-4 py-2 glass-surface border border-border rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-primary" />
               </div>
@@ -472,10 +491,11 @@ export function Skills() {
                   {SKILL_CATEGORIES.map(c => <option key={c} value={c}>{c}</option>)}
                 </select>
               </div>
+              {libError && <p className="text-sm text-red-400">{libError}</p>}
               <div className="flex gap-3 pt-2">
-                <Button variant="outline" className="flex-1 glass-surface" onClick={() => setShowAddLibrary(false)}>Cancel</Button>
-                <Button className="flex-1 bg-gradient-primary text-white" disabled={!newSkillName.trim()} onClick={handleAddToLibrary}>
-                  Add Skill
+                <Button variant="outline" className="flex-1 glass-surface" onClick={() => { setShowAddLibrary(false); setLibError(''); }}>Cancel</Button>
+                <Button className="flex-1 bg-gradient-primary text-white" disabled={!newSkillName.trim() || savingLibrary} onClick={handleAddToLibrary}>
+                  {savingLibrary ? 'Adding...' : 'Add Skill'}
                 </Button>
               </div>
             </CardContent>

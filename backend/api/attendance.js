@@ -2,23 +2,46 @@
 import express from 'express';
 import { prisma } from '../lib/prisma.js';
 import { requireAuth, withOrgScope } from '../lib/rbac.js';
+import { randomUUID } from 'crypto';
 
 const router = express.Router();
 
 const BREAK_LIMIT = 1800;  // 30 minutes in seconds
 const WORK_DAY    = 8 * 3600; // 8-hour standard day in seconds
 
-// ── One-time startup: add break_duration column if missing ────────────────────
-async function ensureBreakDurationColumn() {
+// ── One-time startup: create attendance_logs table and ensure columns ─────────
+async function ensureAttendanceTable() {
+  try {
+    await prisma.$executeRawUnsafe(`
+      CREATE TABLE IF NOT EXISTS attendance_logs (
+        id            VARCHAR(50)  NOT NULL PRIMARY KEY,
+        userId        VARCHAR(36)  NOT NULL,
+        orgId         VARCHAR(191) NOT NULL,
+        timeIn        DATETIME(3)  NOT NULL,
+        timeOut       DATETIME(3)  NULL,
+        duration      INT          NOT NULL DEFAULT 0,
+        breakDuration INT          NOT NULL DEFAULT 0,
+        notes         LONGTEXT     NULL,
+        date          VARCHAR(10)  NOT NULL,
+        createdAt     DATETIME(3)  NOT NULL DEFAULT CURRENT_TIMESTAMP(3),
+        updatedAt     DATETIME(3)  NOT NULL DEFAULT CURRENT_TIMESTAMP(3) ON UPDATE CURRENT_TIMESTAMP(3),
+        INDEX attendance_logs_userId_idx (userId),
+        INDEX attendance_logs_orgId_idx  (orgId)
+      )
+    `);
+  } catch {
+    // Table already exists — silently ignore
+  }
+  // Add breakDuration column to existing tables (MySQL < 8 doesn't support IF NOT EXISTS on ADD COLUMN)
   try {
     await prisma.$executeRawUnsafe(
-      'ALTER TABLE attendance_logs ADD COLUMN IF NOT EXISTS break_duration INT NOT NULL DEFAULT 0'
+      'ALTER TABLE attendance_logs ADD COLUMN breakDuration INT NOT NULL DEFAULT 0'
     );
   } catch {
-    // Column already exists or DB not ready — silently ignore
+    // Column already exists — silently ignore
   }
 }
-ensureBreakDurationColumn();
+ensureAttendanceTable();
 
 // ── Helper: today's date string YYYY-MM-DD ────────────────────────────────────
 function todayStr() {
@@ -36,7 +59,7 @@ router.get('/status', requireAuth, withOrgScope, async (req, res) => {
       orderBy: { timeIn: 'desc' },
     });
 
-    res.json({ clockedIn: !!active, activeLog: active || null });
+    res.json({ clockedIn: !!active, active: active || null, activeLog: active || null });
   } catch (err) {
     console.error('[Attendance] status error:', err);
     res.status(500).json({ error: 'Failed to get attendance status' });
@@ -57,19 +80,16 @@ async function handleClockIn(req, res) {
       return res.status(400).json({ error: 'Already clocked in', activeLog: existing });
     }
 
-    const log = await prisma.attendanceLog.create({
-      data: {
-        userId,
-        orgId,
-        timeIn:        new Date(),
-        duration:      0,
-        breakDuration: 0,
-        notes:         notes || null,
-        date:          todayStr(),
-      },
-    });
+    const id  = randomUUID();
+    const now = new Date();
+    await prisma.$executeRawUnsafe(
+      `INSERT INTO attendance_logs (id, userId, orgId, timeIn, duration, breakDuration, notes, date, createdAt, updatedAt)
+       VALUES (?, ?, ?, ?, 0, 0, ?, ?, NOW(3), NOW(3))`,
+      id, userId, orgId, now, notes || null, todayStr()
+    );
 
-    console.log(`[Attendance] ✅ Clock in: ${req.user.email} at ${log.timeIn}`);
+    const log = await prisma.attendanceLog.findUnique({ where: { id } });
+    console.log(`[Attendance] ✅ Clock in: ${req.user.email} at ${now}`);
     res.status(201).json({ message: 'Clocked in successfully', log });
   } catch (err) {
     console.error('[Attendance] clock-in error:', err);
@@ -96,20 +116,16 @@ async function handleClockOut(req, res) {
     }
 
     const now           = new Date();
-    const grossDuration = Math.floor((now.getTime() - active.timeIn.getTime()) / 1000);
+    const grossDuration = Math.floor((now.getTime() - new Date(active.timeIn).getTime()) / 1000);
     const breakDuration = Math.max(0, parseInt(rawBreak) || 0);
-    const duration      = Math.max(0, grossDuration - breakDuration); // net worked time
+    const duration      = Math.max(0, grossDuration - breakDuration);
 
-    const log = await prisma.attendanceLog.update({
-      where: { id: active.id },
-      data: {
-        timeOut:       now,
-        duration,
-        breakDuration,
-        notes:         notes || active.notes,
-      },
-    });
+    await prisma.$executeRawUnsafe(
+      `UPDATE attendance_logs SET timeOut=?, duration=?, breakDuration=?, notes=?, updatedAt=NOW(3) WHERE id=?`,
+      now, duration, breakDuration, notes || active.notes, active.id
+    );
 
+    const log = await prisma.attendanceLog.findUnique({ where: { id: active.id } });
     console.log(`[Attendance] ✅ Clock out: ${req.user.email}, net ${Math.round(duration/60)}min, break ${Math.round(breakDuration/60)}min`);
     res.json({ message: 'Clocked out successfully', log });
   } catch (err) {
@@ -121,13 +137,11 @@ router.post('/clock-out', requireAuth, withOrgScope, handleClockOut);
 router.post('/time-out',  requireAuth, withOrgScope, handleClockOut);
 
 // ── GET /api/attendance/logs — fetch logs (role-aware) ───────────────────────
-// OWNER/ADMIN → all org logs with member info
-// STAFF/CLIENT → own logs only
 router.get('/logs', requireAuth, withOrgScope, async (req, res) => {
   try {
     const userId = req.user.id;
     const orgId  = req.orgId;
-    const limit  = parseInt(req.query.limit || '100');
+    const limit  = Math.min(parseInt(req.query.limit || '100'), 500);
 
     const membership = await prisma.membership.findUnique({
       where: { userId_orgId: { userId, orgId } },
@@ -136,41 +150,43 @@ router.get('/logs', requireAuth, withOrgScope, async (req, res) => {
     const role         = membership?.role || 'STAFF';
     const isPrivileged = role === 'OWNER' || role === 'ADMIN';
 
-    let logs;
+    // Fetch logs (no JOIN — avoids collation issues with user table)
+    const logs = await prisma.attendanceLog.findMany({
+      where:   isPrivileged ? { orgId } : { userId, orgId },
+      orderBy: { timeIn: 'desc' },
+      take:    limit,
+    });
 
-    if (isPrivileged) {
-      logs = await prisma.attendanceLog.findMany({
-        where:   { orgId },
-        orderBy: { timeIn: 'desc' },
-        take:    limit,
-        include: { user: { select: { id: true, name: true, email: true, image: true } } },
-      });
-
-      const memberships = await prisma.membership.findMany({
-        where: { orgId },
-        select: { userId: true, role: true },
-      });
-      const roleMap = Object.fromEntries(memberships.map(m => [m.userId, m.role]));
-
-      return res.json({
-        role,
-        isPrivileged: true,
-        logs: logs.map(l => formatLog(l, l.user, roleMap[l.userId] || 'STAFF')),
-      });
-    } else {
-      logs = await prisma.attendanceLog.findMany({
-        where:   { userId, orgId },
-        orderBy: { timeIn: 'desc' },
-        take:    limit,
-        include: { user: { select: { id: true, name: true, email: true, image: true } } },
-      });
-
-      return res.json({
-        role,
-        isPrivileged: false,
-        logs: logs.map(l => formatLog(l, l.user, role)),
-      });
+    // Enrich with user data separately (non-fatal)
+    const userIds  = [...new Set(logs.map(l => l.userId).filter(Boolean))];
+    const usersMap = {};
+    if (userIds.length) {
+      try {
+        const users = await prisma.user.findMany({
+          where: { id: { in: userIds } },
+          select: { id: true, name: true, email: true, image: true },
+        });
+        users.forEach(u => { usersMap[u.id] = u; });
+      } catch { /* non-fatal */ }
     }
+
+    // Role map for privileged view
+    const roleMap = {};
+    if (isPrivileged) {
+      try {
+        const memberships = await prisma.membership.findMany({
+          where: { orgId },
+          select: { userId: true, role: true },
+        });
+        memberships.forEach(m => { roleMap[m.userId] = m.role; });
+      } catch { /* non-fatal */ }
+    }
+
+    return res.json({
+      role,
+      isPrivileged,
+      logs: logs.map(l => formatLog(l, usersMap[l.userId], roleMap[l.userId] || role)),
+    });
   } catch (err) {
     console.error('[Attendance] logs error:', err);
     res.status(500).json({ error: 'Failed to fetch attendance logs' });
@@ -189,11 +205,11 @@ function formatLog(log, user, memberRole) {
     date:          log.date,
     timeIn:        log.timeIn,
     timeOut:       log.timeOut,
-    duration:      log.duration,     // net seconds (excluding break)
+    duration:      log.duration,
     durationMins,
-    breakDuration,                   // seconds of break taken
-    overBreak,                       // seconds over the 30-min limit
-    overtime,                        // seconds over 8-hour work day
+    breakDuration,
+    overBreak,
+    overtime,
     notes:         log.notes,
     isActive:      !log.timeOut,
     memberId:      log.userId,

@@ -316,3 +316,21 @@ model StaffSkill {
   @@index([skillId])
   @@map("staff_skills")
 }
+
+model AttendanceLog {
+  id            String    @id @default(cuid()) @db.VarChar(50)
+  userId        String    @db.VarChar(36)
+  orgId         String    @db.VarChar(191)
+  timeIn        DateTime
+  timeOut       DateTime?
+  duration      Int       @default(0)
+  breakDuration Int       @default(0)
+  notes         String?   @db.Text
+  date          String    @db.VarChar(10)
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+
+  @@index([userId])
+  @@index([orgId])
+  @@map("attendance_logs")
+}

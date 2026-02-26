@@ -133,6 +133,64 @@ async function ensureClientsSchema() {
   );
 }
 
+// Ensure skills + staff_skills tables exist (raw SQL, runs on every startup)
+async function ensureSkillsSchema() {
+  if (!process.env.DATABASE_URL) return;
+  console.log('🔄 Checking skills tables...');
+  try {
+    await prisma.$executeRawUnsafe(`
+      CREATE TABLE IF NOT EXISTS \`skills\` (
+        \`id\`        VARCHAR(191) NOT NULL,
+        \`name\`      VARCHAR(100) NOT NULL,
+        \`category\`  VARCHAR(50)  NOT NULL,
+        \`orgId\`     VARCHAR(191) NOT NULL,
+        \`createdAt\` DATETIME(3)  NOT NULL DEFAULT CURRENT_TIMESTAMP(3),
+        PRIMARY KEY (\`id\`),
+        UNIQUE KEY \`skills_name_orgId_key\` (\`name\`, \`orgId\`),
+        KEY \`skills_orgId_idx\` (\`orgId\`)
+      ) DEFAULT CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci
+    `);
+    console.log('  ✅ skills table ready');
+  } catch (e) {
+    console.warn('  ⚠️  skills table:', e.message);
+  }
+
+  try {
+    // Detect actual User table name (could be "User" or "users")
+    const rows = await prisma.$queryRawUnsafe(`
+      SELECT TABLE_NAME FROM INFORMATION_SCHEMA.TABLES
+      WHERE TABLE_SCHEMA = DATABASE()
+        AND LOWER(TABLE_NAME) = 'user'
+      LIMIT 1
+    `);
+    const userTable = rows[0]?.TABLE_NAME || 'User';
+
+    await prisma.$executeRawUnsafe(`
+      CREATE TABLE IF NOT EXISTS \`staff_skills\` (
+        \`id\`        VARCHAR(191) NOT NULL,
+        \`userId\`    VARCHAR(191) NOT NULL,
+        \`orgId\`     VARCHAR(191) NOT NULL,
+        \`skillId\`   VARCHAR(191) NOT NULL,
+        \`level\`     INT          NOT NULL,
+        \`yearsExp\`  INT          NOT NULL DEFAULT 0,
+        \`notes\`     TEXT         NULL,
+        \`createdAt\` DATETIME(3)  NOT NULL DEFAULT CURRENT_TIMESTAMP(3),
+        \`updatedAt\` DATETIME(3)  NOT NULL DEFAULT CURRENT_TIMESTAMP(3) ON UPDATE CURRENT_TIMESTAMP(3),
+        PRIMARY KEY (\`id\`),
+        UNIQUE KEY \`staff_skills_userId_skillId_key\` (\`userId\`, \`skillId\`),
+        KEY \`staff_skills_orgId_idx\` (\`orgId\`),
+        KEY \`staff_skills_userId_idx\` (\`userId\`),
+        KEY \`staff_skills_skillId_idx\` (\`skillId\`),
+        CONSTRAINT \`staff_skills_userId_fkey\`  FOREIGN KEY (\`userId\`)  REFERENCES \`${userTable}\` (\`id\`) ON DELETE CASCADE,
+        CONSTRAINT \`staff_skills_skillId_fkey\` FOREIGN KEY (\`skillId\`) REFERENCES \`skills\` (\`id\`) ON DELETE CASCADE
+      ) DEFAULT CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci
+    `);
+    console.log('  ✅ staff_skills table ready');
+  } catch (e) {
+    console.warn('  ⚠️  staff_skills table:', e.message);
+  }
+}
+
 // CORS headers with environment-aware configuration
 app.use((req, res, next) => {
   const allowedOrigins = [
@@ -2917,6 +2975,7 @@ app.get('*', (req, res) => {
 // Run migrations and start server
 async function startServer() {
   await ensureClientsSchema();
+  await ensureSkillsSchema();
 
   app.listen(PORT, '0.0.0.0', () => {
     console.log(`✅ Server running on port ${PORT}`);

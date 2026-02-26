@@ -417,6 +417,7 @@ Rules: 4-8 tasks, 1-2 skills each (use: React, UI Design, Backend API, QA Testin
 
     // 3. Assign + create each task ────────────────────────────────────────────
     const createdTasks = [];
+    const priorityFmt  = { high: 'High', medium: 'Medium', low: 'Low' };
 
     for (const taskDef of generatedTasks) {
       const reqSkills = taskDef.requiredSkills || [];
@@ -431,7 +432,7 @@ Rules: 4-8 tasks, 1-2 skills each (use: React, UI Design, Backend API, QA Testin
           )
         );
         const skillScore = matchingSkills.reduce((sum, ss) => sum + ss.level, 0);
-        const topSkill   = matchingSkills.sort((a, b) => b.level - a.level)[0];
+        const topSkill   = [...matchingSkills].sort((a, b) => b.level - a.level)[0];
 
         return {
           userId:        m.userId,
@@ -440,62 +441,66 @@ Rules: 4-8 tasks, 1-2 skills each (use: React, UI Design, Backend API, QA Testin
           image:         m.user.image,
           workload,
           skillScore,
-          topSkillName:  topSkill?.skill.name  || null,
-          topSkillLevel: topSkill?.level        || 0,
+          topSkillName:  topSkill?.skill.name || null,
+          topSkillLevel: topSkill?.level       || 0,
           available:     workload < WORKLOAD_LIMIT,
         };
       });
 
-      // Sort: highest skill match first, then lowest workload
-      scored.sort((a, b) => {
-        if (b.skillScore !== a.skillScore) return b.skillScore - a.skillScore;
-        return a.workload - b.workload;
-      });
+      scored.sort((a, b) =>
+        b.skillScore !== a.skillScore ? b.skillScore - a.skillScore : a.workload - b.workload
+      );
 
-      const assignee    = scored[0] || null;
-      const assignedTo  = assignee?.userId || req.user.id;
+      const assignee   = scored[0] || null;
+      const assignedTo = assignee?.userId || req.user.id;
+      const priority   = priorityFmt[taskDef.priority?.toLowerCase()] ||
+                         priorityFmt[project.priority?.toLowerCase()]  || 'Medium';
 
-      const priorityFmt = { high: 'High', medium: 'Medium', low: 'Low' };
-      const priority    = priorityFmt[taskDef.priority?.toLowerCase()] ||
-                          priorityFmt[project.priority?.toLowerCase()]  || 'Medium';
+      try {
+        const task = await prisma.macroTask.create({
+          data: {
+            title:          String(taskDef.title),
+            description:    taskDef.description ? String(taskDef.description) : null,
+            userId:         assignedTo,
+            orgId,
+            projectId:      id,
+            createdBy:      req.user.id,
+            priority,
+            estimatedHours: parseFloat(taskDef.estimatedHours) || 0,
+            status:         'not_started',
+            tags:           reqSkills,
+          },
+        });
 
-      const task = await prisma.macroTask.create({
-        data: {
-          title:          taskDef.title,
-          description:    taskDef.description || null,
-          userId:         assignedTo,
-          orgId,
-          projectId:      id,
-          createdBy:      req.user.id,
-          priority,
-          estimatedHours: taskDef.estimatedHours || 0,
-          status:         'not_started',
-          tags:           reqSkills.length ? reqSkills : [],
-        },
-      });
+        if (assignee) workloadMap[assignee.userId] = (workloadMap[assignee.userId] || 0) + 1;
 
-      // Update in-memory workload for next iteration
-      if (assignee) workloadMap[assignee.userId] = (workloadMap[assignee.userId] || 0) + 1;
+        createdTasks.push({
+          id:             task.id,
+          title:          task.title,
+          description:    task.description,
+          priority:       task.priority,
+          estimatedHours: Number(task.estimatedHours),
+          status:         task.status,
+          requiredSkills: reqSkills,
+          assignee: assignee ? {
+            userId:        assignee.userId,
+            name:          assignee.name,
+            email:         assignee.email,
+            image:         assignee.image,
+            workload:      assignee.workload,
+            skillScore:    assignee.skillScore,
+            topSkillName:  assignee.topSkillName,
+            topSkillLevel: assignee.topSkillLevel,
+          } : null,
+        });
+      } catch (taskErr) {
+        console.error(`[Projects] Failed to create task "${taskDef.title}":`, taskErr.message);
+        // Skip this task and continue with the rest
+      }
+    }
 
-      createdTasks.push({
-        id:             task.id,
-        title:          task.title,
-        description:    task.description,
-        priority:       task.priority,
-        estimatedHours: task.estimatedHours,
-        status:         task.status,
-        requiredSkills: reqSkills,
-        assignee: assignee ? {
-          userId:        assignee.userId,
-          name:          assignee.name,
-          email:         assignee.email,
-          image:         assignee.image,
-          workload:      assignee.workload,
-          skillScore:    assignee.skillScore,
-          topSkillName:  assignee.topSkillName,
-          topSkillLevel: assignee.topSkillLevel,
-        } : null,
-      });
+    if (createdTasks.length === 0) {
+      return res.status(500).json({ error: 'All task creations failed — check server logs' });
     }
 
     console.log(`[Projects] ✅ Generated ${createdTasks.length} tasks for "${project.name}"`);

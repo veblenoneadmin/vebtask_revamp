@@ -157,8 +157,7 @@ router.get('/users', requireAuth, withOrgScope, requireRole('ADMIN'), async (req
         },
         _count: {
           select: {
-            attendanceLogs: { where: { orgId: req.orgId } },
-            macroTasks:     { where: { orgId: req.orgId } }
+            macroTasks: { where: { orgId: req.orgId } }
           }
         }
       },

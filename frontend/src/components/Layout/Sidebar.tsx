@@ -4,7 +4,6 @@ import { useSession, signOut } from '../../lib/auth-client';
 import { Button } from '../ui/button';
 import { Badge } from '../ui/badge';
 import { Avatar, AvatarFallback } from '../ui/avatar';
-import { hasAdminAccess } from '../../config/internal';
 import {
   LayoutDashboard,
   CheckSquare,
@@ -116,7 +115,7 @@ const Sidebar: React.FC = () => {
             .filter(item => {
               // Show admin navigation only to admins/owners
               if (item.name === 'Administration') {
-                return hasAdminAccess(userRole);
+                return userRole === 'OWNER' || userRole === 'ADMIN';
               }
               // Filter based on user role
               return item.roles.includes(userRole);

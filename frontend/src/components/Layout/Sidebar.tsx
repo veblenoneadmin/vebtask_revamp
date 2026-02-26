@@ -12,6 +12,8 @@ import {
   Shield,
   Star,
   CalendarDays,
+  TrendingUp,
+  FileBarChart,
 } from 'lucide-react';
 
 // VS Code Dark+ tokens — match MainLayout
@@ -35,6 +37,8 @@ const navItems = [
   { name: 'Time Logs',      href: '/timesheets',  icon: Clock,           roles: ['OWNER', 'ADMIN', 'STAFF', 'CLIENT'] },
   { name: 'Clients',        href: '/clients',     icon: Users,           roles: ['OWNER', 'ADMIN', 'STAFF'] },
   { name: 'Reports',        href: '/reports',     icon: BarChart3,       roles: ['OWNER', 'ADMIN', 'STAFF'] },
+  { name: 'KPI',            href: '/kpi',         icon: TrendingUp,      roles: ['OWNER', 'ADMIN', 'STAFF'] },
+  { name: 'KPI Report',     href: '/kpi-report',  icon: FileBarChart,    roles: ['OWNER', 'ADMIN', 'STAFF'] },
   { name: 'Administration', href: '/admin',       icon: Shield,          roles: ['OWNER', 'ADMIN'] },
   { name: 'Settings',       href: '/settings',    icon: Settings,        roles: ['OWNER', 'ADMIN', 'STAFF', 'CLIENT'] },
 ];

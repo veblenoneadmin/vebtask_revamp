@@ -1,0 +1,298 @@
+// backend/api/skills.js — Skillset management + AI task auto-assign
+import express from 'express';
+import { prisma } from '../lib/prisma.js';
+import { requireAuth, withOrgScope } from '../lib/rbac.js';
+
+const router = express.Router();
+
+// ─────────────────────────────────────────────────────────────────────────────
+// SKILL LIBRARY (org-level skill definitions)
+// ─────────────────────────────────────────────────────────────────────────────
+
+// GET /api/skills/library — all skills defined for this org
+router.get('/library', requireAuth, withOrgScope, async (req, res) => {
+  try {
+    const skills = await prisma.skill.findMany({
+      where: { orgId: req.orgId },
+      orderBy: [{ category: 'asc' }, { name: 'asc' }],
+      include: { _count: { select: { staffSkills: true } } },
+    });
+    res.json({ skills });
+  } catch (err) {
+    console.error('[Skills] library error:', err);
+    res.status(500).json({ error: 'Failed to fetch skill library' });
+  }
+});
+
+// POST /api/skills/library — create a new skill (admin/owner only)
+router.post('/library', requireAuth, withOrgScope, async (req, res) => {
+  try {
+    const { name, category } = req.body;
+    if (!name || !category) return res.status(400).json({ error: 'name and category required' });
+
+    const skill = await prisma.skill.upsert({
+      where: { name_orgId: { name: name.trim(), orgId: req.orgId } },
+      update: { category },
+      create: { name: name.trim(), category, orgId: req.orgId },
+    });
+    res.status(201).json({ skill });
+  } catch (err) {
+    console.error('[Skills] create error:', err);
+    res.status(500).json({ error: 'Failed to create skill' });
+  }
+});
+
+// DELETE /api/skills/library/:skillId
+router.delete('/library/:skillId', requireAuth, withOrgScope, async (req, res) => {
+  try {
+    await prisma.skill.delete({ where: { id: req.params.skillId } });
+    res.json({ message: 'Skill deleted' });
+  } catch (err) {
+    res.status(500).json({ error: 'Failed to delete skill' });
+  }
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// STAFF SKILLS (per-user skill ratings)
+// ─────────────────────────────────────────────────────────────────────────────
+
+// GET /api/skills/staff/:userId — get one user's skills
+router.get('/staff/:userId', requireAuth, withOrgScope, async (req, res) => {
+  try {
+    const staffSkills = await prisma.staffSkill.findMany({
+      where: { userId: req.params.userId, orgId: req.orgId },
+      include: { skill: true },
+      orderBy: [{ skill: { category: 'asc' } }, { level: 'desc' }],
+    });
+    res.json({ staffSkills });
+  } catch (err) {
+    res.status(500).json({ error: 'Failed to fetch staff skills' });
+  }
+});
+
+// GET /api/skills/team — all staff skills for the org (admin view)
+router.get('/team', requireAuth, withOrgScope, async (req, res) => {
+  try {
+    const memberships = await prisma.membership.findMany({
+      where: { orgId: req.orgId, role: { not: 'CLIENT' } },
+      include: {
+        user: {
+          select: { id: true, name: true, email: true, image: true },
+          include: {
+            staffSkills: {
+              where: { orgId: req.orgId },
+              include: { skill: true },
+            },
+          },
+        },
+      },
+    });
+
+    const team = memberships.map(m => ({
+      userId:    m.userId,
+      name:      m.user.name || m.user.email,
+      email:     m.user.email,
+      image:     m.user.image,
+      role:      m.role,
+      skills:    m.user.staffSkills.map(ss => ({
+        id:       ss.id,
+        skillId:  ss.skillId,
+        name:     ss.skill.name,
+        category: ss.skill.category,
+        level:    ss.level,
+        yearsExp: ss.yearsExp,
+        notes:    ss.notes,
+      })),
+    }));
+
+    res.json({ team });
+  } catch (err) {
+    console.error('[Skills] team error:', err);
+    res.status(500).json({ error: 'Failed to fetch team skills' });
+  }
+});
+
+// PUT /api/skills/staff — upsert a skill for a user
+router.put('/staff', requireAuth, withOrgScope, async (req, res) => {
+  try {
+    const { skillId, level, yearsExp, notes } = req.body;
+    const userId = req.user.id;
+
+    if (!skillId || !level) return res.status(400).json({ error: 'skillId and level required' });
+    if (level < 1 || level > 5) return res.status(400).json({ error: 'level must be 1-5' });
+
+    const staffSkill = await prisma.staffSkill.upsert({
+      where: { userId_skillId: { userId, skillId } },
+      update: { level: parseInt(level), yearsExp: yearsExp || 0, notes: notes || null, orgId: req.orgId },
+      create: { userId, skillId, orgId: req.orgId, level: parseInt(level), yearsExp: yearsExp || 0, notes: notes || null },
+      include: { skill: true },
+    });
+
+    res.json({ staffSkill });
+  } catch (err) {
+    console.error('[Skills] upsert error:', err);
+    res.status(500).json({ error: 'Failed to save skill' });
+  }
+});
+
+// DELETE /api/skills/staff/:skillId — remove a skill from current user
+router.delete('/staff/:skillId', requireAuth, withOrgScope, async (req, res) => {
+  try {
+    await prisma.staffSkill.deleteMany({
+      where: { userId: req.user.id, skillId: req.params.skillId, orgId: req.orgId },
+    });
+    res.json({ message: 'Skill removed' });
+  } catch (err) {
+    res.status(500).json({ error: 'Failed to remove skill' });
+  }
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// AI TASK AUTO-ASSIGN
+// ─────────────────────────────────────────────────────────────────────────────
+
+const LEVEL_LABEL = { 1: 'Beginner', 2: 'Basic', 3: 'Intermediate', 4: 'Advanced', 5: 'Expert' };
+
+// POST /api/skills/auto-assign — given a task, AI picks the best staff member
+router.post('/auto-assign', requireAuth, withOrgScope, async (req, res) => {
+  try {
+    const { taskTitle, taskDescription, requiredSkills = [], priority = 'Medium', estimatedHours = 0 } = req.body;
+
+    if (!taskTitle) return res.status(400).json({ error: 'taskTitle required' });
+
+    // 1. Gather all team members with their skills
+    const memberships = await prisma.membership.findMany({
+      where: { orgId: req.orgId, role: { in: ['STAFF', 'ADMIN'] } },
+      include: {
+        user: {
+          select: { id: true, name: true, email: true },
+          include: {
+            staffSkills: {
+              where: { orgId: req.orgId },
+              include: { skill: true },
+            },
+          },
+        },
+      },
+    });
+
+    if (memberships.length === 0) {
+      return res.status(400).json({ error: 'No staff members found in this organisation' });
+    }
+
+    // 2. Gather current workload for each member (open tasks this week)
+    const weekStart = new Date();
+    weekStart.setDate(weekStart.getDate() - weekStart.getDay());
+    weekStart.setHours(0, 0, 0, 0);
+
+    const workloads = await Promise.all(memberships.map(async m => {
+      const [openTasks, weekHours] = await Promise.all([
+        prisma.macroTask.count({
+          where: { userId: m.userId, orgId: req.orgId, status: { in: ['not_started', 'in_progress'] } },
+        }),
+        prisma.attendanceLog.aggregate({
+          where: { userId: m.userId, orgId: req.orgId, timeIn: { gte: weekStart }, timeOut: { not: null } },
+          _sum: { duration: true },
+        }),
+      ]);
+      const weekHoursNum = Math.round((workloads?.find(w => w) ? 0 : (weekHours._sum.duration || 0)) / 3600 * 10) / 10;
+      return { userId: m.userId, openTasks, weekHours: weekHoursNum };
+    }));
+
+    const workloadMap = Object.fromEntries(workloads.map(w => [w.userId, w]));
+
+    // 3. Build context for Claude
+    const staffContext = memberships.map(m => {
+      const wl = workloadMap[m.userId] || { openTasks: 0, weekHours: 0 };
+      const skills = m.user.staffSkills.map(ss =>
+        `${ss.skill.name} (${ss.skill.category}) — ${LEVEL_LABEL[ss.level] || ss.level}${ss.yearsExp ? `, ${ss.yearsExp}yr exp` : ''}`
+      ).join(', ') || 'No skills listed';
+
+      return `- ${m.user.name || m.user.email} [${m.role}]
+  Skills: ${skills}
+  Current workload: ${wl.openTasks} open tasks, ${wl.weekHours}h logged this week`;
+    }).join('\n\n');
+
+    const prompt = `You are a smart task allocation assistant for a team management app.
+
+TASK TO ASSIGN:
+Title: ${taskTitle}
+Description: ${taskDescription || 'No description provided'}
+Priority: ${priority}
+Estimated Hours: ${estimatedHours}h
+Required Skills: ${requiredSkills.length > 0 ? requiredSkills.join(', ') : 'Not specified'}
+
+AVAILABLE TEAM MEMBERS:
+${staffContext}
+
+Based on skill match, proficiency level, and current workload, recommend the BEST person to assign this task to.
+
+Respond ONLY with a JSON object in this exact format (no markdown, no extra text):
+{
+  "assignedTo": "<exact name or email as listed above>",
+  "userId": "<the user identifier>",
+  "confidence": <number 1-100>,
+  "reason": "<2-3 sentence explanation of why this person was chosen>",
+  "skillMatch": "<which of their skills are most relevant>",
+  "workloadNote": "<brief comment on their current availability>"
+}`;
+
+    // 4. Call Claude API
+    const aiRes = await fetch('https://api.anthropic.com/v1/messages', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'x-api-key': process.env.ANTHROPIC_API_KEY,
+        'anthropic-version': '2023-06-01',
+      },
+      body: JSON.stringify({
+        model: 'claude-sonnet-4-20250514',
+        max_tokens: 500,
+        messages: [{ role: 'user', content: prompt }],
+      }),
+    });
+
+    if (!aiRes.ok) {
+      const err = await aiRes.text();
+      console.error('[Skills] Claude API error:', err);
+      return res.status(500).json({ error: 'AI service unavailable', details: err });
+    }
+
+    const aiData = await aiRes.json();
+    const rawText = aiData.content?.[0]?.text || '';
+
+    // Parse JSON from Claude's response
+    let suggestion;
+    try {
+      const clean = rawText.replace(/```json|```/g, '').trim();
+      suggestion = JSON.parse(clean);
+    } catch {
+      console.error('[Skills] Failed to parse AI response:', rawText);
+      return res.status(500).json({ error: 'Failed to parse AI suggestion', raw: rawText });
+    }
+
+    // Find the actual userId from the suggestion
+    const matchedMember = memberships.find(m =>
+      m.user.name === suggestion.assignedTo ||
+      m.user.email === suggestion.assignedTo ||
+      m.userId === suggestion.userId
+    );
+
+    res.json({
+      suggestion: {
+        ...suggestion,
+        userId:      matchedMember?.userId || null,
+        userName:    matchedMember?.user.name || matchedMember?.user.email || suggestion.assignedTo,
+        userEmail:   matchedMember?.user.email || null,
+        userRole:    matchedMember?.role || null,
+      },
+      teamSize: memberships.length,
+    });
+
+  } catch (err) {
+    console.error('[Skills] auto-assign error:', err);
+    res.status(500).json({ error: 'Auto-assign failed', details: err.message });
+  }
+});
+
+export default router;

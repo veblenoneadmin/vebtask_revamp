@@ -21,12 +21,7 @@ model User {
   memberships      Membership[]
   macroTasks       MacroTask[]
   reports          Report[]
-  attendanceLogs   AttendanceLog[]
-  taskComments     TaskComment[]
-  taskAttachments  TaskAttachment[]
-  invitesSent      Invite[]         @relation("InvitedByUser")
-  invitesAccepted  Invite[]         @relation("AcceptedByUser")
-  clients          Client[]
+  staffSkills      StaffSkill[]
 }
 
 model Organization {
@@ -38,11 +33,10 @@ model Organization {
   updatedAt   DateTime     @updatedAt
 
   // Relations
-  invites         Invite[]
-  memberships     Membership[]
-  macroTasks      MacroTask[]
-  reports         Report[]
-  attendanceLogs  AttendanceLog[]
+  invites     Invite[]
+  memberships Membership[]
+  macroTasks  MacroTask[]
+  reports     Report[]
 
   @@index([createdById])
   @@map("organizations")
@@ -78,10 +72,7 @@ model Invite {
   acceptedById String?
   createdAt    DateTime     @default(now())
   updatedAt    DateTime     @updatedAt
-
   org          Organization @relation(fields: [orgId], references: [id], onDelete: Cascade)
-  invitedBy    User         @relation("InvitedByUser", fields: [invitedById], references: [id])
-  acceptedBy   User?        @relation("AcceptedByUser", fields: [acceptedById], references: [id])
 
   @@index([orgId])
   @@index([token])
@@ -162,8 +153,6 @@ model MacroTask {
   org            Organization  @relation(fields: [orgId], references: [id], onDelete: Cascade)
   project        Project?      @relation(fields: [projectId], references: [id], onDelete: SetNull)
   timeLogs       TimeLog[]
-  comments       TaskComment[]
-  attachments    TaskAttachment[]
 
   @@index([userId, status])
   @@index([orgId])
@@ -237,29 +226,19 @@ model Project {
 }
 
 model Client {
-  id            String    @id @default(cuid())
-  name          String    @db.VarChar(255)
-  email         String?   @db.VarChar(255)
-  phone         String?   @db.VarChar(50)
-  address       String?   @db.Text
-  company       String?   @db.VarChar(255)
-  status        String    @default("active") @db.VarChar(20)
-  hourlyRate    Decimal?  @db.Decimal(10, 2) @map("hourly_rate")
-  contactPerson String?   @db.VarChar(255)   @map("contact_person")
-  industry      String?   @db.VarChar(255)
-  priority      String    @default("medium") @db.VarChar(20)
-  notes         String?   @db.Text
-  userId        String?   @map("user_id")    // Link to User account with CLIENT role
-  orgId         String
-  createdAt     DateTime  @default(now())
-  updatedAt     DateTime  @updatedAt
-
+  id        String    @id @default(cuid())
+  name      String    @db.VarChar(255)
+  email     String?   @db.VarChar(255)
+  phone     String?   @db.VarChar(50)
+  address   String?   @db.Text
+  orgId     String
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+  
   // Relations
-  projects      Project[]
-  user          User?     @relation(fields: [userId], references: [id], onDelete: SetNull)
-
+  projects  Project[]
+  
   @@index([orgId])
-  @@index([userId])
   @@map("clients")
 }
 
@@ -301,63 +280,39 @@ model Report {
   @@map("reports")
 }
 
-model AttendanceLog {
-  id        String    @id @default(cuid()) @db.VarChar(50)
-  userId    String    @db.VarChar(36)
-  orgId     String
-  timeIn    DateTime
-  timeOut   DateTime?
-  duration      Int       @default(0) // seconds (net, excluding breaks)
-  breakDuration Int       @default(0) // seconds of break taken
-  notes         String?   @db.Text
-  date          String    @db.VarChar(10) // YYYY-MM-DD
+// ── Skillset System ────────────────────────────────────────────────────────────
 
-  createdAt DateTime  @default(now())
-  updatedAt DateTime  @default(now()) @updatedAt
+model Skill {
+  id          String       @id @default(cuid())
+  name        String       @db.VarChar(100)
+  category    String       @db.VarChar(50)  // e.g. "Technical", "Design", "Management"
+  orgId       String
+  createdAt   DateTime     @default(now())
 
-  // Relations
-  user      User         @relation(fields: [userId], references: [id], onDelete: Cascade)
-  org       Organization @relation(fields: [orgId], references: [id], onDelete: Cascade)
+  staffSkills StaffSkill[]
 
-  @@index([userId, date])
+  @@unique([name, orgId])
   @@index([orgId])
-  @@index([userId, timeOut])
-  @@map("attendance_logs")
+  @@map("skills")
 }
 
-model TaskComment {
-  id        String   @id @default(cuid())
-  taskId    String   @db.VarChar(50)
-  userId    String   @db.VarChar(36)
-  orgId     String
-  content   String   @db.Text
-  createdAt DateTime @default(now())
-  updatedAt DateTime @default(now()) @updatedAt
+model StaffSkill {
+  id          String   @id @default(cuid())
+  userId      String
+  orgId       String
+  skillId     String
+  level       Int      @default(3) // 1=Beginner 2=Basic 3=Intermediate 4=Advanced 5=Expert
+  yearsExp    Float?   @default(0)
+  notes       String?  @db.VarChar(255)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
 
-  task MacroTask @relation(fields: [taskId], references: [id], onDelete: Cascade)
-  user User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  skill       Skill    @relation(fields: [skillId], references: [id], onDelete: Cascade)
 
-  @@index([taskId])
+  @@unique([userId, skillId])
   @@index([orgId])
-  @@map("task_comments")
-}
-
-model TaskAttachment {
-  id        String   @id @default(cuid())
-  taskId    String   @db.VarChar(50)
-  userId    String   @db.VarChar(36)
-  orgId     String
-  name      String   @db.VarChar(255)
-  mimeType  String   @db.VarChar(100)
-  size      Int
-  data      String   @db.LongText
-  category  String   @default("attachment") @db.VarChar(20)
-  createdAt DateTime @default(now())
-
-  task MacroTask @relation(fields: [taskId], references: [id], onDelete: Cascade)
-  user User      @relation(fields: [userId], references: [id], onDelete: Cascade)
-
-  @@index([taskId])
-  @@index([orgId])
-  @@map("task_attachments")
+  @@index([userId])
+  @@index([skillId])
+  @@map("staff_skills")
 }

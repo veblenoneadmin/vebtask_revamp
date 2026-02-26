@@ -1,6 +1,5 @@
 import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom';
 import { useState, useEffect } from 'react';
-import { useOrganization } from './contexts/OrganizationContext';
 import { Login } from './pages/Login';
 import { Register } from './pages/Register';
 import { ForgotPassword } from './pages/ForgotPassword';
@@ -8,16 +7,16 @@ import { ResetPassword } from './pages/ResetPassword';
 import { EmailVerified } from './pages/EmailVerified';
 import { Onboarding } from './pages/Onboarding';
 import { Dashboard } from './pages/Dashboard';
+import { BrainDump } from './pages/BrainDump';
 import { Tasks } from './pages/Tasks';
 import { Timer } from './pages/Timer';
 import { Projects } from './pages/Projects';
 import { TimeLogs } from './pages/TimeLogs';
+import { Skills } from './pages/Skills';
 import { Clients } from './pages/Clients';
 import { Reports } from './pages/Reports';
 import { Settings } from './pages/Settings';
 import { Admin } from './pages/Admin';
-import { Attendance } from './pages/Attendance';
-import { KPIReport } from './pages/KPIReport';
 import MainLayout from './components/Layout/MainLayout';
 import { ErrorBoundary } from './components/ErrorBoundary';
 import { OrganizationProvider } from './contexts/OrganizationContext';
@@ -26,15 +25,6 @@ import { initializeWidgets } from './lib/widgets/widgetRegistry';
 
 // Initialize widgets on app load
 initializeWidgets();
-
-// Redirect STAFF/CLIENT away from admin-only pages
-function AdminOnly({ children }: { children: React.ReactNode }) {
-  const { currentOrg, isLoading } = useOrganization();
-  if (isLoading) return null;
-  const role = currentOrg?.role;
-  if (role !== 'OWNER' && role !== 'ADMIN') return <Navigate to="/dashboard" replace />;
-  return <>{children}</>;
-}
 
 function AppContent() {
   const { session, isLoading: isPending } = useSessionContext();
@@ -127,16 +117,16 @@ function AppContent() {
             }
           >
             <Route path="dashboard" element={<Dashboard />} />
+            <Route path="brain-dump" element={<BrainDump />} />
             <Route path="tasks" element={<Tasks />} />
             <Route path="timer" element={<Timer />} />
-            <Route path="projects" element={<AdminOnly><Projects /></AdminOnly>} />
+            <Route path="projects" element={<Projects />} />
             <Route path="timesheets" element={<TimeLogs />} />
-            <Route path="clients" element={<AdminOnly><Clients /></AdminOnly>} />
+            <Route path="clients" element={<Clients />} />
             <Route path="reports" element={<Reports />} />
             <Route path="settings" element={<Settings />} />
             <Route path="admin" element={<Admin />} />
-            <Route path="attendance" element={<Attendance />} />
-            <Route path="kpi-reports" element={<AdminOnly><KPIReport /></AdminOnly>} />
+            <Route path="skills" element={<Skills />} />
           </Route>
           <Route 
             path="/" 

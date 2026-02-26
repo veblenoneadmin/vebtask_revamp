@@ -39,7 +39,9 @@ router.get('/', requireAuth, withOrgScope, async (req, res) => {
 
     sql += ` ORDER BY createdAt DESC LIMIT 500`;
 
+    console.log(`🔍 GET /api/user-reports: orgId=${orgId} userId=${userId} role=${role} sql="${sql}" params=${JSON.stringify(params)}`);
     let reports = await prisma.$queryRawUnsafe(sql, ...params);
+    console.log(`📊 Found ${reports.length} reports`);
 
     // JS-side filtering (avoids complex dynamic SQL)
     if (filterProjectId) reports = reports.filter(r => r.projectId === filterProjectId);
@@ -60,26 +62,34 @@ router.get('/', requireAuth, withOrgScope, async (req, res) => {
       reports = reports.filter(r => new Date(r.createdAt) <= to);
     }
 
-    // ── Enrich: user data ────────────────────────────────────────────────────
+    // ── Enrich: user data (non-fatal) ───────────────────────────────────────
     const userIds  = [...new Set(reports.map(r => r.userId).filter(Boolean))];
     const usersMap = {};
     if (userIds.length) {
-      const ph    = userIds.map(() => '?').join(',');
-      const users = await prisma.$queryRawUnsafe(
-        `SELECT id, name, email, image FROM user WHERE id IN (${ph})`, ...userIds
-      );
-      users.forEach(u => { usersMap[u.id] = u; });
+      try {
+        const users = await prisma.user.findMany({
+          where: { id: { in: userIds } },
+          select: { id: true, name: true, email: true, image: true },
+        });
+        users.forEach(u => { usersMap[u.id] = u; });
+      } catch (e) {
+        console.error('User enrichment failed (non-fatal):', e.message);
+      }
     }
 
-    // ── Enrich: project data ─────────────────────────────────────────────────
+    // ── Enrich: project data (non-fatal) ────────────────────────────────────
     const projIds  = [...new Set(reports.map(r => r.projectId).filter(Boolean))];
     const projsMap = {};
     if (projIds.length) {
-      const ph    = projIds.map(() => '?').join(',');
-      const projs = await prisma.$queryRawUnsafe(
-        `SELECT id, name, color, status, budget FROM projects WHERE id IN (${ph})`, ...projIds
-      );
-      projs.forEach(p => { projsMap[p.id] = p; });
+      try {
+        const ph    = projIds.map(() => '?').join(',');
+        const projs = await prisma.$queryRawUnsafe(
+          `SELECT id, name, color, status, budget FROM projects WHERE id IN (${ph})`, ...projIds
+        );
+        projs.forEach(p => { projsMap[p.id] = p; });
+      } catch (e) {
+        console.error('Project enrichment failed (non-fatal):', e.message);
+      }
     }
 
     // ── Project list for dropdown ────────────────────────────────────────────
@@ -96,11 +106,15 @@ router.get('/', requireAuth, withOrgScope, async (req, res) => {
       const mUserIds = mRows.map(m => m.userId).filter(Boolean);
       const mMap     = {};
       if (mUserIds.length) {
-        const ph = mUserIds.map(() => '?').join(',');
-        const mu = await prisma.$queryRawUnsafe(
-          `SELECT id, name, email FROM user WHERE id IN (${ph})`, ...mUserIds
-        );
-        mu.forEach(u => { mMap[u.id] = u; });
+        try {
+          const mu = await prisma.user.findMany({
+            where: { id: { in: mUserIds } },
+            select: { id: true, name: true, email: true },
+          });
+          mu.forEach(u => { mMap[u.id] = u; });
+        } catch (e) {
+          console.error('Member enrichment failed (non-fatal):', e.message);
+        }
       }
       members = mRows.map(m => ({
         id:   m.userId,
@@ -167,12 +181,15 @@ router.post('/', requireAuth, withOrgScope, async (req, res) => {
     }
 
     const id = randomUUID();
+    console.log(`📝 Inserting report: id=${id} userId=${userId} orgId=${orgId} projectId=${projectId || 'none'}`);
     await prisma.$executeRawUnsafe(
       `INSERT INTO reports (id, title, description, userName, image, projectId, userId, orgId, createdAt, updatedAt) VALUES (?, ?, ?, ?, ?, ?, ?, ?, NOW(), NOW())`,
       id, title?.trim() || null, description.trim(), userName.trim(), image || null, projectId || null, userId, orgId
     );
 
-    console.log(`✅ Report created: ${id} by ${req.user.email}`);
+    // Verify insert
+    const check = await prisma.$queryRawUnsafe(`SELECT id FROM reports WHERE id = ? LIMIT 1`, id);
+    console.log(`✅ Report created: ${id} by ${req.user.email} — verified=${check.length > 0}`);
     res.status(201).json({ success: true, report: { id } });
   } catch (err) {
     console.error('POST /api/user-reports error:', err.message);

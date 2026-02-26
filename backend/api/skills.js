@@ -5,6 +5,48 @@ import { requireAuth, withOrgScope } from '../lib/rbac.js';
 
 const router = express.Router();
 
+// Lazy-init: create tables on first request if they don't exist yet
+let tablesReady = false;
+async function ensureSkillsTables() {
+  if (tablesReady) return;
+  try {
+    await prisma.$executeRawUnsafe(
+      'CREATE TABLE IF NOT EXISTS `skills` (' +
+      '  `id` VARCHAR(191) NOT NULL,' +
+      '  `name` VARCHAR(100) NOT NULL,' +
+      '  `category` VARCHAR(50) NOT NULL,' +
+      '  `orgId` VARCHAR(191) NOT NULL,' +
+      '  `createdAt` DATETIME(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3),' +
+      '  PRIMARY KEY (`id`),' +
+      '  UNIQUE KEY `skills_name_orgId_key` (`name`,`orgId`),' +
+      '  KEY `skills_orgId_idx` (`orgId`)' +
+      ') DEFAULT CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci'
+    );
+    await prisma.$executeRawUnsafe(
+      'CREATE TABLE IF NOT EXISTS `staff_skills` (' +
+      '  `id` VARCHAR(191) NOT NULL,' +
+      '  `userId` VARCHAR(191) NOT NULL,' +
+      '  `orgId` VARCHAR(191) NOT NULL,' +
+      '  `skillId` VARCHAR(191) NOT NULL,' +
+      '  `level` INT NOT NULL,' +
+      '  `yearsExp` INT NOT NULL DEFAULT 0,' +
+      '  `notes` TEXT NULL,' +
+      '  `createdAt` DATETIME(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3),' +
+      '  `updatedAt` DATETIME(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3) ON UPDATE CURRENT_TIMESTAMP(3),' +
+      '  PRIMARY KEY (`id`),' +
+      '  UNIQUE KEY `staff_skills_userId_skillId_key` (`userId`,`skillId`),' +
+      '  KEY `staff_skills_orgId_idx` (`orgId`),' +
+      '  KEY `staff_skills_userId_idx` (`userId`),' +
+      '  KEY `staff_skills_skillId_idx` (`skillId`)' +
+      ') DEFAULT CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci'
+    );
+    tablesReady = true;
+    console.log('[Skills] Tables ready');
+  } catch (e) {
+    console.error('[Skills] Table init error:', e.message);
+  }
+}
+
 // ─────────────────────────────────────────────────────────────────────────────
 // SKILL LIBRARY (org-level skill definitions)
 // ─────────────────────────────────────────────────────────────────────────────
@@ -12,6 +54,7 @@ const router = express.Router();
 // GET /api/skills/library — all skills defined for this org
 router.get('/library', requireAuth, withOrgScope, async (req, res) => {
   try {
+    await ensureSkillsTables();
     const skills = await prisma.skill.findMany({
       where: { orgId: req.orgId },
       orderBy: [{ category: 'asc' }, { name: 'asc' }],
@@ -27,6 +70,7 @@ router.get('/library', requireAuth, withOrgScope, async (req, res) => {
 // POST /api/skills/library — create a new skill (admin/owner only)
 router.post('/library', requireAuth, withOrgScope, async (req, res) => {
   try {
+    await ensureSkillsTables();
     const { name, category } = req.body;
     if (!name || !category) return res.status(400).json({ error: 'name and category required' });
 
@@ -45,6 +89,7 @@ router.post('/library', requireAuth, withOrgScope, async (req, res) => {
 // DELETE /api/skills/library/:skillId
 router.delete('/library/:skillId', requireAuth, withOrgScope, async (req, res) => {
   try {
+    await ensureSkillsTables();
     await prisma.skill.delete({ where: { id: req.params.skillId } });
     res.json({ message: 'Skill deleted' });
   } catch (err) {
@@ -59,6 +104,7 @@ router.delete('/library/:skillId', requireAuth, withOrgScope, async (req, res) =
 // GET /api/skills/staff/:userId — get one user's skills
 router.get('/staff/:userId', requireAuth, withOrgScope, async (req, res) => {
   try {
+    await ensureSkillsTables();
     const staffSkills = await prisma.staffSkill.findMany({
       where: { userId: req.params.userId, orgId: req.orgId },
       include: { skill: true },
@@ -73,6 +119,7 @@ router.get('/staff/:userId', requireAuth, withOrgScope, async (req, res) => {
 // GET /api/skills/team — all staff skills for the org (admin view)
 router.get('/team', requireAuth, withOrgScope, async (req, res) => {
   try {
+    await ensureSkillsTables();
     const memberships = await prisma.membership.findMany({
       where: { orgId: req.orgId, role: { not: 'CLIENT' } },
       include: {
@@ -115,6 +162,7 @@ router.get('/team', requireAuth, withOrgScope, async (req, res) => {
 // PUT /api/skills/staff — upsert a skill for a user
 router.put('/staff', requireAuth, withOrgScope, async (req, res) => {
   try {
+    await ensureSkillsTables();
     const { skillId, level, yearsExp, notes } = req.body;
     const userId = req.user.id;
 
@@ -138,6 +186,7 @@ router.put('/staff', requireAuth, withOrgScope, async (req, res) => {
 // DELETE /api/skills/staff/:skillId — remove a skill from current user
 router.delete('/staff/:skillId', requireAuth, withOrgScope, async (req, res) => {
   try {
+    await ensureSkillsTables();
     await prisma.staffSkill.deleteMany({
       where: { userId: req.user.id, skillId: req.params.skillId, orgId: req.orgId },
     });

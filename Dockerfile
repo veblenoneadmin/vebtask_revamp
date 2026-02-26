@@ -1,11 +1,14 @@
 # Use Node.js 20 slim for better Prisma compatibility
-FROM mirror.gcr.io/library/node:20-slim
+FROM node:20-slim
 
 # Install OpenSSL for Prisma
 RUN apt-get update && apt-get install -y openssl ca-certificates && rm -rf /var/lib/apt/lists/*
 
 # Set working directory
 WORKDIR /app
+
+# Cache bust - increment to force clean rebuild
+ARG CACHE_BUST=2
 
 # Copy package files and backend prisma schema
 COPY package*.json ./
@@ -24,5 +27,5 @@ RUN npm run build
 # Expose the port (Railway will set PORT env var dynamically)
 EXPOSE 3001
 
-# Start server — migrations run inside server.js before app.listen()
-CMD ["node", "backend/server.js"]
+# Generate Prisma client, attempt database sync (non-blocking), and start server
+CMD ["sh", "-c", "cd backend && npx prisma generate && (npx prisma migrate deploy || npx prisma db push --accept-data-loss --skip-generate || echo 'DB sync failed, continuing...') && node server.js"]

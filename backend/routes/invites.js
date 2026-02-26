@@ -50,14 +50,6 @@ router.get('/:orgId/invites', requireAuth, withOrgScope, requireAdmin, async (re
     const [invites, totalCount] = await Promise.all([
       prisma.invite.findMany({
         where,
-        include: {
-          invitedBy: {
-            select: { id: true, name: true, email: true }
-          },
-          acceptedBy: {
-            select: { id: true, name: true, email: true }
-          }
-        },
         orderBy: { createdAt: 'desc' },
         skip: offset,
         take: limitNum
@@ -65,11 +57,25 @@ router.get('/:orgId/invites', requireAuth, withOrgScope, requireAdmin, async (re
       prisma.invite.count({ where })
     ]);
 
+    // Fetch inviter/acceptor user info separately (no Prisma relations defined)
+    const userIds = [...new Set([
+      ...invites.map(i => i.invitedById).filter(Boolean),
+      ...invites.map(i => i.acceptedById).filter(Boolean)
+    ])];
+    const userMap = {};
+    if (userIds.length) {
+      const users = await prisma.user.findMany({
+        where: { id: { in: userIds } },
+        select: { id: true, name: true, email: true }
+      });
+      users.forEach(u => { userMap[u.id] = u; });
+    }
+
     // Add computed fields
     const invitesWithStatus = invites.map(invite => {
       const isExpired = invite.expiresAt < new Date();
       const actualStatus = isExpired && invite.status === 'PENDING' ? 'EXPIRED' : invite.status;
-      
+
       return {
         id: invite.id,
         email: invite.email,
@@ -78,8 +84,8 @@ router.get('/:orgId/invites', requireAuth, withOrgScope, requireAdmin, async (re
         createdAt: invite.createdAt,
         expiresAt: invite.expiresAt,
         acceptedAt: invite.status === 'ACCEPTED' ? invite.updatedAt : null,
-        invitedBy: invite.invitedBy,
-        acceptedBy: invite.acceptedBy,
+        invitedBy: invite.invitedById ? userMap[invite.invitedById] || null : null,
+        acceptedBy: invite.acceptedById ? userMap[invite.acceptedById] || null : null,
         isExpired,
         canRevoke: invite.status === 'PENDING' && !isExpired
       };
@@ -187,22 +193,23 @@ router.post('/:orgId/invites', requireAuth, withOrgScope, requireAdmin, async (r
         token,
         expiresAt,
         invitedById: req.user.id
-      },
-      include: {
-        invitedBy: {
-          select: { name: true, email: true }
-        }
       }
+    });
+
+    // Fetch inviter info separately
+    const inviterUser = await prisma.user.findUnique({
+      where: { id: req.user.id },
+      select: { name: true, email: true }
     });
 
     // Send invite email
     try {
       const acceptUrl = `${process.env.VITE_APP_URL || 'http://localhost:5173'}/invite?token=${token}`;
-      
+
       await sendInviteEmail(email, {
         orgName: org.name,
         role,
-        invitedBy: invite.invitedBy.name || invite.invitedBy.email,
+        invitedBy: inviterUser?.name || inviterUser?.email || 'Someone',
         acceptUrl,
         expiresIn: formatDuration(7 * 24 * 60) // 7 days in minutes
       });
@@ -223,7 +230,7 @@ router.post('/:orgId/invites', requireAuth, withOrgScope, requireAdmin, async (r
         email: invite.email,
         role: invite.role,
         expiresAt: invite.expiresAt,
-        invitedBy: invite.invitedBy
+        invitedBy: inviterUser || null
       }
     });
   } catch (error) {
@@ -256,8 +263,7 @@ router.post('/accept', requireAuth, async (req, res) => {
     const invite = await prisma.invite.findUnique({
       where: { token },
       include: {
-        org: { select: { name: true, slug: true } },
-        invitedBy: { select: { name: true, email: true } }
+        org: { select: { name: true, slug: true } }
       }
     });
 
@@ -422,25 +428,30 @@ router.get('/:token/details', async (req, res) => {
     const invite = await prisma.invite.findUnique({
       where: { token },
       include: {
-        org: { 
-          select: { 
-            name: true, 
+        org: {
+          select: {
+            name: true,
             slug: true,
             _count: { select: { memberships: true } }
-          } 
-        },
-        invitedBy: { 
-          select: { name: true, email: true } 
+          }
         }
       }
     });
 
     if (!invite) {
-      return res.status(404).json({ 
+      return res.status(404).json({
         error: 'Invalid invite token',
-        code: 'INVITE_NOT_FOUND' 
+        code: 'INVITE_NOT_FOUND'
       });
     }
+
+    // Fetch inviter separately
+    const inviterUser = invite.invitedById
+      ? await prisma.user.findUnique({
+          where: { id: invite.invitedById },
+          select: { name: true, email: true }
+        })
+      : null;
 
     const isExpired = invite.expiresAt < new Date();
     const actualStatus = isExpired && invite.status === 'PENDING' ? 'EXPIRED' : invite.status;
@@ -458,9 +469,9 @@ router.get('/:token/details', async (req, res) => {
           slug: invite.org.slug,
           memberCount: invite.org._count.memberships
         },
-        invitedBy: {
-          name: invite.invitedBy.name || invite.invitedBy.email.split('@')[0]
-        }
+        invitedBy: inviterUser
+          ? { name: inviterUser.name || inviterUser.email.split('@')[0] }
+          : null
       }
     });
   } catch (error) {
@@ -531,13 +542,12 @@ router.delete('/:orgId/invites/:inviteId', requireAuth, withOrgScope, requireAdm
 router.post('/:orgId/invites/:inviteId/resend', requireAuth, withOrgScope, requireAdmin, async (req, res) => {
   try {
     const invite = await prisma.invite.findFirst({
-      where: { 
+      where: {
         id: req.params.inviteId,
         orgId: req.orgId
       },
       include: {
-        org: { select: { name: true } },
-        invitedBy: { select: { name: true, email: true } }
+        org: { select: { name: true } }
       }
     });
 
@@ -567,11 +577,19 @@ router.post('/:orgId/invites/:inviteId/resend', requireAuth, withOrgScope, requi
     try {
       const acceptUrl = `${process.env.VITE_APP_URL || 'http://localhost:5173'}/invite?token=${invite.token}`;
       const timeUntilExpiry = Math.max(0, invite.expiresAt.getTime() - Date.now());
-      
+
+      // Fetch inviter info separately
+      const inviterUser = invite.invitedById
+        ? await prisma.user.findUnique({
+            where: { id: invite.invitedById },
+            select: { name: true, email: true }
+          })
+        : null;
+
       await sendInviteEmail(invite.email, {
         orgName: invite.org.name,
         role: invite.role,
-        invitedBy: invite.invitedBy.name || invite.invitedBy.email,
+        invitedBy: inviterUser?.name || inviterUser?.email || 'Someone',
         acceptUrl,
         expiresIn: formatDuration(Math.floor(timeUntilExpiry / (1000 * 60)))
       });

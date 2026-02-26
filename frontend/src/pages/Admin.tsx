@@ -39,7 +39,7 @@ interface OrgUser {
     role: 'OWNER' | 'ADMIN' | 'STAFF' | 'CLIENT';
     org: { name: string; slug: string };
   }>;
-  _count: { attendanceLogs: number; macroTasks: number };
+  _count: { macroTasks: number };
 }
 
 interface Invite {
@@ -205,8 +205,8 @@ export function Admin() {
 
   // ── KPI stats ───────────────────────────────────────────────────────────────
   const pendingInvites = invites.filter(i => i.status === 'PENDING').length;
-  const totalTasks     = users.reduce((a, u) => a + u._count.macroTasks, 0);
-  const totalTimeLogs  = users.reduce((a, u) => a + u._count.attendanceLogs, 0);
+  const totalTasks     = users.reduce((a, u) => a + (u._count?.macroTasks ?? 0), 0);
+  const totalTimeLogs  = 0; // attendance logs not tracked per-user in this view
 
   // ── Loading ──────────────────────────────────────────────────────────────────
   if (loading) {
@@ -283,7 +283,7 @@ export function Admin() {
           { label: 'Total Members',   value: users.length,    icon: Users,       color: VS.blue   },
           { label: 'Pending Invites', value: pendingInvites,  icon: Mail,        color: VS.yellow },
           { label: 'Total Tasks',     value: totalTasks,      icon: CheckSquare, color: VS.teal   },
-          { label: 'Time Logs',       value: totalTimeLogs,   icon: Clock,       color: VS.purple },
+          { label: 'Total Invites',   value: invites.length,  icon: Clock,       color: VS.purple },
         ].map(({ label, value, icon: Icon, color }) => (
           <div key={label} className="rounded-xl p-4 flex items-center gap-3"
             style={{ background: VS.bg1, border: `1px solid ${VS.border}` }}>
@@ -384,8 +384,7 @@ export function Admin() {
 
               {/* Activity */}
               <div className="text-[12px]" style={{ color: VS.text2 }}>
-                <div>{user._count.attendanceLogs} attendance logs</div>
-                <div>{user._count.macroTasks} tasks</div>
+                <div>{user._count?.macroTasks ?? 0} tasks</div>
               </div>
 
               {/* Actions */}

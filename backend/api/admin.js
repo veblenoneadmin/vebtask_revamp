@@ -181,11 +181,25 @@ router.get('/invites', requireAuth, withOrgScope, requireRole('ADMIN'), async (r
 
     const invites = await prisma.invite.findMany({
       where: { orgId: req.orgId },
-      include: { invitedBy: { select: { name: true, email: true } } },
       orderBy: { createdAt: 'desc' }
     });
 
-    res.json({ success: true, invites, count: invites.length });
+    // Fetch inviter info separately (no Prisma relation defined on Invite model)
+    const inviterIds = [...new Set(invites.map(i => i.invitedById).filter(Boolean))];
+    const inviterMap = {};
+    if (inviterIds.length) {
+      const inviters = await prisma.user.findMany({
+        where: { id: { in: inviterIds } },
+        select: { id: true, name: true, email: true }
+      });
+      inviters.forEach(u => { inviterMap[u.id] = u; });
+    }
+    const invitesWithUser = invites.map(i => ({
+      ...i,
+      invitedBy: i.invitedById ? inviterMap[i.invitedById] || null : null
+    }));
+
+    res.json({ success: true, invites: invitesWithUser, count: invites.length });
   } catch (error) {
     return handleDatabaseError(error, res, 'fetch admin invites');
   }
@@ -224,8 +238,13 @@ router.post('/invite', requireAuth, withOrgScope, requireRole('ADMIN'), async (r
     expiresAt.setDate(expiresAt.getDate() + 7);
 
     const invite = await prisma.invite.create({
-      data: { orgId: req.orgId, email, role, token, expiresAt, invitedById: req.user.id },
-      include: { invitedBy: { select: { name: true, email: true } } }
+      data: { orgId: req.orgId, email, role, token, expiresAt, invitedById: req.user.id }
+    });
+
+    // Fetch inviter separately (no Prisma relation on Invite model)
+    const inviterUser = await prisma.user.findUnique({
+      where: { id: req.user.id },
+      select: { name: true, email: true }
     });
 
     console.log(`📧 Invitation created for ${email} with token: ${token}`);
@@ -240,7 +259,7 @@ router.post('/invite', requireAuth, withOrgScope, requireRole('ADMIN'), async (r
         role: invite.role,
         token: invite.token,
         expiresAt: invite.expiresAt,
-        invitedBy: invite.invitedBy
+        invitedBy: inviterUser || null
       }
     });
   } catch (error) {

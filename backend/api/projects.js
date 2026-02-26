@@ -252,9 +252,62 @@ router.get('/stats', requireAuth, withOrgScope, validateQuery(commonSchemas.pagi
   }
 });
 
+// ── Keyword-based task simulation (fallback when no AI key is set) ────────────
+function simulateTaskGeneration(name, description, priority) {
+  const text = `${name} ${description || ''}`.toLowerCase();
+  const p    = { high: 'High', medium: 'Medium', low: 'Low' }[priority?.toLowerCase()] || 'Medium';
+
+  const isWeb      = /web|website|frontend|react|angular|vue|ui|ux|portal/.test(text);
+  const isBackend  = /backend|api|server|database|node|python|django|rails/.test(text);
+  const isMobile   = /mobile|app|ios|android|flutter|react native/.test(text);
+  const isDesign   = /design|figma|brand|logo|graphic|visual/.test(text);
+  const isMarketing = /marketing|campaign|social|seo|content|email/.test(text);
+  const isData     = /data|analytics|report|dashboard|bi|machine learning|ml|ai/.test(text);
+
+  if (isWeb || isMobile) return [
+    { title: 'Design UI wireframes',            description: 'Create wireframes and mockups for key user flows', requiredSkills: ['UI Design'],        priority: p, estimatedHours: 8  },
+    { title: 'Set up project structure',        description: 'Initialize repository and configure dev environment', requiredSkills: ['Frontend Development'], priority: p, estimatedHours: 4 },
+    { title: 'Implement frontend components',   description: 'Build reusable UI components based on designs', requiredSkills: ['React'],             priority: p, estimatedHours: 16 },
+    { title: 'Develop backend API endpoints',   description: 'Create REST API endpoints to support all features', requiredSkills: ['Backend API'],      priority: p, estimatedHours: 12 },
+    { title: 'Database schema design',          description: 'Design and implement database models', requiredSkills: ['Database'],          priority: p, estimatedHours: 6  },
+    { title: 'QA testing and bug fixes',        description: 'Conduct end-to-end testing and resolve issues', requiredSkills: ['QA Testing'],        priority: p, estimatedHours: 8  },
+    { title: 'Deployment and monitoring setup', description: 'Deploy to production and configure monitoring alerts', requiredSkills: ['DevOps'],            priority: 'Low', estimatedHours: 4 },
+  ];
+  if (isDesign) return [
+    { title: 'Brand research and moodboard',   description: 'Research competitors and create design direction', requiredSkills: ['UI Design'],    priority: p, estimatedHours: 6  },
+    { title: 'Logo and identity design',       description: 'Create primary logo and brand identity system', requiredSkills: ['UI Design'],    priority: p, estimatedHours: 12 },
+    { title: 'Design system creation',         description: 'Build reusable component library and style guide', requiredSkills: ['UI Design'],    priority: p, estimatedHours: 10 },
+    { title: 'Client review and revisions',    description: 'Present designs and incorporate feedback', requiredSkills: ['Project Management'], priority: p, estimatedHours: 4  },
+    { title: 'Final asset export and delivery',description: 'Export all assets in required formats', requiredSkills: ['UI Design'],    priority: 'Low', estimatedHours: 3 },
+  ];
+  if (isMarketing) return [
+    { title: 'Campaign strategy and planning', description: 'Define target audience, goals, and KPIs', requiredSkills: ['Project Management'], priority: p, estimatedHours: 6  },
+    { title: 'Content creation',               description: 'Write copy and create visuals for campaign materials', requiredSkills: ['UI Design'],        priority: p, estimatedHours: 12 },
+    { title: 'SEO and keyword research',       description: 'Research and implement SEO strategy', requiredSkills: ['Backend API'],      priority: p, estimatedHours: 8  },
+    { title: 'Campaign launch and monitoring', description: 'Launch campaign and monitor performance metrics', requiredSkills: ['Project Management'], priority: p, estimatedHours: 4  },
+    { title: 'Results analysis and reporting', description: 'Analyse results and prepare performance report', requiredSkills: ['Project Management'], priority: 'Low', estimatedHours: 4 },
+  ];
+  if (isData) return [
+    { title: 'Data requirements gathering',    description: 'Define data sources, metrics, and reporting needs', requiredSkills: ['Project Management'], priority: p, estimatedHours: 4  },
+    { title: 'Database and pipeline setup',    description: 'Set up data ingestion and transformation pipelines', requiredSkills: ['Database'],          priority: p, estimatedHours: 10 },
+    { title: 'Dashboard design',               description: 'Design and build interactive data visualisations', requiredSkills: ['UI Design'],        priority: p, estimatedHours: 12 },
+    { title: 'Data validation and testing',    description: 'Validate data accuracy and test edge cases', requiredSkills: ['QA Testing'],        priority: p, estimatedHours: 6  },
+    { title: 'Documentation and handover',     description: 'Document data models and prepare user guide', requiredSkills: ['Project Management'], priority: 'Low', estimatedHours: 3 },
+  ];
+  // General fallback
+  return [
+    { title: `Define ${name} requirements`,   description: 'Document detailed requirements and acceptance criteria', requiredSkills: ['Project Management'], priority: p,     estimatedHours: 4  },
+    { title: 'Create project plan',            description: 'Break down work into milestones and assign responsibilities', requiredSkills: ['Project Management'], priority: p,     estimatedHours: 3  },
+    { title: 'Solution architecture design',  description: 'Design technical approach and component interactions', requiredSkills: ['Backend API'],      priority: p,     estimatedHours: 6  },
+    { title: 'Core implementation – Phase 1', description: 'Implement the primary features and core functionality', requiredSkills: ['Backend API'],      priority: p,     estimatedHours: 16 },
+    { title: 'Testing and quality assurance', description: 'Conduct thorough testing across all features', requiredSkills: ['QA Testing'],        priority: p,     estimatedHours: 8  },
+    { title: 'Deployment and handover',        description: 'Deploy to production and prepare handover documentation', requiredSkills: ['DevOps'],            priority: 'Low', estimatedHours: 4  },
+  ];
+}
+
 // ── POST /api/projects/:id/generate-tasks ────────────────────────────────────
-// Uses Claude AI to generate tasks from project keywords, then auto-assigns
-// each task to the best available staff member by skill rating + workload.
+// Generates tasks from project keywords via OpenRouter AI (same key as Brain
+// Dump), falls back to keyword-based simulation if no key is configured.
 router.post('/:id/generate-tasks', requireAuth, withOrgScope, async (req, res) => {
   try {
     const { id } = req.params;
@@ -264,20 +317,13 @@ router.post('/:id/generate-tasks', requireAuth, withOrgScope, async (req, res) =
     if (!project)              return res.status(404).json({ error: 'Project not found' });
     if (project.orgId !== orgId) return res.status(403).json({ error: 'Access denied' });
 
-    // 1. Ask Claude to generate a task list ───────────────────────────────────
-    const aiRes = await fetch('https://api.anthropic.com/v1/messages', {
-      method: 'POST',
-      headers: {
-        'Content-Type':    'application/json',
-        'x-api-key':       process.env.ANTHROPIC_API_KEY,
-        'anthropic-version': '2023-06-01',
-      },
-      body: JSON.stringify({
-        model:      'claude-sonnet-4-5',
-        max_tokens: 1500,
-        messages: [{
-          role: 'user',
-          content: `You are a project management assistant. Generate a practical, specific task list for this project.
+    // 1. Generate task list — AI if key available, else simulation ─────────────
+    let generatedTasks;
+    const OPENROUTER_KEY = process.env.OPENROUTER_API_KEY;
+    const ANTHROPIC_KEY  = process.env.ANTHROPIC_API_KEY;
+
+    if (OPENROUTER_KEY || ANTHROPIC_KEY) {
+      const prompt = `You are a project management assistant. Generate a practical, specific task list for this project.
 
 Project Name: ${project.name}
 Description:  ${project.description || 'No description provided'}
@@ -293,30 +339,49 @@ Return ONLY a JSON array — no markdown, no extra text:
     "estimatedHours": <number>
   }
 ]
+Rules: 4-8 tasks, 1-2 skills each (use: React, UI Design, Backend API, QA Testing, Project Management, Database, DevOps), estimatedHours 1-16.`;
 
-Rules:
-- Generate 4-8 focused, actionable tasks
-- Each task should have 1-2 required skills (use common skill names like "React", "UI Design", "Backend API", "QA Testing", "Project Management", "Database", "DevOps")
-- estimatedHours should be realistic (1-16)`,
-        }],
-      }),
-    });
+      let aiRaw = null;
+      try {
+        if (OPENROUTER_KEY) {
+          // OpenRouter (same provider as Brain Dump)
+          const r = await fetch('https://openrouter.ai/api/v1/chat/completions', {
+            method: 'POST',
+            headers: { 'Authorization': `Bearer ${OPENROUTER_KEY}`, 'Content-Type': 'application/json' },
+            body: JSON.stringify({ model: 'openai/gpt-4o-mini', messages: [{ role: 'user', content: prompt }], max_tokens: 1500, temperature: 0.3 }),
+          });
+          if (r.ok) {
+            const d = await r.json();
+            aiRaw = d.choices?.[0]?.message?.content || null;
+          }
+        } else if (ANTHROPIC_KEY) {
+          const r = await fetch('https://api.anthropic.com/v1/messages', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json', 'x-api-key': ANTHROPIC_KEY, 'anthropic-version': '2023-06-01' },
+            body: JSON.stringify({ model: 'claude-haiku-4-5-20251001', max_tokens: 1500, messages: [{ role: 'user', content: prompt }] }),
+          });
+          if (r.ok) {
+            const d = await r.json();
+            aiRaw = d.content?.[0]?.text || null;
+          }
+        }
+      } catch (aiErr) {
+        console.warn('[Projects] AI call failed, falling back to simulation:', aiErr.message);
+      }
 
-    if (!aiRes.ok) {
-      const err = await aiRes.text();
-      console.error('[Projects] Claude API error:', err);
-      return res.status(500).json({ error: 'AI service unavailable' });
+      if (aiRaw) {
+        try {
+          generatedTasks = JSON.parse(aiRaw.replace(/```json|```/g, '').trim());
+        } catch {
+          console.warn('[Projects] AI response parse failed, using simulation');
+        }
+      }
     }
 
-    const aiData    = await aiRes.json();
-    const rawText   = aiData.content?.[0]?.text || '';
-    let generatedTasks;
-    try {
-      const clean = rawText.replace(/```json|```/g, '').trim();
-      generatedTasks = JSON.parse(clean);
-    } catch {
-      console.error('[Projects] Failed to parse AI response:', rawText);
-      return res.status(500).json({ error: 'Failed to parse AI task list', raw: rawText });
+    // Simulation fallback
+    if (!generatedTasks || !Array.isArray(generatedTasks) || generatedTasks.length === 0) {
+      console.log('[Projects] Using keyword-based simulation for task generation');
+      generatedTasks = simulateTaskGeneration(project.name, project.description, project.priority);
     }
 
     // 2. Fetch all staff with their skills ────────────────────────────────────

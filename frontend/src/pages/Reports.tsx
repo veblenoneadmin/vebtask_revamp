@@ -4,7 +4,7 @@ import { useApiClient } from '../lib/api-client';
 import { useOrganization } from '../contexts/OrganizationContext';
 import { createPortal } from 'react-dom';
 import {
-  FileText, Plus, Users, X, Save, Building2, Trash2,
+  FileText, Plus, Users, X, Save, Trash2,
   Calendar, Search, Clock, TrendingUp, FolderOpen, AlertCircle,
 } from 'lucide-react';
 

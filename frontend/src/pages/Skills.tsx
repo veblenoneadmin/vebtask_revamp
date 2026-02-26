@@ -1,12 +1,10 @@
 import { useState, useEffect, useCallback } from 'react';
 import { useSession } from '../lib/auth-client';
-import { useOrganization } from '../contexts/OrganizationContext';
 import { Card, CardContent, CardHeader } from '../components/ui/card';
 import { Button } from '../components/ui/button';
-import { Badge } from '../components/ui/badge';
 import {
   Plus, Trash2, Star, Users, Layers, ChevronDown, ChevronUp,
-  Sparkles, Search, X, Check, AlertCircle
+Search, X, Check
 } from 'lucide-react';
 import { cn } from '../lib/utils';
 
@@ -52,7 +50,6 @@ function MemberAvatar({ name, image, size = 32 }: { name: string; image?: string
 // ─── Main Component ───────────────────────────────────────────────────────────
 export function Skills() {
   const { data: session } = useSession();
-  const { currentOrg } = useOrganization();
 
   const [tab, setTab] = useState<'my' | 'team' | 'library'>('my');
   const [userRole, setUserRole] = useState('STAFF');

@@ -28,6 +28,7 @@ import invitationRoutes from './api/invitations.js';
 import attendanceRoutes from './api/attendance.js';
 import kpiRoutes from './api/kpi.js';
 import kpiReportRoutes from './api/kpi-report.js';
+import calendarRoutes from './api/calendar.js';
 import { 
   blockPublicRegistration, 
   addInternalBranding, 
@@ -177,6 +178,54 @@ async function ensureSkillsSchema() {
     console.log('  ✅ staff_skills table ready');
   } catch (e) {
     console.warn('  ⚠️  staff_skills table:', e.message);
+  }
+}
+
+// Ensure calendar_events and calendar_event_attendees tables exist
+async function ensureCalendarEventsSchema() {
+  if (!process.env.DATABASE_URL) return;
+  console.log('🔄 Checking calendar_events tables...');
+  try {
+    await prisma.$executeRawUnsafe(
+      'CREATE TABLE IF NOT EXISTS `calendar_events` (' +
+      '  `id` VARCHAR(191) NOT NULL,' +
+      '  `title` VARCHAR(500) NOT NULL,' +
+      '  `description` TEXT NULL,' +
+      '  `location` VARCHAR(500) NULL,' +
+      '  `startAt` DATETIME(3) NOT NULL,' +
+      '  `endAt` DATETIME(3) NOT NULL,' +
+      '  `allDay` TINYINT(1) NOT NULL DEFAULT 0,' +
+      '  `color` VARCHAR(20) NOT NULL DEFAULT \'#007acc\',' +
+      '  `meetLink` VARCHAR(500) NULL,' +
+      '  `createdById` VARCHAR(36) NOT NULL,' +
+      '  `orgId` VARCHAR(191) NOT NULL,' +
+      '  `googleEventId` VARCHAR(500) NULL,' +
+      '  `googleCalendarId` VARCHAR(500) NULL,' +
+      '  `syncedToGoogle` TINYINT(1) NOT NULL DEFAULT 0,' +
+      '  `googleSyncedAt` DATETIME(3) NULL,' +
+      '  `createdAt` DATETIME(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3),' +
+      '  `updatedAt` DATETIME(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3) ON UPDATE CURRENT_TIMESTAMP(3),' +
+      '  PRIMARY KEY (`id`),' +
+      '  KEY `ce_orgId_idx` (`orgId`),' +
+      '  KEY `ce_orgId_startAt_idx` (`orgId`,`startAt`),' +
+      '  KEY `ce_createdById_idx` (`createdById`)' +
+      ') DEFAULT CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci'
+    );
+    await prisma.$executeRawUnsafe(
+      'CREATE TABLE IF NOT EXISTS `calendar_event_attendees` (' +
+      '  `id` VARCHAR(191) NOT NULL,' +
+      '  `eventId` VARCHAR(191) NOT NULL,' +
+      '  `userId` VARCHAR(36) NOT NULL,' +
+      '  `orgId` VARCHAR(191) NOT NULL,' +
+      '  PRIMARY KEY (`id`),' +
+      '  UNIQUE KEY `cea_event_user_key` (`eventId`,`userId`),' +
+      '  KEY `cea_orgId_idx` (`orgId`),' +
+      '  KEY `cea_userId_idx` (`userId`)' +
+      ') DEFAULT CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci'
+    );
+    console.log('  ✅ calendar_events tables ready');
+  } catch (e) {
+    console.warn('  ⚠️  calendar_events tables:', e.message);
   }
 }
 
@@ -447,6 +496,7 @@ app.use('/api/invitations', invitationRoutes);
 app.use('/api/attendance', attendanceRoutes);
 app.use('/api/kpi', kpiRoutes);
 app.use('/api/kpi-report', kpiReportRoutes);
+app.use('/api/calendar', calendarRoutes);
 
 // Test routes for debugging (NO AUTH - REMOVE IN PRODUCTION)
 import testProjectsRoutes from './api/test-projects.js';
@@ -2965,6 +3015,7 @@ app.get('*', (req, res) => {
 async function startServer() {
   await ensureClientsSchema();
   await ensureSkillsSchema();
+  await ensureCalendarEventsSchema();
 
   app.listen(PORT, '0.0.0.0', () => {
     console.log(`✅ Server running on port ${PORT}`);

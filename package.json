@@ -21,6 +21,12 @@
     "postinstall": "cd backend && prisma generate"
   },
   "dependencies": {
+    "@fullcalendar/core": "^6.1.20",
+    "@fullcalendar/daygrid": "^6.1.20",
+    "@fullcalendar/interaction": "^6.1.20",
+    "@fullcalendar/list": "^6.1.20",
+    "@fullcalendar/react": "^6.1.20",
+    "@fullcalendar/timegrid": "^6.1.20",
     "@hookform/resolvers": "^5.2.1",
     "@prisma/client": "^6.15.0",
     "@radix-ui/react-dialog": "^1.1.15",
@@ -43,6 +49,7 @@
     "date-fns": "^4.1.0",
     "express": "^4.21.2",
     "form-data": "^4.0.4",
+    "googleapis": "^171.4.0",
     "lucide-react": "^0.542.0",
     "mysql2": "^3.14.3",
     "nodemailer": "^6.9.14",

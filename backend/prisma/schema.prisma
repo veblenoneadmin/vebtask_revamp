@@ -33,10 +33,11 @@ model Organization {
   updatedAt   DateTime     @updatedAt
 
   // Relations
-  invites     Invite[]
-  memberships Membership[]
-  macroTasks  MacroTask[]
-  reports     Report[]
+  invites        Invite[]
+  memberships    Membership[]
+  macroTasks     MacroTask[]
+  reports        Report[]
+  calendarEvents CalendarEvent[]
 
   @@index([createdById])
   @@map("organizations")
@@ -333,4 +334,48 @@ model AttendanceLog {
   @@index([userId])
   @@index([orgId])
   @@map("attendance_logs")
+}
+
+// ── Calendar Events ────────────────────────────────────────────────────────────
+
+model CalendarEvent {
+  id               String    @id @default(cuid()) @db.VarChar(191)
+  title            String    @db.VarChar(500)
+  description      String?   @db.Text
+  location         String?   @db.VarChar(500)
+  startAt          DateTime
+  endAt            DateTime
+  allDay           Boolean   @default(false)
+  color            String    @default("#007acc") @db.VarChar(20)
+  meetLink         String?   @db.VarChar(500)
+  createdById      String    @db.VarChar(36)
+  orgId            String    @db.VarChar(191)
+  googleEventId    String?   @db.VarChar(500)
+  googleCalendarId String?   @db.VarChar(500)
+  syncedToGoogle   Boolean   @default(false)
+  googleSyncedAt   DateTime?
+  createdAt        DateTime  @default(now())
+  updatedAt        DateTime  @updatedAt
+
+  org       Organization          @relation(fields: [orgId], references: [id], onDelete: Cascade)
+  attendees CalendarEventAttendee[]
+
+  @@index([orgId])
+  @@index([orgId, startAt])
+  @@index([createdById])
+  @@map("calendar_events")
+}
+
+model CalendarEventAttendee {
+  id      String @id @default(cuid()) @db.VarChar(191)
+  eventId String @db.VarChar(191)
+  userId  String @db.VarChar(36)
+  orgId   String @db.VarChar(191)
+
+  event CalendarEvent @relation(fields: [eventId], references: [id], onDelete: Cascade)
+
+  @@unique([eventId, userId])
+  @@index([orgId])
+  @@index([userId])
+  @@map("calendar_event_attendees")
 }

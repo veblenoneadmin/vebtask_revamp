@@ -16,6 +16,11 @@ import {
   Edit3,
   Trash2,
   CheckSquare,
+  Zap,
+  Eye,
+  X,
+  User,
+  ChevronRight,
 } from 'lucide-react';
 import { ProjectModal } from '../components/ProjectModal';
 
@@ -54,6 +59,20 @@ const PROJECT_PRIORITY: Record<string, { label: string; text: string; border: st
   low:    { label: 'LOW',  text: VS.teal,   border: VS.teal   },
 };
 
+const TASK_STATUS: Record<string, { label: string; color: string }> = {
+  not_started: { label: 'To Do',       color: VS.text2  },
+  in_progress: { label: 'In Progress', color: VS.blue   },
+  on_hold:     { label: 'On Hold',     color: VS.orange },
+  completed:   { label: 'Done',        color: VS.green  },
+  cancelled:   { label: 'Cancelled',   color: VS.red    },
+};
+
+const TASK_PRIORITY: Record<string, { label: string; color: string }> = {
+  High:   { label: 'HIGH', color: VS.red    },
+  Medium: { label: 'MED',  color: VS.yellow },
+  Low:    { label: 'LOW',  color: VS.teal   },
+};
+
 interface DatabaseProject {
   id: string;
   name: string;
@@ -77,6 +96,26 @@ interface DatabaseProject {
   teamMembers?: string[];
   tasks?: { total: number; completed: number; inProgress: number; pending: number };
   tags?: string[];
+}
+
+interface OverviewTask {
+  id: string;
+  title: string;
+  description: string | null;
+  status: string;
+  priority: string;
+  estimatedHours: number;
+  requiredSkills: string[];
+  assignee: {
+    userId: string;
+    name: string;
+    email: string;
+    image: string | null;
+    workload?: number;
+    skillScore?: number;
+    topSkillName?: string | null;
+    topSkillLevel?: number;
+  } | null;
 }
 
 const parseClientFromDescription = (description: string | null): string | null => {
@@ -106,8 +145,211 @@ function getStatusIcon(status: string) {
   }
 }
 
+function getInitials(name: string) {
+  return name.split(' ').map(n => n[0]).join('').slice(0, 2).toUpperCase();
+}
+
 const inputCls = 'px-3 py-1.5 rounded text-xs focus:outline-none focus:ring-1 focus:ring-[#007acc]/50 transition-all';
 const inputStyle: React.CSSProperties = { background: VS.bg3, border: `1px solid ${VS.border}`, color: VS.text1 };
+
+// ── Overview Modal ─────────────────────────────────────────────────────────────
+function OverviewModal({
+  project,
+  tasks,
+  loading,
+  onClose,
+  onRegenerate,
+  regenerating,
+}: {
+  project: DatabaseProject;
+  tasks: OverviewTask[];
+  loading: boolean;
+  onClose: () => void;
+  onRegenerate: () => void;
+  regenerating: boolean;
+}) {
+  const sCfg = PROJECT_STATUS[project.status] || PROJECT_STATUS.planning;
+
+  const taskStats = {
+    total:      tasks.length,
+    done:       tasks.filter(t => t.status === 'completed').length,
+    inProgress: tasks.filter(t => t.status === 'in_progress').length,
+    todo:       tasks.filter(t => t.status === 'not_started').length,
+    assigned:   tasks.filter(t => t.assignee).length,
+  };
+
+  return (
+    <div
+      className="fixed inset-0 z-50 flex items-center justify-center p-4"
+      style={{ background: 'rgba(0,0,0,0.75)' }}
+      onClick={onClose}
+    >
+      <div
+        className="relative w-full max-w-3xl max-h-[90vh] flex flex-col rounded-2xl overflow-hidden"
+        style={{ background: VS.bg1, border: `1px solid ${VS.border}`, boxShadow: '0 32px 64px rgba(0,0,0,0.8)' }}
+        onClick={e => e.stopPropagation()}
+      >
+        {/* Header */}
+        <div className="flex items-center justify-between px-6 py-4 shrink-0"
+          style={{ borderBottom: `1px solid ${VS.border}` }}>
+          <div className="flex items-center gap-3">
+            <div className="h-9 w-9 rounded-xl flex items-center justify-center"
+              style={{ background: `linear-gradient(135deg, ${sCfg.accent}, ${sCfg.accent}99)` }}>
+              {getStatusIcon(project.status)}
+            </div>
+            <div>
+              <p className="text-[15px] font-bold" style={{ color: VS.text0 }}>{project.name}</p>
+              <div className="flex items-center gap-2 mt-0.5">
+                <span className="text-[10px] font-semibold px-2 py-0.5 rounded-full"
+                  style={{ background: sCfg.bg, color: sCfg.text, border: `1px solid ${sCfg.accent}44` }}>
+                  {sCfg.label}
+                </span>
+                <span className="text-[11px]" style={{ color: VS.text2 }}>
+                  {tasks.length} task{tasks.length !== 1 ? 's' : ''}
+                </span>
+              </div>
+            </div>
+          </div>
+          <button onClick={onClose} className="h-7 w-7 flex items-center justify-center rounded-lg transition-colors"
+            style={{ color: VS.text2 }}
+            onMouseEnter={e => { (e.currentTarget as HTMLElement).style.background = VS.bg3; }}
+            onMouseLeave={e => { (e.currentTarget as HTMLElement).style.background = 'transparent'; }}>
+            <X className="h-4 w-4" />
+          </button>
+        </div>
+
+        {/* Stats strip */}
+        <div className="grid grid-cols-4 gap-px shrink-0"
+          style={{ background: VS.border, borderBottom: `1px solid ${VS.border}` }}>
+          {[
+            { label: 'Total Tasks', value: taskStats.total,      color: VS.blue   },
+            { label: 'Assigned',    value: taskStats.assigned,   color: VS.teal   },
+            { label: 'In Progress', value: taskStats.inProgress, color: VS.yellow },
+            { label: 'Done',        value: taskStats.done,       color: VS.green  },
+          ].map(s => (
+            <div key={s.label} className="flex flex-col items-center py-3" style={{ background: VS.bg2 }}>
+              <p className="text-[18px] font-bold" style={{ color: s.color }}>{s.value}</p>
+              <p className="text-[10px] mt-0.5" style={{ color: VS.text2 }}>{s.label}</p>
+            </div>
+          ))}
+        </div>
+
+        {/* Task list */}
+        <div className="flex-1 overflow-y-auto">
+          {loading ? (
+            <div className="flex items-center justify-center h-40">
+              <div className="animate-spin rounded-full h-7 w-7 border-b-2" style={{ borderColor: VS.accent }} />
+            </div>
+          ) : tasks.length === 0 ? (
+            <div className="flex flex-col items-center justify-center py-16">
+              <CheckSquare className="h-8 w-8 mb-3" style={{ color: VS.text2 }} />
+              <p className="text-sm font-medium" style={{ color: VS.text1 }}>No tasks yet</p>
+              <p className="text-xs mt-1" style={{ color: VS.text2 }}>Click "Generate Tasks" to auto-create tasks for this project</p>
+            </div>
+          ) : (
+            <table className="w-full text-xs">
+              <thead>
+                <tr style={{ borderBottom: `1px solid ${VS.border}` }}>
+                  {['Task', 'Skills', 'Priority', 'Assignee', 'Hours', 'Status'].map(h => (
+                    <th key={h} className="px-4 py-2.5 text-left font-medium" style={{ color: VS.text2 }}>{h}</th>
+                  ))}
+                </tr>
+              </thead>
+              <tbody>
+                {tasks.map((task, i) => {
+                  const tStatus = TASK_STATUS[task.status]   || { label: task.status, color: VS.text2 };
+                  const tPri    = TASK_PRIORITY[task.priority] || { label: task.priority?.toUpperCase() || '—', color: VS.text2 };
+                  return (
+                    <tr key={task.id}
+                      style={{ background: i % 2 === 0 ? 'transparent' : `${VS.bg2}66`, borderBottom: `1px solid ${VS.border}22` }}>
+                      {/* Task title */}
+                      <td className="px-4 py-3" style={{ maxWidth: 200 }}>
+                        <p className="font-medium truncate" style={{ color: VS.text0 }}>{task.title}</p>
+                        {task.description && (
+                          <p className="truncate mt-0.5" style={{ color: VS.text2 }}>{task.description}</p>
+                        )}
+                      </td>
+                      {/* Required skills */}
+                      <td className="px-4 py-3">
+                        <div className="flex flex-wrap gap-1">
+                          {task.requiredSkills.length ? task.requiredSkills.map(s => (
+                            <span key={s} className="px-1.5 py-0.5 rounded text-[10px]"
+                              style={{ background: `${VS.purple}22`, color: VS.purple, border: `1px solid ${VS.purple}44` }}>
+                              {s}
+                            </span>
+                          )) : <span style={{ color: VS.text2 }}>—</span>}
+                        </div>
+                      </td>
+                      {/* Priority */}
+                      <td className="px-4 py-3">
+                        <span className="font-bold" style={{ color: tPri.color }}>{tPri.label}</span>
+                      </td>
+                      {/* Assignee */}
+                      <td className="px-4 py-3">
+                        {task.assignee ? (
+                          <div className="flex items-center gap-2">
+                            <div className="h-6 w-6 rounded-full flex items-center justify-center text-[10px] font-bold text-white shrink-0"
+                              style={{ background: 'linear-gradient(135deg, hsl(252 87% 62%), hsl(260 80% 70%))' }}>
+                              {getInitials(task.assignee.name)}
+                            </div>
+                            <div className="min-w-0">
+                              <p className="truncate font-medium" style={{ color: VS.text0, maxWidth: 100 }}>{task.assignee.name}</p>
+                              {task.assignee.topSkillName && (
+                                <p className="truncate" style={{ color: VS.teal, maxWidth: 100 }}>
+                                  {task.assignee.topSkillName} {'★'.repeat(task.assignee.topSkillLevel || 0)}
+                                </p>
+                              )}
+                            </div>
+                          </div>
+                        ) : (
+                          <div className="flex items-center gap-1.5" style={{ color: VS.text2 }}>
+                            <User className="h-3.5 w-3.5" />
+                            Unassigned
+                          </div>
+                        )}
+                      </td>
+                      {/* Estimated hours */}
+                      <td className="px-4 py-3" style={{ color: VS.text1 }}>
+                        {task.estimatedHours ? `${task.estimatedHours}h` : '—'}
+                      </td>
+                      {/* Status */}
+                      <td className="px-4 py-3">
+                        <span className="px-2 py-0.5 rounded-full text-[10px] font-semibold"
+                          style={{ background: `${tStatus.color}18`, color: tStatus.color, border: `1px solid ${tStatus.color}44` }}>
+                          {tStatus.label}
+                        </span>
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          )}
+        </div>
+
+        {/* Footer */}
+        <div className="flex items-center justify-between px-6 py-3 shrink-0"
+          style={{ borderTop: `1px solid ${VS.border}` }}>
+          <p className="text-[11px]" style={{ color: VS.text2 }}>
+            Staff are auto-assigned based on skill rating and current workload
+          </p>
+          <button
+            onClick={onRegenerate}
+            disabled={regenerating}
+            className="flex items-center gap-1.5 px-4 py-1.5 rounded text-xs font-semibold text-white transition-all hover:opacity-90 disabled:opacity-50"
+            style={{ background: VS.accent }}
+          >
+            {regenerating ? (
+              <><div className="h-3 w-3 border border-white/40 border-t-white rounded-full animate-spin" /> Generating...</>
+            ) : (
+              <><Zap className="h-3.5 w-3.5" /> Regenerate Tasks</>
+            )}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
 
 export function Projects() {
   const { data: session } = useSession();
@@ -123,14 +365,18 @@ export function Projects() {
   const [filterStatus, setFilterStatus] = useState('all');
   const [filterPriority, setFilterPriority] = useState('all');
 
+  // ── Overview / generate state ──
+  const [generatingId, setGeneratingId] = useState<string | null>(null);
+  const [overviewProject, setOverviewProject] = useState<DatabaseProject | null>(null);
+  const [overviewTasks, setOverviewTasks] = useState<OverviewTask[]>([]);
+  const [overviewLoading, setOverviewLoading] = useState(false);
+  const [regenerating, setRegenerating] = useState(false);
+
   const fetchClients = async () => {
     try {
       const data = await apiClient.fetch('/api/clients/slim');
       if (data.success) setClients(data.clients || []);
-      else console.warn('fetchClients failed:', data);
-    } catch (err) {
-      console.error('fetchClients error:', err);
-    }
+    } catch { /* ignore */ }
   };
 
   const fetchProjects = async () => {
@@ -152,19 +398,17 @@ export function Projects() {
 
   const handleDeleteProject = async (project: DatabaseProject) => {
     if (!confirm(`Delete "${project.name}"? This cannot be undone.`)) return;
-    if (!session?.user?.id) return;
     try {
       const data = await apiClient.fetch(`/api/projects/${project.id}`, { method: 'DELETE' });
       if (data.success) await fetchProjects();
-      else throw new Error(data.error);
     } catch { alert('Failed to delete project.'); }
   };
 
   const handleUpdateProject = async (projectData: any) => {
-    if (!session?.user?.id || !editingProject) return;
+    if (!editingProject) return;
     try {
-      const clientName = projectData.clientName || '';
-      const description = projectData.description || '';
+      const clientName         = projectData.clientName || '';
+      const description        = projectData.description || '';
       const combinedDescription = clientName ? `CLIENT:${clientName}|DESC:${description}` : description;
       const data = await apiClient.fetch(`/api/projects/${editingProject.id}`, {
         method: 'PATCH',
@@ -184,11 +428,10 @@ export function Projects() {
   };
 
   const handleCreateProject = async (projectData: any) => {
-    if (!session?.user?.id) return;
     try {
-      const orgId = currentOrg?.id || 'org_1757046595553';
-      const clientName = projectData.clientName || '';
-      const description = projectData.description || '';
+      const orgId              = currentOrg?.id || 'org_1757046595553';
+      const clientName         = projectData.clientName || '';
+      const description        = projectData.description || '';
       const combinedDescription = clientName ? `CLIENT:${clientName}|DESC:${description}` : description;
       const data = await apiClient.fetch('/api/projects', {
         method: 'POST',
@@ -205,6 +448,59 @@ export function Projects() {
       });
       if (data.success) { await fetchProjects(); setShowNewProjectModal(false); }
     } catch { /* ignore */ }
+  };
+
+  // ── Generate tasks for a project ──────────────────────────────────────────
+  const handleGenerateTasks = async (project: DatabaseProject) => {
+    setGeneratingId(project.id);
+    try {
+      const data = await apiClient.fetch(`/api/projects/${project.id}/generate-tasks`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+      });
+      if (data.success) {
+        setOverviewProject(project);
+        setOverviewTasks(data.tasks || []);
+        await fetchProjects();
+      } else {
+        alert(data.error || 'Failed to generate tasks');
+      }
+    } catch {
+      alert('Failed to generate tasks. Please try again.');
+    } finally {
+      setGeneratingId(null);
+    }
+  };
+
+  // ── Load existing tasks for a project ─────────────────────────────────────
+  const handleViewOverview = async (project: DatabaseProject) => {
+    setOverviewProject(project);
+    setOverviewTasks([]);
+    setOverviewLoading(true);
+    try {
+      const data = await apiClient.fetch(`/api/projects/${project.id}/overview`);
+      if (data.success) setOverviewTasks(data.tasks || []);
+    } catch { /* ignore */ }
+    finally { setOverviewLoading(false); }
+  };
+
+  // ── Regenerate tasks from overview modal ──────────────────────────────────
+  const handleRegenerate = async () => {
+    if (!overviewProject) return;
+    setRegenerating(true);
+    try {
+      const data = await apiClient.fetch(`/api/projects/${overviewProject.id}/generate-tasks`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+      });
+      if (data.success) {
+        // Reload the full overview (includes previously generated tasks too)
+        const ov = await apiClient.fetch(`/api/projects/${overviewProject.id}/overview`);
+        if (ov.success) setOverviewTasks(ov.tasks || []);
+        await fetchProjects();
+      }
+    } catch { /* ignore */ }
+    finally { setRegenerating(false); }
   };
 
   const filteredProjects = projects.filter(p => {
@@ -236,7 +532,6 @@ export function Projects() {
         className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 px-6 py-4"
         style={{ borderBottom: `1px solid ${VS.border}` }}
       >
-        {/* Left: title + meta */}
         <div>
           <h1 className="text-lg font-bold tracking-tight" style={{ color: VS.text0 }}>
             Projects
@@ -250,15 +545,8 @@ export function Projects() {
           </p>
         </div>
 
-        {/* Right: filters + actions */}
         <div className="flex items-center gap-2 flex-wrap">
-          {/* Status filter */}
-          <select
-            value={filterStatus}
-            onChange={e => setFilterStatus(e.target.value)}
-            className={inputCls}
-            style={inputStyle}
-          >
+          <select value={filterStatus} onChange={e => setFilterStatus(e.target.value)} className={inputCls} style={inputStyle}>
             <option value="all">All Status</option>
             <option value="planning">Planning</option>
             <option value="active">Active</option>
@@ -266,21 +554,12 @@ export function Projects() {
             <option value="completed">Completed</option>
             <option value="cancelled">Cancelled</option>
           </select>
-
-          {/* Priority filter */}
-          <select
-            value={filterPriority}
-            onChange={e => setFilterPriority(e.target.value)}
-            className={inputCls}
-            style={inputStyle}
-          >
+          <select value={filterPriority} onChange={e => setFilterPriority(e.target.value)} className={inputCls} style={inputStyle}>
             <option value="all">All Priority</option>
             <option value="high">High</option>
             <option value="medium">Medium</option>
             <option value="low">Low</option>
           </select>
-
-          {/* New Project */}
           <button
             onClick={() => setShowNewProjectModal(true)}
             className="flex items-center gap-1.5 px-4 py-1.5 rounded text-xs font-semibold text-white transition-all hover:opacity-90"
@@ -326,8 +605,7 @@ export function Projects() {
             className="flex flex-col items-center justify-center py-20 rounded-2xl"
             style={{ border: `1px dashed ${VS.border}` }}
           >
-            <div className="h-12 w-12 rounded-2xl flex items-center justify-center mb-4"
-              style={{ background: VS.bg3 }}>
+            <div className="h-12 w-12 rounded-2xl flex items-center justify-center mb-4" style={{ background: VS.bg3 }}>
               <Building2 className="h-6 w-6" style={{ color: VS.text2 }} />
             </div>
             <p className="text-sm font-semibold" style={{ color: VS.text1 }}>No projects found</p>
@@ -345,39 +623,45 @@ export function Projects() {
         ) : (
           <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
             {filteredProjects.map(project => {
-              const sCfg = PROJECT_STATUS[project.status] || PROJECT_STATUS.planning;
-              const pCfg = PROJECT_PRIORITY[project.priority] || PROJECT_PRIORITY.medium;
-              const client = project.client?.name || parseClientFromDescription(project.description);
-              const desc = parseDescriptionFromCombined(project.description);
-              const isOver = project.endDate && new Date(project.endDate) < new Date() && project.status !== 'completed' && project.status !== 'cancelled';
+              const sCfg    = PROJECT_STATUS[project.status] || PROJECT_STATUS.planning;
+              const pCfg    = PROJECT_PRIORITY[project.priority] || PROJECT_PRIORITY.medium;
+              const client  = project.client?.name || parseClientFromDescription(project.description);
+              const desc    = parseDescriptionFromCombined(project.description);
+              const isOver  = project.endDate && new Date(project.endDate) < new Date() && project.status !== 'completed' && project.status !== 'cancelled';
+              const isGenerating = generatingId === project.id;
 
               return (
                 <div
                   key={project.id}
                   className="rounded-2xl overflow-hidden transition-all duration-150 relative group"
                   style={{
-                    background: VS.bg2,
-                    border: `1px solid ${sCfg.accent}44`,
-                    borderTop: `3px solid ${sCfg.accent}`,
-                    boxShadow: '0 4px 20px rgba(0,0,0,0.4)',
+                    background:  VS.bg2,
+                    border:      `1px solid ${sCfg.accent}44`,
+                    borderTop:   `3px solid ${sCfg.accent}`,
+                    boxShadow:   '0 4px 20px rgba(0,0,0,0.4)',
+                    opacity:     isGenerating ? 0.7 : 1,
                   }}
                 >
+                  {/* Generating overlay */}
+                  {isGenerating && (
+                    <div className="absolute inset-0 z-10 flex flex-col items-center justify-center gap-2 rounded-2xl"
+                      style={{ background: 'rgba(0,0,0,0.55)' }}>
+                      <div className="animate-spin rounded-full h-7 w-7 border-b-2" style={{ borderColor: VS.teal }} />
+                      <p className="text-[12px] font-semibold" style={{ color: VS.teal }}>Generating tasks…</p>
+                    </div>
+                  )}
+
                   {/* ── Card header ── */}
                   <div className="px-4 pt-5 pb-3">
                     <div className="flex items-start gap-2">
-                      {/* Icon */}
                       <div
                         className="h-9 w-9 rounded-xl flex items-center justify-center shrink-0 text-white"
                         style={{ background: `linear-gradient(135deg, ${sCfg.accent}, ${sCfg.accent}99)` }}
                       >
                         {getStatusIcon(project.status)}
                       </div>
-
-                      {/* Title + client */}
                       <div className="flex-1 min-w-0">
-                        <p className="text-[14px] font-bold leading-snug" style={{ color: VS.text0 }}>
-                          {project.name}
-                        </p>
+                        <p className="text-[14px] font-bold leading-snug" style={{ color: VS.text0 }}>{project.name}</p>
                         <p className="text-[11px] truncate mt-0.5" style={{ color: VS.text2 }}>
                           {client || 'No client assigned'}
                         </p>
@@ -396,9 +680,28 @@ export function Projects() {
                           <>
                             <div className="fixed inset-0 z-10" onClick={() => setOpenMenuId(null)} />
                             <div
-                              className="absolute right-0 top-full mt-1 z-20 rounded-xl overflow-hidden py-1 min-w-[130px]"
+                              className="absolute right-0 top-full mt-1 z-20 rounded-xl overflow-hidden py-1 min-w-[150px]"
                               style={{ background: VS.bg1, border: `1px solid ${VS.border}`, boxShadow: '0 8px 24px rgba(0,0,0,0.5)' }}
                             >
+                              {/* Generate Tasks */}
+                              <button
+                                onClick={() => { setOpenMenuId(null); handleGenerateTasks(project); }}
+                                className="flex items-center gap-2 w-full px-3 py-2 text-xs hover:bg-white/5 transition-colors"
+                                style={{ color: VS.teal }}
+                              >
+                                <Zap className="h-3 w-3" /> Generate Tasks
+                              </button>
+                              {/* View Overview */}
+                              <button
+                                onClick={() => { setOpenMenuId(null); handleViewOverview(project); }}
+                                className="flex items-center gap-2 w-full px-3 py-2 text-xs hover:bg-white/5 transition-colors"
+                                style={{ color: VS.blue }}
+                              >
+                                <Eye className="h-3 w-3" /> View Overview
+                                <ChevronRight className="h-3 w-3 ml-auto" />
+                              </button>
+                              <div style={{ height: 1, background: VS.border, margin: '2px 0' }} />
+                              {/* Edit */}
                               <button
                                 onClick={() => { setEditingProject(project); setOpenMenuId(null); }}
                                 className="flex items-center gap-2 w-full px-3 py-2 text-xs hover:bg-white/5 transition-colors"
@@ -407,6 +710,7 @@ export function Projects() {
                                 <Edit3 className="h-3 w-3" /> Edit project
                               </button>
                               <div style={{ height: 1, background: VS.border, margin: '2px 0' }} />
+                              {/* Delete */}
                               <button
                                 onClick={() => { setOpenMenuId(null); handleDeleteProject(project); }}
                                 className="flex items-center gap-2 w-full px-3 py-2 text-xs hover:bg-red-500/10 transition-colors"
@@ -420,23 +724,17 @@ export function Projects() {
                       </div>
                     </div>
 
-                    {/* Description */}
                     <p className="text-[12px] mt-2.5 line-clamp-2 leading-relaxed" style={{ color: VS.text2 }}>
                       {desc || '\u00a0'}
                     </p>
 
-                    {/* Status + Priority badges */}
                     <div className="mt-2.5 flex items-center gap-2 flex-wrap">
-                      <span
-                        className="text-[10px] font-semibold px-2.5 py-0.5 rounded-full"
-                        style={{ background: sCfg.bg, color: sCfg.text, border: `1px solid ${sCfg.accent}44` }}
-                      >
+                      <span className="text-[10px] font-semibold px-2.5 py-0.5 rounded-full"
+                        style={{ background: sCfg.bg, color: sCfg.text, border: `1px solid ${sCfg.accent}44` }}>
                         {sCfg.label}
                       </span>
-                      <span
-                        className="text-[10px] font-bold uppercase tracking-wide px-2 py-0.5 rounded"
-                        style={{ background: `${pCfg.border}18`, color: pCfg.text, border: `1px solid ${pCfg.border}44` }}
-                      >
+                      <span className="text-[10px] font-bold uppercase tracking-wide px-2 py-0.5 rounded"
+                        style={{ background: `${pCfg.border}18`, color: pCfg.text, border: `1px solid ${pCfg.border}44` }}>
                         {pCfg.label}
                       </span>
                     </div>
@@ -456,7 +754,6 @@ export function Projects() {
                     </div>
                   </div>
 
-                  {/* ── Dashed separator ── */}
                   <div style={{ borderTop: `1px dashed ${VS.border}` }} />
 
                   {/* ── Stats row ── */}
@@ -477,12 +774,7 @@ export function Projects() {
                         </span>
                       )}
                     </div>
-
-                    {/* End date */}
-                    <span
-                      className="text-[12px] font-medium"
-                      style={{ color: isOver ? VS.red : VS.text2 }}
-                    >
+                    <span className="text-[12px] font-medium" style={{ color: isOver ? VS.red : VS.text2 }}>
                       {project.endDate ? (
                         <span className="flex items-center gap-1">
                           <Calendar className="h-3.5 w-3.5" />
@@ -492,7 +784,6 @@ export function Projects() {
                     </span>
                   </div>
 
-                  {/* ── Budget bar (if applicable) ── */}
                   {project.budget && project.budget > 0 && (
                     <div className="px-4 pb-3">
                       <div className="flex items-center justify-between mb-1">
@@ -543,6 +834,18 @@ export function Projects() {
           clientName: parseClientFromDescription(editingProject.description) || undefined,
         } : undefined}
       />
+
+      {/* ── Project Overview Modal ── */}
+      {overviewProject && (
+        <OverviewModal
+          project={overviewProject}
+          tasks={overviewTasks}
+          loading={overviewLoading}
+          onClose={() => { setOverviewProject(null); setOverviewTasks([]); }}
+          onRegenerate={handleRegenerate}
+          regenerating={regenerating}
+        />
+      )}
 
       {/* Click-outside for context menus */}
       {openMenuId && <div className="fixed inset-0 z-[5]" onClick={() => setOpenMenuId(null)} />}

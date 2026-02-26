@@ -18,7 +18,6 @@ import { Clients } from './pages/Clients';
 import { Reports } from './pages/Reports';
 import { Settings } from './pages/Settings';
 import { Admin } from './pages/Admin';
-import { KPI } from './pages/KPI';
 import { KPIReport } from './pages/KPIReport';
 import MainLayout from './components/Layout/MainLayout';
 import { ErrorBoundary } from './components/ErrorBoundary';
@@ -131,7 +130,6 @@ function AppContent() {
             <Route path="admin" element={<Admin />} />
             <Route path="skills" element={<Skills />} />
             <Route path="calendar" element={<Calendar />} />
-            <Route path="kpi" element={<KPI />} />
             <Route path="kpi-report" element={<KPIReport />} />
           </Route>
           <Route 

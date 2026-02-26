@@ -104,19 +104,22 @@ export function Admin() {
   }
 
   const fetchData = async () => {
-    try {
-      setLoading(true);
-      const [uData, iData] = await Promise.all([
-        apiClient.fetch('/api/admin/users'),
-        apiClient.fetch('/api/admin/invites'),
-      ]);
-      setUsers(uData.users ?? []);
-      setInvites(iData.invites ?? []);
-    } catch (error) {
-      console.error('❌ Error in fetchData:', error);
-    } finally {
-      setLoading(false);
+    setLoading(true);
+    const [uResult, iResult] = await Promise.allSettled([
+      apiClient.fetch('/api/admin/users'),
+      apiClient.fetch('/api/admin/invites'),
+    ]);
+    if (uResult.status === 'fulfilled') {
+      setUsers(uResult.value.users ?? []);
+    } else {
+      console.error('❌ Failed to fetch users:', uResult.reason);
     }
+    if (iResult.status === 'fulfilled') {
+      setInvites(iResult.value.invites ?? []);
+    } else {
+      console.error('❌ Failed to fetch invites:', iResult.reason);
+    }
+    setLoading(false);
   };
 
   useEffect(() => {

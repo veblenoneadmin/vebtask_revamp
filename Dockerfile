@@ -22,7 +22,7 @@ COPY backend/ ./backend/
 RUN rm -f frontend/node_modules/.tmp/tsconfig.app.tsbuildinfo
 
 # Cache bust - increment to force clean rebuild
-ARG CACHE_BUST=3
+ARG CACHE_BUST=4
 
 # Build the application (frontend build)
 RUN npm run build
@@ -31,4 +31,4 @@ RUN npm run build
 EXPOSE 3001
 
 # Generate Prisma client, attempt database sync (non-blocking), and start server
-CMD ["sh", "-c", "cd backend && npx prisma generate && (npx prisma migrate deploy || npx prisma db push --accept-data-loss --skip-generate || echo 'DB sync failed, continuing...') && node server.js"]
+CMD ["sh", "-c", "cd backend && npx prisma generate && (npx prisma db push --skip-generate || echo 'DB sync failed, continuing...') && node server.js"]

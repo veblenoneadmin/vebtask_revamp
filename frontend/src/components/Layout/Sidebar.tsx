@@ -26,11 +26,11 @@ const VS = {
 const getAllNavigationItems = () => [
   { name: 'Dashboard',      href: '/dashboard',  icon: LayoutDashboard, roles: ['OWNER', 'ADMIN', 'STAFF', 'CLIENT'] },
   { name: 'Tasks',          href: '/tasks',       icon: CheckSquare,     roles: ['OWNER', 'ADMIN', 'STAFF', 'CLIENT'] },
-  { name: 'Projects',       href: '/projects',    icon: Building2,       roles: ['OWNER', 'ADMIN', 'STAFF'] },
+  { name: 'Projects',       href: '/projects',    icon: Building2,       roles: ['OWNER', 'ADMIN'] },
   { name: 'Time Logs',      href: '/timesheets',  icon: Clock,           roles: ['OWNER', 'ADMIN', 'STAFF', 'CLIENT'] },
-  { name: 'Clients',        href: '/clients',     icon: Users,           roles: ['OWNER', 'ADMIN', 'STAFF'] },
+  { name: 'Clients',        href: '/clients',     icon: Users,           roles: ['OWNER', 'ADMIN'] },
   { name: 'Reports',        href: '/reports',     icon: BarChart3,       roles: ['OWNER', 'ADMIN', 'STAFF'] },
-  { name: 'KPI Reports',    href: '/kpi-reports', icon: TrendingUp,      roles: ['OWNER', 'ADMIN', 'STAFF'] },
+  { name: 'KPI Reports',    href: '/kpi-reports', icon: TrendingUp,      roles: ['OWNER', 'ADMIN'] },
   { name: 'User Management', href: '/admin',       icon: Users,           roles: ['OWNER', 'ADMIN'] },
   { name: 'Settings',       href: '/settings',    icon: Settings,        roles: ['OWNER', 'ADMIN', 'STAFF', 'CLIENT'] },
 ];

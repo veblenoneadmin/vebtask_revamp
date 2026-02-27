@@ -26,7 +26,7 @@ import passwordResetRoutes from './routes/password-reset.js';
 import invitationRoutes from './api/invitations.js';
 import skillsRoutes from './api/skills.js';
 import attendanceRoutes from './api/attendance.js';
-import superAdminRoutes from './api/super-admin.js';
+import superAdminRoutes, { verifySaToken, parseSaCookie, generateSaToken } from './api/super-admin.js';
 import calendarRoutes from './api/calendar.js';
 import kpiReportRoutes from './api/kpi-report.js';
 import notificationsRoutes from './api/notifications.js';
@@ -194,6 +194,33 @@ app.get("/api/auth", (req, res) => {
   });
 });
 
+// ── Super admin sign-in interceptor ──────────────────────────────────────────
+// Must be registered BEFORE the Better Auth catch-all so we can intercept
+// the normal login form when super admin credentials are entered.
+app.post('/api/auth/sign-in/email', (req, res, next) => {
+  const { email, password } = req.body || {};
+  const saEmail    = (process.env.SUPER_ADMIN_EMAIL    || '').toLowerCase().trim();
+  const saPassword =  process.env.SUPER_ADMIN_PASSWORD || '';
+  if (!saEmail || !saPassword)                        return next(); // not configured
+  if (!email || email.toLowerCase().trim() !== saEmail) return next(); // not SA email
+  if (password !== saPassword) {
+    return res.status(401).json({ error: 'Invalid credentials', code: 'INVALID_EMAIL_OR_PASSWORD' });
+  }
+  // Credentials match — issue sa_token cookie, return a fake Better Auth-shaped response
+  const token = generateSaToken(saPassword);
+  res.cookie('sa_token', token, {
+    httpOnly: true,
+    secure:   process.env.NODE_ENV === 'production',
+    sameSite: 'strict',
+    maxAge:   7 * 24 * 60 * 60 * 1000,
+    path:     '/',
+  });
+  return res.json({
+    token: null,
+    user: { id: '__superadmin__', email: saEmail, name: 'Super Admin', emailVerified: true },
+  });
+});
+
 // Use a catch-all route for Better Auth sub-paths
 app.all(["/api/auth/*", "/api/auth/*splat"], (req, res) => {
   // Better Auth's toNodeHandler expects to handle the request/response directly
@@ -292,27 +319,35 @@ app.use('/api', async (req, res, next) => {
         };
         console.log('✅ User session validated:', req.user.email);
       } else {
-        console.log('⚠️  No valid session found for request to:', req.path);
-        
-        // TEMPORARY FIX: Auto-authenticate existing users for testing
-        // TODO: Remove this after fixing session management
-        try {
-          const existingUser = await prisma.user.findFirst({
-            where: { email: 'tony@opusautomations.com' },
-            select: { id: true, email: true, name: true }
-          });
-          
-          if (existingUser) {
-            req.user = {
-              id: existingUser.id,
-              email: existingUser.email,
-              name: existingUser.name,
-              image: null
-            };
-            console.log('🔧 TEMP: Auto-authenticated user for testing:', req.user.email);
+        // Check for super admin cookie session (no DB record needed)
+        const saToken  = parseSaCookie(req);
+        const saSecret = process.env.SUPER_ADMIN_PASSWORD || '';
+        if (saToken && saSecret && verifySaToken(saToken, saSecret)) {
+          req.user         = { id: '__superadmin__', email: 'system@internal', name: 'Super Admin' };
+          req.isSuperAdmin = true;
+        } else {
+          console.log('⚠️  No valid session found for request to:', req.path);
+
+          // TEMPORARY FIX: Auto-authenticate existing users for testing
+          // TODO: Remove this after fixing session management
+          try {
+            const existingUser = await prisma.user.findFirst({
+              where: { email: 'tony@opusautomations.com' },
+              select: { id: true, email: true, name: true }
+            });
+
+            if (existingUser) {
+              req.user = {
+                id: existingUser.id,
+                email: existingUser.email,
+                name: existingUser.name,
+                image: null
+              };
+              console.log('🔧 TEMP: Auto-authenticated user for testing:', req.user.email);
+            }
+          } catch (tempError) {
+            console.log('⚠️  Temp auth failed:', tempError.message);
           }
-        } catch (tempError) {
-          console.log('⚠️  Temp auth failed:', tempError.message);
         }
       }
     } catch (authError) {

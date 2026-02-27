@@ -37,6 +37,12 @@ function AppContent() {
   useEffect(() => {
     const checkOnboardingStatus = async () => {
       if (session?.user?.id) {
+        // Super admin never needs onboarding
+        if (session.user.id === '__superadmin__') {
+          setNeedsOnboarding(false);
+          setCheckingOnboarding(false);
+          return;
+        }
         try {
           const response = await fetch('/api/onboarding/status');
           if (response.ok) {
@@ -102,9 +108,9 @@ function AppContent() {
             path="/reset-password" 
             element={session ? <Navigate to="/dashboard" replace /> : <ResetPassword />} 
           />
-          <Route 
-            path="/email-verified" 
-            element={<EmailVerified />} 
+          <Route
+            path="/email-verified"
+            element={<EmailVerified />}
           />
           <Route 
             path="/onboarding" 

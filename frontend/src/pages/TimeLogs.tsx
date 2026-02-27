@@ -3,7 +3,7 @@ import { useSession } from '../lib/auth-client';
 import { useOrganization } from '../contexts/OrganizationContext';
 import {
   Clock, Calendar, Download, Search, LogIn, LogOut,
-  Coffee, Zap, BarChart3, Users, AlertTriangle,
+  Coffee, Zap, BarChart3, Users, AlertTriangle, Filter, X,
 } from 'lucide-react';
 
 // ── VS Code Dark+ tokens (matches Dashboard) ──────────────────────────────────
@@ -144,8 +144,32 @@ export function TimeLogs() {
   const [breakElapsed, setBreakElapsed] = useState(0); // live seconds since break started
 
   // Filters
-  const [searchTerm, setSearchTerm]   = useState('');
-  const [filterMember, setFilterMember] = useState('all');
+  const [searchTerm, setSearchTerm]       = useState('');
+  const [filterMember, setFilterMember]   = useState('all');
+  const [filterStatus, setFilterStatus]   = useState<'all' | 'active' | 'completed'>('all');
+  const [dateFrom, setDateFrom]           = useState('');
+  const [dateTo, setDateTo]               = useState('');
+  const [activePreset, setActivePreset]   = useState<'today' | 'week' | 'month' | 'all' | null>(null);
+
+  const applyPreset = (preset: 'today' | 'week' | 'month' | 'all') => {
+    setActivePreset(preset);
+    const today = new Date().toISOString().slice(0, 10);
+    if (preset === 'today') {
+      setDateFrom(today); setDateTo(today);
+    } else if (preset === 'week') {
+      const d = new Date();
+      const day = d.getDay();
+      const diff = day === 0 ? -6 : 1 - day; // Monday
+      d.setDate(d.getDate() + diff);
+      setDateFrom(d.toISOString().slice(0, 10)); setDateTo(today);
+    } else if (preset === 'month') {
+      const d = new Date();
+      setDateFrom(`${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-01`);
+      setDateTo(today);
+    } else {
+      setDateFrom(''); setDateTo('');
+    }
+  };
 
   // ── Fetch logs ─────────────────────────────────────────────────────────────
   const fetchLogs = useCallback(async () => {
@@ -286,7 +310,9 @@ export function TimeLogs() {
       (log.notes || '').toLowerCase().includes(searchTerm.toLowerCase()) ||
       log.date.includes(searchTerm);
     const matchMember = filterMember === 'all' || log.memberId === filterMember;
-    return matchSearch && matchMember;
+    const matchDate   = (!dateFrom || log.date >= dateFrom) && (!dateTo || log.date <= dateTo);
+    const matchStatus = filterStatus === 'all' || (filterStatus === 'active' ? log.isActive : !log.isActive);
+    return matchSearch && matchMember && matchDate && matchStatus;
   });
 
   const completedLogs   = filteredLogs.filter(l => !l.isActive);
@@ -509,34 +535,108 @@ export function TimeLogs() {
 
       {/* ── Filters ── */}
       <div
-        className="rounded-xl p-4 flex flex-col sm:flex-row gap-3 items-center"
+        className="rounded-xl p-4 flex flex-col gap-3"
         style={{ background: VS.bg1, border: `1px solid ${VS.border}` }}
       >
-        <div className="relative flex-1 w-full">
-          <Search className="absolute left-3 top-2.5 h-4 w-4" style={{ color: VS.text2 }} />
-          <input
-            type="text"
-            placeholder="Search by name, notes, or date…"
-            value={searchTerm}
-            onChange={e => setSearchTerm(e.target.value)}
-            className="w-full pl-9 pr-4 py-2 rounded-lg text-[13px] outline-none focus:ring-1"
-            style={{
-              background: VS.bg2, border: `1px solid ${VS.border}`,
-              color: VS.text0, '--tw-ring-color': VS.accent,
-            } as React.CSSProperties}
-          />
+        {/* Row 1: preset buttons + status */}
+        <div className="flex flex-wrap items-center gap-2">
+          <Filter className="h-3.5 w-3.5 shrink-0" style={{ color: VS.text2 }} />
+          {(['today', 'week', 'month', 'all'] as const).map(p => (
+            <button
+              key={p}
+              onClick={() => applyPreset(p)}
+              className="px-3 py-1 rounded-md text-[12px] font-semibold transition-colors"
+              style={activePreset === p
+                ? { background: VS.accent, color: '#fff', border: `1px solid ${VS.accent}` }
+                : { background: VS.bg2, color: VS.text2, border: `1px solid ${VS.border}` }
+              }
+            >
+              {p === 'today' ? 'Today' : p === 'week' ? 'This Week' : p === 'month' ? 'This Month' : 'All Time'}
+            </button>
+          ))}
+
+          <div className="ml-auto flex items-center gap-2">
+            {(['all', 'active', 'completed'] as const).map(s => (
+              <button
+                key={s}
+                onClick={() => setFilterStatus(s)}
+                className="px-3 py-1 rounded-md text-[12px] font-semibold transition-colors capitalize"
+                style={filterStatus === s
+                  ? { background: s === 'active' ? `${VS.teal}22` : s === 'completed' ? `${VS.blue}22` : VS.bg3,
+                      color: s === 'active' ? VS.teal : s === 'completed' ? VS.blue : VS.text1,
+                      border: `1px solid ${s === 'active' ? VS.teal + '55' : s === 'completed' ? VS.blue + '55' : VS.border}` }
+                  : { background: 'transparent', color: VS.text2, border: `1px solid transparent` }
+                }
+              >
+                {s === 'all' ? 'All' : s === 'active' ? '● Active' : 'Completed'}
+              </button>
+            ))}
+          </div>
         </div>
-        {isPrivileged && (
-          <select
-            value={filterMember}
-            onChange={e => setFilterMember(e.target.value)}
-            className="px-3 py-2 rounded-lg text-[13px] outline-none"
-            style={{ background: VS.bg2, border: `1px solid ${VS.border}`, color: VS.text1 }}
-          >
-            <option value="all">All Members</option>
-            {uniqueMembers.map(m => <option key={m.id} value={m.id}>{m.name}</option>)}
-          </select>
-        )}
+
+        {/* Row 2: search + date range + member */}
+        <div className="flex flex-col sm:flex-row gap-3 items-center">
+          <div className="relative flex-1 w-full">
+            <Search className="absolute left-3 top-2.5 h-4 w-4" style={{ color: VS.text2 }} />
+            <input
+              type="text"
+              placeholder="Search by name, notes…"
+              value={searchTerm}
+              onChange={e => setSearchTerm(e.target.value)}
+              className="w-full pl-9 pr-4 py-2 rounded-lg text-[13px] outline-none focus:ring-1"
+              style={{
+                background: VS.bg2, border: `1px solid ${VS.border}`,
+                color: VS.text0, '--tw-ring-color': VS.accent,
+              } as React.CSSProperties}
+            />
+          </div>
+
+          {/* Date from */}
+          <div className="relative flex items-center gap-1">
+            <label className="text-[11px] shrink-0" style={{ color: VS.text2 }}>From</label>
+            <input
+              type="date"
+              value={dateFrom}
+              onChange={e => { setDateFrom(e.target.value); setActivePreset(null); }}
+              className="px-2 py-2 rounded-lg text-[13px] outline-none"
+              style={{ background: VS.bg2, border: `1px solid ${VS.border}`, color: VS.text1, colorScheme: 'dark' }}
+            />
+            {dateFrom && (
+              <button onClick={() => { setDateFrom(''); setActivePreset(null); }}>
+                <X className="h-3.5 w-3.5" style={{ color: VS.text2 }} />
+              </button>
+            )}
+          </div>
+
+          {/* Date to */}
+          <div className="relative flex items-center gap-1">
+            <label className="text-[11px] shrink-0" style={{ color: VS.text2 }}>To</label>
+            <input
+              type="date"
+              value={dateTo}
+              onChange={e => { setDateTo(e.target.value); setActivePreset(null); }}
+              className="px-2 py-2 rounded-lg text-[13px] outline-none"
+              style={{ background: VS.bg2, border: `1px solid ${VS.border}`, color: VS.text1, colorScheme: 'dark' }}
+            />
+            {dateTo && (
+              <button onClick={() => { setDateTo(''); setActivePreset(null); }}>
+                <X className="h-3.5 w-3.5" style={{ color: VS.text2 }} />
+              </button>
+            )}
+          </div>
+
+          {isPrivileged && (
+            <select
+              value={filterMember}
+              onChange={e => setFilterMember(e.target.value)}
+              className="px-3 py-2 rounded-lg text-[13px] outline-none"
+              style={{ background: VS.bg2, border: `1px solid ${VS.border}`, color: VS.text1 }}
+            >
+              <option value="all">All Members</option>
+              {uniqueMembers.map(m => <option key={m.id} value={m.id}>{m.name}</option>)}
+            </select>
+          )}
+        </div>
       </div>
 
       {/* ── Table ── */}

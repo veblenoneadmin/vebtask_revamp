@@ -9,7 +9,7 @@ import type { DateClickArg } from '@fullcalendar/interaction';
 import { useApiClient } from '../lib/api-client';
 import { useOrganization } from '../contexts/OrganizationContext';
 import {
-  Plus, X, Video, MapPin, Users, Calendar as CalendarIcon,
+  Plus, X, Video, Users, Calendar as CalendarIcon,
   Check, ExternalLink, Search, ChevronDown,
 } from 'lucide-react';
 import './Calendar.css';
@@ -29,7 +29,6 @@ interface OrgMember { id: string; name: string | null; email: string; image: str
 
 interface CalEventExtended {
   description: string | null;
-  location: string | null;
   meetLink: string | null;
   createdById: string;
   attendees: OrgMember[];
@@ -38,7 +37,6 @@ interface CalEventExtended {
 interface EventFormData {
   title: string;
   description: string;
-  location: string;
   startAt: string;
   endAt: string;
   allDay: boolean;
@@ -62,7 +60,7 @@ function defaultForm(): EventFormData {
   const now = new Date();
   const end = new Date(now.getTime() + 3600000);
   return {
-    title: '', description: '', location: '',
+    title: '', description: '',
     startAt: toLocalInput(now),
     endAt:   toLocalInput(end),
     allDay: false, color: '#007acc',
@@ -125,7 +123,6 @@ export function Calendar() {
     setForm({
       title:       info.event.title,
       description: ext.description || '',
-      location:    ext.location || '',
       startAt:     toLocalInput(info.event.start || new Date()),
       endAt:       toLocalInput(info.event.end || new Date()),
       allDay:      info.event.allDay,
@@ -391,20 +388,6 @@ function EventModal({
               </div>
             </div>
           )}
-
-          {/* Location */}
-          <div>
-            <label style={labelStyle}>
-              <MapPin size={11} style={{ marginRight: 4, display: 'inline' }} />
-              Location
-            </label>
-            <input
-              value={form.location}
-              onChange={e => setForm(f => ({ ...f, location: e.target.value }))}
-              placeholder="Add location"
-              style={inputStyle}
-            />
-          </div>
 
           {/* Description */}
           <div>

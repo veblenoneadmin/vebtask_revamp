@@ -154,14 +154,34 @@ router.get('/logs', requireAuth, withOrgScope, async (req, res) => {
     // CLIENT — build list of staff userIds assigned to their projects
     let clientStaffIds = null; // null means use default (own only)
     if (isClient) {
+      let clientRecord = null;
+      // 1) Try user_id column lookup
       try {
-        const clientRows = await prisma.$queryRawUnsafe(
+        const rows = await prisma.$queryRawUnsafe(
           'SELECT id FROM clients WHERE user_id = ? AND orgId = ? LIMIT 1',
           userId, orgId
         );
-        if (clientRows.length) {
+        if (rows.length) clientRecord = rows[0];
+      } catch { /* user_id column not yet added — fall through */ }
+
+      // 2) Email fallback if user_id lookup found nothing
+      if (!clientRecord) {
+        try {
+          const user = await prisma.user.findUnique({ where: { id: userId }, select: { email: true } });
+          if (user?.email) {
+            const rows = await prisma.$queryRawUnsafe(
+              'SELECT id FROM clients WHERE LOWER(email) = LOWER(?) AND orgId = ? LIMIT 1',
+              user.email, orgId
+            );
+            if (rows.length) clientRecord = rows[0];
+          }
+        } catch (e) { console.warn('[Attendance] client email lookup failed:', e.message); }
+      }
+
+      if (clientRecord) {
+        try {
           const projects = await prisma.project.findMany({
-            where: { clientId: clientRows[0].id, orgId },
+            where: { clientId: clientRecord.id, orgId },
             select: { id: true },
           });
           if (projects.length) {
@@ -172,9 +192,7 @@ router.get('/logs', requireAuth, withOrgScope, async (req, res) => {
             const staffIds = [...new Set(tasks.map(t => t.userId).filter(Boolean))];
             clientStaffIds = [...new Set([userId, ...staffIds])];
           }
-        }
-      } catch (e) {
-        console.warn('[Attendance] client staff lookup failed:', e.message);
+        } catch (e) { console.warn('[Attendance] project/task lookup failed:', e.message); }
       }
       if (!clientStaffIds) clientStaffIds = [userId];
     }

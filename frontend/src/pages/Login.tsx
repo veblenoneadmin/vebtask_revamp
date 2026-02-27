@@ -2,11 +2,8 @@ import { useState } from 'react';
 import type { FormEvent } from 'react';
 import { signIn } from '../lib/auth-client';
 import { Link, useNavigate } from 'react-router-dom';
-import { Mail, Lock, Eye, EyeOff, ArrowRight, Sparkles } from 'lucide-react';
+import { Eye, EyeOff } from 'lucide-react';
 import { FcGoogle } from 'react-icons/fc';
-import { Card, CardContent, CardHeader } from '../components/ui/card';
-import { Button } from '../components/ui/button';
-import { Input } from '../components/ui/input';
 import { useAuthConfig } from '../hooks/useAuthConfig';
 
 export function Login() {
@@ -58,176 +55,231 @@ export function Login() {
   const handleGoogleSignIn = async () => {
     setLoading(true);
     setError('');
-    
     try {
-      // Better Auth social sign-in automatically redirects to Google
-      // No result is returned - it redirects the browser
-      await signIn.social({
-        provider: 'google',
-      });
+      await signIn.social({ provider: 'google' });
     } catch (err) {
       setLoading(false);
       setError('An error occurred during Google sign in');
       console.error('Google sign in error:', err);
     }
-    // Note: Don't set loading to false here - the page will redirect
   };
 
   return (
-    <div className="min-h-screen bg-background flex items-center justify-center p-4 relative overflow-hidden">
-      {/* Background Effects */}
-      <div className="absolute inset-0 bg-gradient-to-br from-primary/5 via-background to-accent/5"></div>
-      <div className="absolute inset-0">
-        <div className="absolute top-1/4 left-1/4 w-96 h-96 bg-primary/10 rounded-full blur-3xl animate-pulse"></div>
-        <div className="absolute bottom-1/4 right-1/4 w-96 h-96 bg-accent/10 rounded-full blur-3xl animate-pulse delay-1000"></div>
+    <div
+      className="min-h-screen flex items-center justify-center p-4 relative overflow-hidden"
+      style={{ backgroundColor: '#1e1e1e' }}
+    >
+      {/* Pulsing background orbs — retained */}
+      <div className="absolute inset-0" style={{ background: 'radial-gradient(ellipse at 20% 50%, rgba(0,122,204,0.06) 0%, transparent 60%), radial-gradient(ellipse at 80% 20%, rgba(0,122,204,0.04) 0%, transparent 50%)' }} />
+      <div className="absolute inset-0 pointer-events-none">
+        <div
+          className="absolute rounded-full blur-3xl animate-pulse"
+          style={{ top: '20%', left: '15%', width: '380px', height: '380px', background: 'rgba(0,122,204,0.08)' }}
+        />
+        <div
+          className="absolute rounded-full blur-3xl animate-pulse"
+          style={{ bottom: '20%', right: '15%', width: '340px', height: '340px', background: 'rgba(0,122,204,0.06)', animationDelay: '1s' }}
+        />
       </div>
-      
-      {/* Main Content */}
-      <div className="w-full max-w-md relative z-10">
-        {/* Logo & Brand */}
-        <div className="text-center mb-8">
-          <div className="flex items-center justify-center mb-6">
-            <img src="/veblen-logo.png" alt="VebTask Logo" className="h-16 w-16 object-contain rounded-xl shadow-glow animate-pulse-glow" />
+
+      {/* VS Code window panel */}
+      <div className="w-full max-w-sm relative z-10" style={{ filter: 'drop-shadow(0 8px 32px rgba(0,0,0,0.6))' }}>
+
+        {/* Title bar */}
+        <div
+          className="flex items-center justify-between px-4"
+          style={{ backgroundColor: '#323233', borderRadius: '8px 8px 0 0', height: '32px', borderBottom: '1px solid #3c3c3c' }}
+        >
+          <div className="flex items-center gap-1.5">
+            <span className="w-3 h-3 rounded-full" style={{ backgroundColor: '#ff5f57' }} />
+            <span className="w-3 h-3 rounded-full" style={{ backgroundColor: '#febc2e' }} />
+            <span className="w-3 h-3 rounded-full" style={{ backgroundColor: '#28c840' }} />
           </div>
-          <div className="space-y-2">
-            <h1 className="text-3xl font-bold gradient-text">VebTask</h1>
-            <p className="text-sm text-muted-foreground flex items-center justify-center gap-2">
-              <Sparkles className="h-4 w-4" />
-              AI-Powered Task Management
-            </p>
-          </div>
+          <span className="text-xs" style={{ color: '#858585', fontFamily: 'monospace' }}>
+            VebTask — sign-in.ts
+          </span>
+          <div className="w-12" />
         </div>
 
-        {/* Login Card */}
-        <Card className="glass shadow-elevation">
-          <CardHeader className="space-y-1 pb-4">
-            <h2 className="text-2xl font-semibold text-center">Welcome back! 👋</h2>
-            <p className="text-sm text-muted-foreground text-center">
-              Please enter your details to continue
-            </p>
-          </CardHeader>
-          <CardContent className="space-y-4">
+        {/* Editor panel */}
+        <div style={{ backgroundColor: '#252526', border: '1px solid #3c3c3c', borderTop: 'none', borderRadius: '0 0 8px 8px' }}>
+
+          {/* Tab bar */}
+          <div style={{ backgroundColor: '#2d2d2d', borderBottom: '1px solid #3c3c3c', display: 'flex', alignItems: 'stretch' }}>
+            <div
+              className="flex items-center gap-2 px-4 py-2 text-xs"
+              style={{ color: '#cccccc', borderBottom: '1px solid #007acc', backgroundColor: '#1e1e1e', fontFamily: 'monospace' }}
+            >
+              <img src="/veblen-logo.png" alt="" className="w-4 h-4 object-contain" />
+              sign-in.ts
+            </div>
+          </div>
+
+          {/* Content */}
+          <div className="p-6 space-y-5">
+
+            {/* Logo + heading */}
+            <div className="flex items-center gap-3 mb-2">
+              <img src="/veblen-logo.png" alt="VebTask" className="w-10 h-10 object-contain rounded" style={{ filter: 'drop-shadow(0 0 6px rgba(0,122,204,0.5))' }} />
+              <div>
+                <div className="font-bold text-lg leading-tight" style={{ color: '#cccccc', fontFamily: 'monospace' }}>VebTask</div>
+                <div className="text-xs" style={{ color: '#858585' }}>Welcome back</div>
+              </div>
+            </div>
+
             <form onSubmit={handleSubmit} className="space-y-4">
-              {/* Email Input */}
-              <div className="space-y-2">
-                <label htmlFor="email" className="text-sm font-medium text-foreground">
-                  Email Address
+              {/* Email */}
+              <div className="space-y-1">
+                <label htmlFor="email" className="text-xs font-medium" style={{ color: '#9cdcfe', fontFamily: 'monospace' }}>
+                  // identifier
                 </label>
-                <div className="relative">
-                  <Mail className="absolute left-3 top-3 h-4 w-4 text-white/80 z-10" />
-                  <Input
-                    type="text"
-                    id="email"
-                    placeholder="Enter your email"
-                    value={email}
-                    onChange={(e) => setEmail(e.target.value)}
-                    className="pl-10 glass-surface"
-                    required
-                  />
-                </div>
+                <input
+                  type="text"
+                  id="email"
+                  placeholder="user@company.com"
+                  value={email}
+                  onChange={(e) => setEmail(e.target.value)}
+                  required
+                  className="w-full px-3 py-2 text-sm outline-none transition-colors"
+                  style={{
+                    backgroundColor: '#3c3c3c',
+                    border: '1px solid #3c3c3c',
+                    borderRadius: '4px',
+                    color: '#cccccc',
+                    fontFamily: 'monospace',
+                  }}
+                  onFocus={e => (e.target.style.borderColor = '#007acc')}
+                  onBlur={e => (e.target.style.borderColor = '#3c3c3c')}
+                />
               </div>
 
-              {/* Password Input */}
-              <div className="space-y-2">
-                <label htmlFor="password" className="text-sm font-medium text-foreground">
-                  Password
+              {/* Password */}
+              <div className="space-y-1">
+                <label htmlFor="password" className="text-xs font-medium" style={{ color: '#9cdcfe', fontFamily: 'monospace' }}>
+                  // password
                 </label>
                 <div className="relative">
-                  <Lock className="absolute left-3 top-3 h-4 w-4 text-white/80 z-10" />
-                  <Input
+                  <input
                     type={showPassword ? 'text' : 'password'}
                     id="password"
-                    placeholder="Enter your password"
+                    placeholder="••••••••"
                     value={password}
                     onChange={(e) => setPassword(e.target.value)}
-                    className="pl-10 pr-10 glass-surface"
                     required
+                    className="w-full px-3 py-2 pr-10 text-sm outline-none transition-colors"
+                    style={{
+                      backgroundColor: '#3c3c3c',
+                      border: '1px solid #3c3c3c',
+                      borderRadius: '4px',
+                      color: '#cccccc',
+                      fontFamily: 'monospace',
+                    }}
+                    onFocus={e => (e.target.style.borderColor = '#007acc')}
+                    onBlur={e => (e.target.style.borderColor = '#3c3c3c')}
                   />
                   <button
                     type="button"
-                    className="absolute right-3 top-3 text-white/80 hover:text-white z-10 transition-colors"
                     onClick={() => setShowPassword(!showPassword)}
+                    className="absolute right-3 top-1/2 -translate-y-1/2 transition-colors"
+                    style={{ color: '#858585' }}
+                    onMouseEnter={e => ((e.target as HTMLElement).style.color = '#cccccc')}
+                    onMouseLeave={e => ((e.target as HTMLElement).style.color = '#858585')}
                   >
                     {showPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
                   </button>
                 </div>
               </div>
 
-              {/* Forgot Password Link */}
+              {/* Forgot password */}
               <div className="text-right">
-                <Link 
-                  to="/forgot-password" 
-                  className="text-sm text-primary hover:text-primary/80 transition-colors"
+                <Link
+                  to="/forgot-password"
+                  className="text-xs transition-colors"
+                  style={{ color: '#007acc' }}
                 >
-                  Forgot your password?
+                  Forgot password?
                 </Link>
               </div>
 
-              {/* Error Message */}
+              {/* Error */}
               {error && (
-                <div className="p-3 rounded-lg bg-error/10 border border-error/20 text-error text-sm">
-                  {error}
+                <div
+                  className="px-3 py-2 text-xs rounded"
+                  style={{ backgroundColor: 'rgba(244,71,71,0.1)', border: '1px solid rgba(244,71,71,0.3)', color: '#f47171', fontFamily: 'monospace' }}
+                >
+                  ✗ {error}
                 </div>
               )}
 
-              {/* Submit Button */}
-              <Button 
-                type="submit" 
+              {/* Sign in button */}
+              <button
+                type="submit"
                 disabled={loading}
-                className="w-full bg-gradient-primary hover:bg-gradient-primary/90 text-white shadow-glow transition-all duration-300"
+                className="w-full py-2 text-sm font-medium transition-all duration-200"
+                style={{
+                  backgroundColor: loading ? '#0a4d7a' : '#0e639c',
+                  color: '#ffffff',
+                  border: '1px solid #1177bb',
+                  borderRadius: '4px',
+                  cursor: loading ? 'not-allowed' : 'pointer',
+                  fontFamily: 'monospace',
+                }}
+                onMouseEnter={e => { if (!loading) (e.currentTarget.style.backgroundColor = '#1177bb'); }}
+                onMouseLeave={e => { if (!loading) (e.currentTarget.style.backgroundColor = '#0e639c'); }}
               >
-                {loading ? 'Signing in...' : 'Sign In'}
-                <ArrowRight className="ml-2 h-4 w-4" />
-              </Button>
+                {loading ? '▶ Signing in...' : '▶ Sign In'}
+              </button>
             </form>
 
-            {/* Google OAuth Section - Only show if enabled */}
+            {/* Google OAuth */}
             {config.googleOAuthEnabled && (
               <>
-                {/* Divider */}
-                <div className="relative my-4">
-                  <div className="absolute inset-0 flex items-center">
-                    <span className="w-full border-t border-border" />
-                  </div>
-                  <div className="relative flex justify-center text-xs uppercase">
-                    <span className="bg-background px-2 text-muted-foreground">Or continue with</span>
-                  </div>
+                <div className="flex items-center gap-3">
+                  <div className="flex-1 h-px" style={{ backgroundColor: '#3c3c3c' }} />
+                  <span className="text-xs" style={{ color: '#858585' }}>or</span>
+                  <div className="flex-1 h-px" style={{ backgroundColor: '#3c3c3c' }} />
                 </div>
-
-                {/* Google Sign In Button */}
-                <Button
+                <button
                   type="button"
-                  variant="outline"
                   onClick={handleGoogleSignIn}
                   disabled={loading}
-                  className="w-full border-border hover:bg-muted/50 transition-all duration-300"
+                  className="w-full flex items-center justify-center gap-2 py-2 text-sm transition-all duration-200"
+                  style={{
+                    backgroundColor: 'transparent',
+                    border: '1px solid #3c3c3c',
+                    borderRadius: '4px',
+                    color: '#cccccc',
+                    cursor: loading ? 'not-allowed' : 'pointer',
+                    fontFamily: 'monospace',
+                  }}
+                  onMouseEnter={e => { (e.currentTarget.style.backgroundColor = '#2d2d2d'); (e.currentTarget.style.borderColor = '#555'); }}
+                  onMouseLeave={e => { (e.currentTarget.style.backgroundColor = 'transparent'); (e.currentTarget.style.borderColor = '#3c3c3c'); }}
                 >
-                  <FcGoogle className="w-5 h-5 mr-2" />
+                  <FcGoogle className="w-4 h-4" />
                   Continue with Google
-                </Button>
+                </button>
               </>
             )}
 
-            {/* Sign Up Link */}
-            <div className="text-center pt-4 border-t border-border">
-              <p className="text-sm text-muted-foreground">
-                Don't have an account?{' '}
-                <Link 
-                  to="/register" 
-                  className="font-medium text-primary hover:text-primary/80 transition-colors"
-                >
+            {/* Sign up */}
+            <div className="text-center pt-2" style={{ borderTop: '1px solid #3c3c3c' }}>
+              <p className="text-xs" style={{ color: '#858585' }}>
+                No account?{' '}
+                <Link to="/register" className="transition-colors" style={{ color: '#007acc' }}>
                   Sign up here
                 </Link>
               </p>
             </div>
-          </CardContent>
-        </Card>
+          </div>
+        </div>
 
-        {/* Footer */}
-        <div className="text-center mt-8">
-          <p className="text-xs text-muted-foreground">
-            © 2024 VebTask. Secure authentication powered by better-auth.
-          </p>
+        {/* Status bar */}
+        <div
+          className="flex items-center justify-between px-3 text-xs"
+          style={{ backgroundColor: '#007acc', color: '#ffffff', height: '22px', borderRadius: '0 0 8px 8px', fontFamily: 'monospace' }}
+        >
+          <span>⎇ main</span>
+          <span>VebTask v1.0</span>
         </div>
       </div>
     </div>

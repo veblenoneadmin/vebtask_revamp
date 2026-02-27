@@ -380,12 +380,19 @@ export function Projects() {
     } catch { /* ignore */ }
   };
 
-  const fetchProjects = async () => {
+  const fetchProjects = async (role?: string) => {
     if (!session?.user?.id) return;
     try {
       setLoading(true);
-      const orgId = currentOrg?.id || 'org_1757046595553';
-      const data = await apiClient.fetch(`/api/projects?userId=${session.user.id}&orgId=${orgId}&limit=100`);
+      const effectiveRole = role !== undefined ? role : userRole;
+      let data;
+      if (effectiveRole === 'CLIENT') {
+        // Use dedicated endpoint that reuses /api/clients/my proven logic
+        data = await apiClient.fetch('/api/clients/my/projects');
+      } else {
+        const orgId = currentOrg?.id || 'org_1757046595553';
+        data = await apiClient.fetch(`/api/projects?userId=${session.user.id}&orgId=${orgId}&limit=100`);
+      }
       if (data.success) setProjects(data.projects || []);
       else setProjects([]);
     } catch { setProjects([]); }
@@ -393,15 +400,18 @@ export function Projects() {
   };
 
   useEffect(() => {
-    fetchProjects();
-    fetchClients();
-    // Fetch role to control CLIENT view
+    // Fetch role first — CLIENT uses a different projects endpoint
     if (session?.user?.id) {
       fetch('/api/organizations')
         .then(r => r.json())
-        .then(d => { if (d.organizations?.[0]) setUserRole(d.organizations[0].role || ''); })
-        .catch(() => {});
+        .then(d => {
+          const role = d.organizations?.[0]?.role || '';
+          setUserRole(role);
+          fetchProjects(role);
+        })
+        .catch(() => fetchProjects());
     }
+    fetchClients();
   }, [session?.user?.id, currentOrg?.id]);
 
   const handleDeleteProject = async (project: DatabaseProject) => {

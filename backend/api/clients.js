@@ -159,6 +159,84 @@ router.get('/my', requireAuth, withOrgScope, async (req, res) => {
   }
 });
 
+// ── GET /api/clients/my/projects ──────────────────────────────────────────────
+// Returns full project data for the logged-in CLIENT user.
+// Uses the same proven client-finding logic as /api/clients/my.
+router.get('/my/projects', requireAuth, withOrgScope, async (req, res) => {
+  try {
+    const userId = req.user.id;
+    const orgId  = req.orgId;
+
+    console.log(`[ClientProjects] lookup — userId=${userId} orgId=${orgId}`);
+
+    // Find client record (mirrors /api/clients/my logic exactly)
+    let raw = null;
+    try {
+      const rows = await prisma.$queryRawUnsafe(
+        `SELECT * FROM clients WHERE user_id = ? AND orgId = ? LIMIT 1`,
+        userId, orgId
+      );
+      raw = rows[0] || null;
+      if (raw) console.log(`[ClientProjects] found by user_id: ${raw.id}`);
+    } catch (e) {
+      if (e.meta?.code === '1054' || e.code === 'P2010') {
+        const user = await prisma.user.findUnique({ where: { id: userId }, select: { email: true } });
+        if (user?.email) {
+          const rows = await prisma.$queryRawUnsafe(
+            `SELECT * FROM clients WHERE LOWER(email) = LOWER(?) AND orgId = ? LIMIT 1`,
+            user.email, orgId
+          );
+          raw = rows[0] || null;
+          if (raw) console.log(`[ClientProjects] found by email: ${raw.id}`);
+          else {
+            const all = await prisma.$queryRawUnsafe(`SELECT id, name, email FROM clients WHERE orgId = ?`, orgId);
+            console.log(`[ClientProjects] no match. clients in org: ${JSON.stringify(all.map(c => ({ id: c.id, email: c.email })))}`);
+          }
+        }
+      } else { throw e; }
+    }
+
+    // Also try email fallback if user_id lookup returned nothing but didn't throw
+    if (!raw) {
+      try {
+        const user = await prisma.user.findUnique({ where: { id: userId }, select: { email: true } });
+        if (user?.email) {
+          const rows = await prisma.$queryRawUnsafe(
+            `SELECT * FROM clients WHERE LOWER(email) = LOWER(?) AND orgId = ? LIMIT 1`,
+            user.email, orgId
+          );
+          raw = rows[0] || null;
+          if (raw) console.log(`[ClientProjects] found by email fallback: ${raw.id}`);
+          else {
+            const all = await prisma.$queryRawUnsafe(`SELECT id, name, email FROM clients WHERE orgId = ?`, orgId);
+            console.log(`[ClientProjects] no client. all clients in org: ${JSON.stringify(all.map(c => ({ id: c.id, email: c.email })))}`);
+          }
+        }
+      } catch { /* non-fatal */ }
+    }
+
+    if (!raw) {
+      return res.json({ success: true, projects: [], total: 0 });
+    }
+
+    console.log(`[ClientProjects] clientId=${raw.id} — fetching projects...`);
+
+    // Fetch full project data
+    const projects = await prisma.project.findMany({
+      where:   { clientId: raw.id, orgId },
+      orderBy: [{ updatedAt: 'desc' }, { createdAt: 'desc' }],
+      include: {
+        client: { select: { id: true, name: true, email: true } },
+      },
+    });
+
+    console.log(`[ClientProjects] returned ${projects.length} projects for clientId=${raw.id}`);
+    res.json({ success: true, projects, total: projects.length });
+  } catch (error) {
+    return handleDatabaseError(error, res, 'fetch my client projects');
+  }
+});
+
 // ── GET /api/clients ──────────────────────────────────────────────────────────
 // Uses raw SQL to avoid P2022 when extended columns haven't been added yet.
 router.get('/', requireAuth, withOrgScope, validateQuery(commonSchemas.pagination), async (req, res) => {

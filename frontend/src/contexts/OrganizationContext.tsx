@@ -36,10 +36,24 @@ export function OrganizationProvider({ children }: { children: React.ReactNode }
       });
 
       if (response.ok) {
-        const data = await response.json();
-        const orgs = data.organizations || [];
+        let orgs = (await response.json()).organizations || [];
+
+        // If no orgs returned (super admin has no memberships), check super admin status
+        if (orgs.length === 0) {
+          const checkRes = await fetch('/api/super-admin/check', { credentials: 'include' });
+          if (checkRes.ok) {
+            const { isSuperAdmin } = await checkRes.json();
+            if (isSuperAdmin) {
+              const allOrgsRes = await fetch('/api/super-admin/orgs', { credentials: 'include' });
+              if (allOrgsRes.ok) {
+                orgs = (await allOrgsRes.json()).organizations || [];
+              }
+            }
+          }
+        }
+
         setAllOrganizations(orgs);
-        
+
         // Set current org to first one if none selected
         if (orgs.length > 0 && !currentOrg) {
           const firstOrg = orgs[0];
@@ -47,7 +61,7 @@ export function OrganizationProvider({ children }: { children: React.ReactNode }
             id: firstOrg.id,
             name: firstOrg.name,
             slug: firstOrg.slug,
-            role: firstOrg.role || 'ADMIN'
+            role: firstOrg.role || 'OWNER'
           });
         }
       } else {

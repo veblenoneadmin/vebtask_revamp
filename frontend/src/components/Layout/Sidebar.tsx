@@ -70,11 +70,7 @@ const Sidebar: React.FC = () => {
         className="flex h-14 items-center gap-3 px-4 shrink-0"
         style={{ borderBottom: `1px solid ${VS.border}` }}
       >
-        <img src="/veblen-logo.png" alt="VebTask" className="h-8 w-8 object-contain rounded-md" />
-        <div>
-          <p className="text-[14px] font-bold leading-none" style={{ color: VS.text0 }}>VebTask</p>
-          <p className="text-[10px] mt-0.5" style={{ color: VS.text2 }}>Veblen Internal</p>
-        </div>
+        <img src="/veblen-logo.svg" alt="VebTask" className="h-9 w-auto object-contain" />
       </div>
 
       {/* Nav */}

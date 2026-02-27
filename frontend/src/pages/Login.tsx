@@ -110,7 +110,7 @@ export function Login() {
               className="flex items-center gap-2 px-4 py-2 text-xs"
               style={{ color: '#cccccc', borderBottom: '1px solid #007acc', backgroundColor: '#1e1e1e', fontFamily: 'monospace' }}
             >
-              <img src="/veblen-logo.png" alt="" className="w-4 h-4 object-contain" />
+              <img src="/veblen-logo.svg" alt="" className="h-4 w-auto object-contain" />
               sign-in.ts
             </div>
           </div>
@@ -120,7 +120,7 @@ export function Login() {
 
             {/* Logo + heading */}
             <div className="flex items-center gap-3 mb-2">
-              <img src="/veblen-logo.png" alt="VebTask" className="w-10 h-10 object-contain rounded" style={{ filter: 'drop-shadow(0 0 6px rgba(0,122,204,0.5))' }} />
+              <img src="/veblen-logo.svg" alt="VebTask" className="h-8 w-auto object-contain" style={{ filter: 'drop-shadow(0 0 6px rgba(0,122,204,0.5))' }} />
               <div>
                 <div className="font-bold text-lg leading-tight" style={{ color: '#cccccc', fontFamily: 'monospace' }}>VebTask</div>
                 <div className="text-xs" style={{ color: '#858585' }}>Welcome back</div>

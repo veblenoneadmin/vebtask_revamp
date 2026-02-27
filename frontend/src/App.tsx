@@ -72,9 +72,9 @@ function AppContent() {
         <div className="flex flex-col items-center space-y-6 animate-fade-in">
           <div className="relative">
             <img 
-              src="/veblen-logo.png" 
-              alt="Veblen" 
-              className="w-32 h-32 object-contain animate-pulse-glow"
+              src="/veblen-logo.svg"
+              alt="Veblen"
+              className="h-20 w-auto object-contain animate-pulse-glow"
             />
           </div>
           <div className="flex flex-col items-center space-y-2">

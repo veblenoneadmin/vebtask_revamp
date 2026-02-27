@@ -142,7 +142,7 @@ export function ResetPassword() {
         {/* Logo & Brand */}
         <div className="text-center mb-8">
           <div className="flex items-center justify-center mb-6">
-            <img src="/veblen-logo.png" alt="VebTask Logo" className="h-16 w-16 object-contain rounded-xl shadow-glow animate-pulse-glow" />
+            <img src="/veblen-logo.svg" alt="VebTask" className="h-14 w-auto object-contain rounded-xl animate-pulse-glow" />
           </div>
           <div className="space-y-2">
             <h1 className="text-3xl font-bold gradient-text">VebTask</h1>

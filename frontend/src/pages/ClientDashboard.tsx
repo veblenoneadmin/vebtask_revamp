@@ -148,7 +148,7 @@ export function ClientDashboard() {
     return (
       <div className="min-h-screen flex items-center justify-center" style={{ background: VS.bg0 }}>
         <div className="flex flex-col items-center gap-4">
-          <img src="/veblen-logo.png" alt="Veblen" className="w-24 h-24 object-contain opacity-60" />
+          <img src="/veblen-logo.svg" alt="Veblen" className="h-auto w-52 object-contain opacity-40" />
           <div className="w-6 h-6 border-2 border-t-transparent rounded-full animate-spin"
             style={{ borderColor: VS.accent }} />
         </div>

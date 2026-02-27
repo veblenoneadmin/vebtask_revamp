@@ -22,13 +22,8 @@ import reportsRoutes from './api/reports.js';
 import userReportsRoutes from './api/user-reports.js';
 import onboardingRoutes from './api/onboarding.js';
 import adminRoutes from './api/admin.js';
-import skillsRoutes from './api/skills.js';
 import passwordResetRoutes from './routes/password-reset.js';
 import invitationRoutes from './api/invitations.js';
-import attendanceRoutes from './api/attendance.js';
-import kpiRoutes from './api/kpi.js';
-import kpiReportRoutes from './api/kpi-report.js';
-import calendarRoutes from './api/calendar.js';
 import { 
   blockPublicRegistration, 
   addInternalBranding, 
@@ -56,176 +51,42 @@ if (missingEnvVars.length > 0) {
   console.log('✅ All required environment variables are configured');
 }
 
-// Ensure clients table has all required columns (raw SQL, no Prisma schema dependency)
-async function ensureClientsSchema() {
-  if (!process.env.DATABASE_URL) return;
-  console.log('🔄 Checking clients table schema...');
-
-  // Wait for DB to be ready — Railway cold starts can take a few seconds
-  let dbReady = false;
-  for (let i = 0; i < 5; i++) {
-    try {
-      await prisma.$queryRaw`SELECT 1`;
-      dbReady = true;
-      break;
-    } catch (e) {
-      console.log(`⏳ DB not ready, retrying in 2s... (${i + 1}/5)`);
-      await new Promise(r => setTimeout(r, 2000));
-    }
-  }
-  if (!dbReady) {
-    console.warn('⚠️  DB not ready after retries, skipping clients schema check');
+// Database migration function
+async function runDatabaseMigrations() {
+  if (!process.env.DATABASE_URL) {
+    console.warn('⚠️  DATABASE_URL not found, skipping migrations');
     return;
   }
 
-  const cols = [
-    { name: 'company',        def: "VARCHAR(255) NULL" },
-    { name: 'status',         def: "VARCHAR(20) NOT NULL DEFAULT 'active'" },
-    { name: 'hourly_rate',    def: "DECIMAL(10,2) NULL" },
-    { name: 'contact_person', def: "VARCHAR(255) NULL" },
-    { name: 'industry',       def: "VARCHAR(255) NULL" },
-    { name: 'priority',       def: "VARCHAR(20) NOT NULL DEFAULT 'medium'" },
-    { name: 'notes',          def: "TEXT NULL" },
-    { name: 'user_id',        def: "VARCHAR(36) NULL" },
-  ];
-
-  // Try to ADD each column directly — MySQL error 1060 means it already exists, which is fine.
-  // This is more reliable than INFORMATION_SCHEMA checks (which can have case/permission issues).
-  let added = 0;
-  for (const col of cols) {
-    try {
-      await prisma.$executeRawUnsafe(
-        `ALTER TABLE clients ADD COLUMN ${col.name} ${col.def}`
-      );
-      console.log(`  ✅ Added column: clients.${col.name}`);
-      added++;
-    } catch (e) {
-      const msg = e.message || '';
-      if (msg.includes('Duplicate column') || msg.includes('1060')) {
-        // Column already exists — that's fine
-      } else {
-        console.warn(`  ⚠️  clients.${col.name}: ${msg}`);
+  try {
+    console.log('🔄 Running database migrations...');
+    const { exec } = await import('child_process');
+    const { promisify } = await import('util');
+    const execAsync = promisify(exec);
+    
+    const { stdout, stderr } = await execAsync('npx prisma migrate deploy');
+    if (stdout) console.log('📋 Migration output:', stdout);
+    if (stderr && !stderr.includes('INFO')) console.warn('⚠️  Migration warnings:', stderr);
+    
+    console.log('✅ Database migrations completed successfully');
+  } catch (error) {
+    console.error('❌ Database migration failed:', error.message);
+    
+    // Check if it's a baseline issue (P3005)
+    if (error.message.includes('P3005') || error.message.includes('database schema is not empty')) {
+      console.log('🔄 Database schema exists, checking migration status...');
+      try {
+        // Try to push the current schema state to match Prisma expectations
+        await execAsync('npx prisma db push --accept-data-loss');
+        console.log('✅ Database schema synchronized successfully');
+      } catch (pushError) {
+        console.warn('⚠️  Could not sync schema:', pushError.message);
+        console.log('📋 Database schema exists and server will continue normally');
+        console.log('💡 Manual fix: Run "npx prisma migrate resolve --applied <migration_name>" in Railway console');
       }
     }
-  }
-
-  // Add index on user_id if missing
-  try {
-    const idxRows = await prisma.$queryRawUnsafe(
-      `SELECT COUNT(*) AS cnt FROM INFORMATION_SCHEMA.STATISTICS
-       WHERE TABLE_SCHEMA = DATABASE()
-         AND TABLE_NAME   = 'clients'
-         AND INDEX_NAME   = 'clients_user_id_idx'`
-    );
-    const idxCnt = Number(idxRows[0]?.cnt ?? idxRows[0]?.CNT ?? 0);
-    if (idxCnt === 0) {
-      await prisma.$executeRawUnsafe(
-        `CREATE INDEX clients_user_id_idx ON clients(user_id)`
-      );
-      console.log('  ✅ Added index: clients_user_id_idx');
-    }
-  } catch (e) {
-    console.warn(`  ⚠️  clients_user_id_idx: ${e.message}`);
-  }
-
-  console.log(added > 0
-    ? `✅ clients schema: ${added} column(s) added`
-    : '✅ clients schema: already up to date'
-  );
-}
-
-// Ensure skills + staff_skills tables exist (raw SQL, no FK constraints to avoid table-name issues)
-async function ensureSkillsSchema() {
-  if (!process.env.DATABASE_URL) return;
-  console.log('🔄 Checking skills tables...');
-  try {
-    await prisma.$executeRawUnsafe(
-      'CREATE TABLE IF NOT EXISTS `skills` (' +
-      '  `id`        VARCHAR(191) NOT NULL,' +
-      '  `name`      VARCHAR(100) NOT NULL,' +
-      '  `category`  VARCHAR(50)  NOT NULL,' +
-      '  `orgId`     VARCHAR(191) NOT NULL,' +
-      '  `createdAt` DATETIME(3)  NOT NULL DEFAULT CURRENT_TIMESTAMP(3),' +
-      '  PRIMARY KEY (`id`),' +
-      '  UNIQUE KEY `skills_name_orgId_key` (`name`, `orgId`),' +
-      '  KEY `skills_orgId_idx` (`orgId`)' +
-      ') DEFAULT CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci'
-    );
-    console.log('  ✅ skills table ready');
-  } catch (e) {
-    console.warn('  ⚠️  skills table:', e.message);
-  }
-
-  try {
-    await prisma.$executeRawUnsafe(
-      'CREATE TABLE IF NOT EXISTS `staff_skills` (' +
-      '  `id`        VARCHAR(191) NOT NULL,' +
-      '  `userId`    VARCHAR(191) NOT NULL,' +
-      '  `orgId`     VARCHAR(191) NOT NULL,' +
-      '  `skillId`   VARCHAR(191) NOT NULL,' +
-      '  `level`     INT          NOT NULL,' +
-      '  `yearsExp`  INT          NOT NULL DEFAULT 0,' +
-      '  `notes`     TEXT         NULL,' +
-      '  `createdAt` DATETIME(3)  NOT NULL DEFAULT CURRENT_TIMESTAMP(3),' +
-      '  `updatedAt` DATETIME(3)  NOT NULL DEFAULT CURRENT_TIMESTAMP(3) ON UPDATE CURRENT_TIMESTAMP(3),' +
-      '  PRIMARY KEY (`id`),' +
-      '  UNIQUE KEY `staff_skills_userId_skillId_key` (`userId`, `skillId`),' +
-      '  KEY `staff_skills_orgId_idx` (`orgId`),' +
-      '  KEY `staff_skills_userId_idx` (`userId`),' +
-      '  KEY `staff_skills_skillId_idx` (`skillId`)' +
-      ') DEFAULT CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci'
-    );
-    console.log('  ✅ staff_skills table ready');
-  } catch (e) {
-    console.warn('  ⚠️  staff_skills table:', e.message);
-  }
-}
-
-// Ensure calendar_events and calendar_event_attendees tables exist
-async function ensureCalendarEventsSchema() {
-  if (!process.env.DATABASE_URL) return;
-  console.log('🔄 Checking calendar_events tables...');
-  try {
-    await prisma.$executeRawUnsafe(
-      'CREATE TABLE IF NOT EXISTS `calendar_events` (' +
-      '  `id` VARCHAR(191) NOT NULL,' +
-      '  `title` VARCHAR(500) NOT NULL,' +
-      '  `description` TEXT NULL,' +
-      '  `location` VARCHAR(500) NULL,' +
-      '  `startAt` DATETIME(3) NOT NULL,' +
-      '  `endAt` DATETIME(3) NOT NULL,' +
-      '  `allDay` TINYINT(1) NOT NULL DEFAULT 0,' +
-      '  `color` VARCHAR(20) NOT NULL DEFAULT \'#007acc\',' +
-      '  `meetLink` VARCHAR(500) NULL,' +
-      '  `createdById` VARCHAR(36) NOT NULL,' +
-      '  `orgId` VARCHAR(191) NOT NULL,' +
-      '  `googleEventId` VARCHAR(500) NULL,' +
-      '  `googleCalendarId` VARCHAR(500) NULL,' +
-      '  `syncedToGoogle` TINYINT(1) NOT NULL DEFAULT 0,' +
-      '  `googleSyncedAt` DATETIME(3) NULL,' +
-      '  `createdAt` DATETIME(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3),' +
-      '  `updatedAt` DATETIME(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3) ON UPDATE CURRENT_TIMESTAMP(3),' +
-      '  PRIMARY KEY (`id`),' +
-      '  KEY `ce_orgId_idx` (`orgId`),' +
-      '  KEY `ce_orgId_startAt_idx` (`orgId`,`startAt`),' +
-      '  KEY `ce_createdById_idx` (`createdById`)' +
-      ') DEFAULT CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci'
-    );
-    await prisma.$executeRawUnsafe(
-      'CREATE TABLE IF NOT EXISTS `calendar_event_attendees` (' +
-      '  `id` VARCHAR(191) NOT NULL,' +
-      '  `eventId` VARCHAR(191) NOT NULL,' +
-      '  `userId` VARCHAR(36) NOT NULL,' +
-      '  `orgId` VARCHAR(191) NOT NULL,' +
-      '  PRIMARY KEY (`id`),' +
-      '  UNIQUE KEY `cea_event_user_key` (`eventId`,`userId`),' +
-      '  KEY `cea_orgId_idx` (`orgId`),' +
-      '  KEY `cea_userId_idx` (`userId`)' +
-      ') DEFAULT CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci'
-    );
-    console.log('  ✅ calendar_events tables ready');
-  } catch (e) {
-    console.warn('  ⚠️  calendar_events tables:', e.message);
+    
+    // Don't exit - let the server start anyway, tables might already exist
   }
 }
 
@@ -241,7 +102,8 @@ app.use((req, res, next) => {
     'http://localhost:3000',
     'https://vebtask.com',
     'https://www.vebtask.com',
-    'https://vebtask-production.up.railway.app'
+    'https://vebtask-production.up.railway.app',
+    'https://vebtaskrevamp-production.up.railway.app'
   ];
   
   const origin = req.headers.origin;
@@ -255,7 +117,8 @@ app.use((req, res, next) => {
     if (host && (host.includes('railway.app') || host.includes('vebtask.com'))) {
       res.header('Access-Control-Allow-Origin', `https://${host}`);
     } else {
-      res.header('Access-Control-Allow-Origin', 'https://vebtask-production.up.railway.app');
+      res.header('Access-Control-Allow-Origin', 'https://vebtask-production.up.railway.app',
+    'https://vebtaskrevamp-production.up.railway.app');
     }
   } else {
     // In development, allow localhost with current port, but also allow production origins
@@ -326,7 +189,7 @@ app.get("/api/auth", (req, res) => {
 });
 
 // Use a catch-all route for Better Auth sub-paths
-app.all("/api/auth/*", (req, res) => {
+app.all(["/api/auth/*", "/api/auth/*splat"], (req, res) => {
   // Better Auth's toNodeHandler expects to handle the request/response directly
   return authHandler(req, res);
 });
@@ -429,7 +292,7 @@ app.use('/api', async (req, res, next) => {
         // TODO: Remove this after fixing session management
         try {
           const existingUser = await prisma.user.findFirst({
-            where: { email: 'brelvin75@gmail.com' },
+            where: { email: 'tony@opusautomations.com' },
             select: { id: true, email: true, name: true }
           });
           
@@ -490,13 +353,8 @@ app.use('/api/reports', reportsRoutes);
 app.use('/api/user-reports', userReportsRoutes);
 app.use('/api/onboarding', onboardingRoutes);
 app.use('/api/admin', adminRoutes);
-app.use('/api/skills', skillsRoutes);
 app.use('/api/auth', passwordResetRoutes);
 app.use('/api/invitations', invitationRoutes);
-app.use('/api/attendance', attendanceRoutes);
-app.use('/api/kpi', kpiRoutes);
-app.use('/api/kpi-report', kpiReportRoutes);
-app.use('/api/calendar', calendarRoutes);
 
 // Test routes for debugging (NO AUTH - REMOVE IN PRODUCTION)
 import testProjectsRoutes from './api/test-projects.js';
@@ -1270,7 +1128,7 @@ app.get('/api/emergency/setup-user-org', async (req, res) => {
 
     const requiredUserId = '53ebe8d8-4700-43b0-aae7-f30608cd3b66';
     const requiredOrgId = 'org_1757046595553';
-    const userEmail = 'brelvin75@gmail.com';
+    const userEmail = 'tony@opusautomations.com';
 
     // Step 1: Ensure user exists
     let user = await prisma.user.findUnique({
@@ -1393,7 +1251,7 @@ app.get('/api/inspect/database', async (req, res) => {
       where: {
         OR: [
           { id: userId },
-          { email: 'brelvin75@gmail.com' }
+          { email: 'tony@opusautomations.com' }
         ]
       },
       select: { id: true, email: true, name: true }
@@ -3013,10 +2871,8 @@ app.get('*', (req, res) => {
 
 // Run migrations and start server
 async function startServer() {
-  await ensureClientsSchema();
-  await ensureSkillsSchema();
-  await ensureCalendarEventsSchema();
-
+  await runDatabaseMigrations();
+  
   app.listen(PORT, '0.0.0.0', () => {
     console.log(`✅ Server running on port ${PORT}`);
     console.log(`🔐 Auth endpoints available at /api/auth/*`);

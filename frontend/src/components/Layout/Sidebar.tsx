@@ -32,7 +32,7 @@ const navItems = [
   { name: 'Tasks',          href: '/tasks',       icon: CheckSquare,     roles: ['OWNER', 'ADMIN', 'STAFF', 'CLIENT'] },
   { name: 'Calendar',       href: '/calendar',    icon: CalendarDays,    roles: ['OWNER', 'ADMIN', 'STAFF', 'CLIENT'] },
   { name: 'Skills',         href: '/skills',      icon: Star,            roles: ['OWNER', 'ADMIN', 'STAFF'] },
-  { name: 'Projects',       href: '/projects',    icon: Building2,       roles: ['OWNER', 'ADMIN', 'STAFF'] },
+  { name: 'Projects',       href: '/projects',    icon: Building2,       roles: ['OWNER', 'ADMIN', 'STAFF', 'CLIENT'] },
   { name: 'Time Logs',      href: '/timesheets',  icon: Clock,           roles: ['OWNER', 'ADMIN', 'STAFF', 'CLIENT'] },
   { name: 'Clients',        href: '/clients',     icon: Users,           roles: ['OWNER', 'ADMIN', 'STAFF'] },
   { name: 'Reports',        href: '/reports',     icon: BarChart3,       roles: ['OWNER', 'ADMIN', 'STAFF'] },

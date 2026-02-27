@@ -1,5 +1,6 @@
 import { useState, useEffect, useCallback } from 'react';
 import { useSession } from '../lib/auth-client';
+import { useOrganization } from '../contexts/OrganizationContext';
 import {
   Clock, Calendar, Download, Search, LogIn, LogOut,
   Coffee, Zap, BarChart3, Users, AlertTriangle,
@@ -121,9 +122,11 @@ function MemberAvatar({ name, image, size = 26 }: { name: string; image?: string
 // ── Main component ────────────────────────────────────────────────────────────
 export function TimeLogs() {
   const { data: session } = useSession();
+  const { currentOrg } = useOrganization();
+  const orgId = currentOrg?.id || '';
+
   const [logs, setLogs]             = useState<AttendanceLog[]>([]);
   const [loading, setLoading]       = useState(true);
-  const [orgId, setOrgId]           = useState('');
   const [isPrivileged, setIsPrivileged] = useState(false);
   const [userRole, setUserRole]     = useState('STAFF');
 
@@ -144,22 +147,16 @@ export function TimeLogs() {
   const [searchTerm, setSearchTerm]   = useState('');
   const [filterMember, setFilterMember] = useState('all');
 
-  // ── Fetch org ──────────────────────────────────────────────────────────────
-  useEffect(() => {
-    if (!session?.user?.id) return;
-    fetch(`/api/organizations?userId=${session.user.id}`)
-      .then(r => r.json())
-      .then(d => { if (d.organizations?.[0]) setOrgId(d.organizations[0].id); })
-      .catch(console.error);
-  }, [session]);
-
   // ── Fetch logs ─────────────────────────────────────────────────────────────
   const fetchLogs = useCallback(async () => {
-    if (!session?.user?.id || !orgId) return;
+    if (!session?.user?.id) return;
     setLoading(true);
     try {
-      const res = await fetch(`/api/attendance/logs?orgId=${orgId}`, {
-        headers: { 'x-org-id': orgId },
+      const headers: Record<string, string> = { 'Content-Type': 'application/json' };
+      if (orgId) headers['x-org-id'] = orgId;
+      const res = await fetch(`/api/attendance/logs${orgId ? `?orgId=${orgId}` : ''}`, {
+        credentials: 'include',
+        headers,
       });
       if (res.ok) {
         const data = await res.json();
@@ -172,13 +169,14 @@ export function TimeLogs() {
     } finally {
       setLoading(false);
     }
-  }, [session, orgId]);
+  }, [session?.user?.id, orgId]);
 
   // ── Fetch clock status ─────────────────────────────────────────────────────
   const fetchStatus = useCallback(async () => {
-    if (!orgId) return;
     try {
-      const res = await fetch('/api/attendance/status', { headers: { 'x-org-id': orgId } });
+      const headers: Record<string, string> = {};
+      if (orgId) headers['x-org-id'] = orgId;
+      const res = await fetch('/api/attendance/status', { credentials: 'include', headers });
       if (res.ok) {
         const data = await res.json();
         setClockedIn(data.clockedIn);
@@ -189,7 +187,9 @@ export function TimeLogs() {
     }
   }, [orgId]);
 
-  useEffect(() => { if (orgId) { fetchLogs(); fetchStatus(); } }, [orgId, fetchLogs, fetchStatus]);
+  useEffect(() => {
+    if (session?.user?.id) { fetchLogs(); fetchStatus(); }
+  }, [session?.user?.id, orgId, fetchLogs, fetchStatus]);
 
   // ── Net elapsed timer (pauses on break) ───────────────────────────────────
   useEffect(() => {
@@ -217,12 +217,15 @@ export function TimeLogs() {
   const handleClockIn = async () => {
     setClockLoading(true);
     try {
+      const headers: Record<string, string> = { 'Content-Type': 'application/json' };
+      if (orgId) headers['x-org-id'] = orgId;
       const res = await fetch('/api/attendance/clock-in', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json', 'x-org-id': orgId },
-        body: JSON.stringify({ orgId }),
+        credentials: 'include',
+        headers,
+        body: JSON.stringify({ ...(orgId && { orgId }) }),
       });
-      if (res.ok) { await fetchStatus(); await fetchLogs(); }
+      if (res.ok) { await fetchStatus(); await fetchLogs(); window.dispatchEvent(new CustomEvent('attendance-change')); }
       else { const d = await res.json(); alert(d.error || 'Failed to clock in'); }
     } catch (err) { console.error(err); } finally { setClockLoading(false); }
   };
@@ -240,12 +243,15 @@ export function TimeLogs() {
     setBreakAccum(0);
     setBreakElapsed(0);
     try {
+      const headers: Record<string, string> = { 'Content-Type': 'application/json' };
+      if (orgId) headers['x-org-id'] = orgId;
       const res = await fetch('/api/attendance/clock-out', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json', 'x-org-id': orgId },
-        body: JSON.stringify({ orgId, breakDuration: totalBreak }),
+        credentials: 'include',
+        headers,
+        body: JSON.stringify({ ...(orgId && { orgId }), breakDuration: totalBreak }),
       });
-      if (res.ok) { await fetchStatus(); await fetchLogs(); }
+      if (res.ok) { await fetchStatus(); await fetchLogs(); window.dispatchEvent(new CustomEvent('attendance-change')); }
       else { const d = await res.json(); alert(d.error || 'Failed to clock out'); }
     } catch (err) { console.error(err); } finally { setClockLoading(false); }
   };

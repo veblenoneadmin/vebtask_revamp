@@ -6,7 +6,6 @@ import listPlugin from '@fullcalendar/list';
 import interactionPlugin from '@fullcalendar/interaction';
 import type { EventInput, EventClickArg, EventChangeArg, EventSourceFuncArg } from '@fullcalendar/core';
 import type { DateClickArg } from '@fullcalendar/interaction';
-import { useSession, authClient } from '../lib/auth-client';
 import { useApiClient } from '../lib/api-client';
 import { useOrganization } from '../contexts/OrganizationContext';
 import {
@@ -33,8 +32,6 @@ interface CalEventExtended {
   location: string | null;
   meetLink: string | null;
   createdById: string;
-  syncedToGoogle: boolean;
-  googleEventId: string | null;
   attendees: OrgMember[];
 }
 
@@ -47,7 +44,7 @@ interface EventFormData {
   allDay: boolean;
   color: string;
   attendeeIds: string[];
-  syncToGoogle: boolean;
+  meetLink: string;
 }
 
 const EVENT_COLORS = [
@@ -69,7 +66,7 @@ function defaultForm(): EventFormData {
     startAt: toLocalInput(now),
     endAt:   toLocalInput(end),
     allDay: false, color: '#007acc',
-    attendeeIds: [], syncToGoogle: false,
+    attendeeIds: [], meetLink: '',
   };
 }
 
@@ -80,38 +77,20 @@ function toLocalInput(d: Date): string {
 
 // ── Main Component ────────────────────────────────────────────────────────────
 export function Calendar() {
-  useSession();
   const api = useApiClient();
   const { currentOrg } = useOrganization();
   const calRef = useRef<InstanceType<typeof FullCalendar>>(null);
 
-  const [googleConnected, setGoogleConnected] = useState(false);
   const [members, setMembers] = useState<OrgMember[]>([]);
   const [showModal, setShowModal] = useState(false);
   const [editingEventId, setEditingEventId] = useState<string | null>(null);
-  const [editingExtended, setEditingExtended] = useState<CalEventExtended | null>(null);
   const [form, setForm] = useState<EventFormData>(defaultForm());
   const [saving, setSaving] = useState(false);
   const [deleting, setDeleting] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [connectingGoogle, setConnectingGoogle] = useState(false);
-
-  const handleConnectGoogle = async () => {
-    setConnectingGoogle(true);
-    try {
-      await authClient.linkSocial({
-        provider: 'google',
-        callbackURL: '/calendar',
-      });
-    } catch (err) {
-      console.error('Google calendar connect error:', err);
-      setConnectingGoogle(false);
-    }
-  };
 
   useEffect(() => {
     if (!currentOrg) return;
-    api.fetch('/api/calendar/status').then((d: { googleConnected: boolean }) => setGoogleConnected(d.googleConnected)).catch(() => {});
     api.fetch('/api/calendar/members').then((d: { members: OrgMember[] }) => setMembers(d.members)).catch(() => {});
   }, [currentOrg]);
 
@@ -132,7 +111,6 @@ export function Calendar() {
       allDay: allDay || false,
     });
     setEditingEventId(null);
-    setEditingExtended(null);
     setError(null);
     setShowModal(true);
   };
@@ -144,7 +122,6 @@ export function Calendar() {
   const handleEventClick = (info: EventClickArg) => {
     const ext = info.event.extendedProps as CalEventExtended;
     setEditingEventId(info.event.id);
-    setEditingExtended(ext);
     setForm({
       title:       info.event.title,
       description: ext.description || '',
@@ -154,7 +131,7 @@ export function Calendar() {
       allDay:      info.event.allDay,
       color:       (info.event.backgroundColor || '#007acc'),
       attendeeIds: ext.attendees.map(a => a.id),
-      syncToGoogle: ext.syncedToGoogle,
+      meetLink:    ext.meetLink || '',
     });
     setError(null);
     setShowModal(true);
@@ -218,32 +195,17 @@ export function Calendar() {
           <CalendarIcon size={20} color={VS.accent} />
           <h1 style={{ color: VS.text0, fontSize: 20, fontWeight: 600, margin: 0 }}>Calendar</h1>
         </div>
-        <div style={{ display: 'flex', gap: 10, alignItems: 'center' }}>
-          {googleConnected ? (
-            <span style={{ fontSize: 12, color: VS.teal, display: 'flex', alignItems: 'center', gap: 4 }}>
-              <Check size={12} /> Google Connected
-            </span>
-          ) : (
-            <button
-              onClick={handleConnectGoogle}
-              disabled={connectingGoogle}
-              style={{ fontSize: 12, color: VS.text2, textDecoration: 'underline', cursor: connectingGoogle ? 'wait' : 'pointer', background: 'none', border: 'none', padding: 0, opacity: connectingGoogle ? 0.6 : 1 }}
-            >
-              {connectingGoogle ? 'Connecting…' : 'Connect Google Calendar'}
-            </button>
-          )}
-          <button
-            onClick={() => openCreateModal()}
-            style={{
-              display: 'flex', alignItems: 'center', gap: 6,
-              background: VS.accent, color: '#fff', border: 'none',
-              borderRadius: 6, padding: '7px 14px', fontSize: 13,
-              fontWeight: 500, cursor: 'pointer',
-            }}
-          >
-            <Plus size={14} /> New Event
-          </button>
-        </div>
+        <button
+          onClick={() => openCreateModal()}
+          style={{
+            display: 'flex', alignItems: 'center', gap: 6,
+            background: VS.accent, color: '#fff', border: 'none',
+            borderRadius: 6, padding: '7px 14px', fontSize: 13,
+            fontWeight: 500, cursor: 'pointer',
+          }}
+        >
+          <Plus size={14} /> New Event
+        </button>
       </div>
 
       {/* Calendar */}
@@ -280,17 +242,13 @@ export function Calendar() {
           form={form}
           setForm={setForm}
           members={members}
-          googleConnected={googleConnected}
           isEdit={!!editingEventId}
           saving={saving}
           deleting={deleting}
           error={error}
-          editingExtended={editingExtended}
           onSave={handleSave}
           onDelete={handleDelete}
           onClose={() => setShowModal(false)}
-          onConnectGoogle={handleConnectGoogle}
-          connectingGoogle={connectingGoogle}
         />
       )}
     </div>
@@ -302,23 +260,18 @@ interface EventModalProps {
   form: EventFormData;
   setForm: React.Dispatch<React.SetStateAction<EventFormData>>;
   members: OrgMember[];
-  googleConnected: boolean;
   isEdit: boolean;
   saving: boolean;
   deleting: boolean;
   error: string | null;
-  editingExtended: CalEventExtended | null;
   onSave: () => void;
   onDelete: () => void;
-  onConnectGoogle: () => void;
-  connectingGoogle: boolean;
   onClose: () => void;
 }
 
 function EventModal({
-  form, setForm, members, googleConnected, isEdit,
-  saving, deleting, error, editingExtended, onSave, onDelete, onClose,
-  onConnectGoogle, connectingGoogle,
+  form, setForm, members, isEdit,
+  saving, deleting, error, onSave, onDelete, onClose,
 }: EventModalProps) {
   const [memberSearch, setMemberSearch] = useState('');
   const [showMemberList, setShowMemberList] = useState(false);
@@ -465,6 +418,37 @@ function EventModal({
             />
           </div>
 
+          {/* Meeting Link */}
+          <div>
+            <label style={labelStyle}>
+              <Video size={11} style={{ marginRight: 4, display: 'inline' }} />
+              Meeting Link
+            </label>
+            <div style={{ position: 'relative' }}>
+              <input
+                value={form.meetLink}
+                onChange={e => setForm(f => ({ ...f, meetLink: e.target.value }))}
+                placeholder="Paste Google Meet, Zoom, or Teams link"
+                style={{ ...inputStyle, paddingRight: form.meetLink ? 70 : 10 }}
+              />
+              {form.meetLink && (
+                <a
+                  href={form.meetLink}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  style={{
+                    position: 'absolute', right: 8, top: '50%', transform: 'translateY(-50%)',
+                    display: 'flex', alignItems: 'center', gap: 3,
+                    background: VS.accent, color: '#fff', textDecoration: 'none',
+                    borderRadius: 4, padding: '3px 8px', fontSize: 11, fontWeight: 500,
+                  }}
+                >
+                  Join <ExternalLink size={10} />
+                </a>
+              )}
+            </div>
+          </div>
+
           {/* Color */}
           <div>
             <label style={labelStyle}>Color</label>
@@ -575,70 +559,6 @@ function EventModal({
               )}
             </div>
           </div>
-
-          {/* Google Meet */}
-          {isEdit && editingExtended?.meetLink ? (
-            <div style={{
-              display: 'flex', alignItems: 'center', gap: 8,
-              background: VS.bg2, border: `1px solid ${VS.border}`,
-              borderRadius: 6, padding: '10px 12px',
-            }}>
-              <Video size={14} color={VS.teal} />
-              <span style={{ fontSize: 13, color: VS.teal, flex: 1 }}>Google Meet link</span>
-              <a
-                href={editingExtended.meetLink}
-                target="_blank"
-                rel="noopener noreferrer"
-                style={{
-                  display: 'flex', alignItems: 'center', gap: 4,
-                  background: VS.accent, color: '#fff', textDecoration: 'none',
-                  borderRadius: 4, padding: '4px 10px', fontSize: 12, fontWeight: 500,
-                }}
-              >
-                Join <ExternalLink size={11} />
-              </a>
-            </div>
-          ) : googleConnected ? (
-            <div style={{
-              display: 'flex', alignItems: 'center', gap: 10,
-              background: VS.bg2, border: `1px solid ${VS.border}`,
-              borderRadius: 6, padding: '10px 12px',
-            }}>
-              <input
-                type="checkbox" id="syncGoogle"
-                checked={form.syncToGoogle}
-                onChange={e => setForm(f => ({ ...f, syncToGoogle: e.target.checked }))}
-                style={{ accentColor: VS.accent, cursor: 'pointer' }}
-              />
-              <label htmlFor="syncGoogle" style={{ cursor: 'pointer', flex: 1 }}>
-                <div style={{ fontSize: 13, color: VS.text0, fontWeight: 500, display: 'flex', alignItems: 'center', gap: 6 }}>
-                  <Video size={13} color={VS.teal} /> Sync to Google Calendar
-                </div>
-                {form.syncToGoogle && (
-                  <div style={{ fontSize: 11, color: VS.teal, marginTop: 2 }}>
-                    Google Meet link will be generated automatically
-                  </div>
-                )}
-              </label>
-            </div>
-          ) : (
-            <div style={{
-              background: VS.bg2, border: `1px solid ${VS.border}`,
-              borderRadius: 6, padding: '10px 12px',
-            }}>
-              <div style={{ fontSize: 12, color: VS.text2, display: 'flex', alignItems: 'center', gap: 6 }}>
-                <Video size={12} />
-                <button
-                  onClick={onConnectGoogle}
-                  disabled={connectingGoogle}
-                  style={{ color: VS.accent, textDecoration: 'underline', background: 'none', border: 'none', padding: 0, cursor: connectingGoogle ? 'wait' : 'pointer', fontSize: 12, opacity: connectingGoogle ? 0.6 : 1 }}
-                >
-                  {connectingGoogle ? 'Connecting…' : 'Connect Google Calendar'}
-                </button>
-                {' '}to generate Meet links
-              </div>
-            </div>
-          )}
 
           {/* Error */}
           {error && (

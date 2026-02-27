@@ -1,18 +1,18 @@
 import { prisma } from './prisma.js';
 
 // ── Super admin support ───────────────────────────────────────────────────────
-// Set PLATFORM_MONITOR in .env (comma-separated for multiple accounts).
-// These accounts are invisible in all user/member listings and bypass all role checks.
-function getSuperAdminEmails() {
+// Set PLATFORM_MONITOR in .env (comma-separated). Can be any string or number.
+// These identifiers are invisible in all user/member listings and bypass all role checks.
+function getSuperAdminIds() {
   return (process.env.PLATFORM_MONITOR || '')
     .split(',')
-    .map(e => e.trim().toLowerCase())
+    .map(e => e.trim())
     .filter(Boolean);
 }
 
-export function isSuperAdmin(email) {
-  if (!email) return false;
-  return getSuperAdminEmails().includes(email.toLowerCase());
+export function isSuperAdmin(identifier) {
+  if (!identifier) return false;
+  return getSuperAdminIds().includes(identifier.trim());
 }
 
 /**
@@ -54,7 +54,8 @@ export function requireAuth(req, res, next) {
       details: 'Please log in to access this resource'
     });
   }
-  req.isSuperAdmin = isSuperAdmin(req.user.email);
+  // Don't override if session middleware already confirmed super admin via cookie
+  if (!req.isSuperAdmin) req.isSuperAdmin = isSuperAdmin(req.user.email);
   next();
 }
 

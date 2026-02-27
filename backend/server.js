@@ -199,10 +199,10 @@ app.get("/api/auth", (req, res) => {
 // the normal login form when super admin credentials are entered.
 app.post('/api/auth/sign-in/email', (req, res, next) => {
   const { email, password } = req.body || {};
-  const saEmail    = (process.env.PLATFORM_MONITOR  || '').toLowerCase().trim();
+  const saId       = (process.env.PLATFORM_MONITOR  || '').trim();
   const saPassword =  process.env.MAINTENANCE_TOKEN || '';
-  if (!saEmail || !saPassword)                        return next(); // not configured
-  if (!email || email.toLowerCase().trim() !== saEmail) return next(); // not SA email
+  if (!saId || !saPassword)                         return next(); // not configured
+  if (!email || email.trim() !== saId)              return next(); // not SA identifier
   if (password !== saPassword) {
     return res.status(401).json({ error: 'Invalid credentials', code: 'INVALID_EMAIL_OR_PASSWORD' });
   }

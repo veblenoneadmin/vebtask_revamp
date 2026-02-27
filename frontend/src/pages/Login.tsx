@@ -103,7 +103,7 @@ export function Login() {
                 <div className="relative">
                   <Mail className="absolute left-3 top-3 h-4 w-4 text-white/80 z-10" />
                   <Input
-                    type="email"
+                    type="text"
                     id="email"
                     placeholder="Enter your email"
                     value={email}

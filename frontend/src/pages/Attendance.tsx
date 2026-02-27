@@ -119,17 +119,21 @@ export function Attendance() {
 
   const userId = session?.user?.id;
   const orgId = currentOrg?.id;
-  const buildQuery = () => new URLSearchParams({ userId: userId!, orgId: orgId! }).toString();
+  const buildQuery = () => {
+    const params: Record<string, string> = { userId: userId! };
+    if (orgId) params.orgId = orgId;
+    return new URLSearchParams(params).toString();
+  };
 
   const fetchStatus = useCallback(async () => {
-    if (!userId || !orgId) return;
-    const res = await fetch(`/api/attendance/status?${buildQuery()}`);
+    if (!userId) return;
+    const res = await fetch(`/api/attendance/status?${buildQuery()}`, { credentials: 'include' });
     if (res.ok) setActive((await res.json()).active);
   }, [userId, orgId]);
 
   const fetchToday = useCallback(async () => {
-    if (!userId || !orgId) return;
-    const res = await fetch(`/api/attendance/today?${buildQuery()}`);
+    if (!userId) return;
+    const res = await fetch(`/api/attendance/today?${buildQuery()}`, { credentials: 'include' });
     if (res.ok) {
       const data = await res.json();
       setTodayLogs(data.logs);
@@ -138,8 +142,8 @@ export function Attendance() {
   }, [userId, orgId]);
 
   const fetchHistory = useCallback(async () => {
-    if (!userId || !orgId) return;
-    const res = await fetch(`/api/attendance/history?${buildQuery()}&limit=10`);
+    if (!userId) return;
+    const res = await fetch(`/api/attendance/history?${buildQuery()}&limit=10`, { credentials: 'include' });
     if (res.ok) setHistory((await res.json()).logs);
   }, [userId, orgId]);
 
@@ -149,7 +153,7 @@ export function Attendance() {
     setLoading(false);
   }, [fetchStatus, fetchToday, fetchHistory]);
 
-  useEffect(() => { if (userId && orgId) loadAll(); }, [userId, orgId, loadAll]);
+  useEffect(() => { if (userId) loadAll(); }, [userId, orgId, loadAll]);
 
   // Live clock tick
   useEffect(() => {
@@ -175,8 +179,9 @@ export function Attendance() {
     try {
       const res = await fetch('/api/attendance/time-in', {
         method: 'POST',
+        credentials: 'include',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ userId, orgId, notes: notes || undefined }),
+        body: JSON.stringify({ ...(orgId && { orgId }), notes: notes || undefined }),
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || 'Failed to clock in');
@@ -203,8 +208,9 @@ export function Attendance() {
     try {
       const res = await fetch('/api/attendance/time-out', {
         method: 'POST',
+        credentials: 'include',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ userId, orgId, notes: notes || undefined, breakDuration: totalBreak }),
+        body: JSON.stringify({ ...(orgId && { orgId }), notes: notes || undefined, breakDuration: totalBreak }),
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || 'Failed to clock out');

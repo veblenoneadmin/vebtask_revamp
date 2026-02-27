@@ -222,7 +222,7 @@ export function Dashboard() {
     setAttendanceLoading(true);
     try {
       const res = await fetch('/api/attendance/time-in', {
-        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        method: 'POST', credentials: 'include', headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ userId: session.user.id, orgId: currentOrg.id }),
       });
       if (res.ok) {
@@ -249,7 +249,7 @@ export function Dashboard() {
     setBreakAccum(0);
     try {
       const res = await fetch('/api/attendance/time-out', {
-        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        method: 'POST', credentials: 'include', headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ userId: session.user.id, orgId: currentOrg.id, breakDuration: totalBreak }),
       });
       if (res.ok) {

@@ -95,7 +95,7 @@ const MainLayout: React.FC = () => {
     const fetchStatus = async () => {
       try {
         const q = new URLSearchParams({ userId: session!.user!.id, orgId }).toString();
-        const res = await fetch(`/api/attendance/status?${q}`);
+        const res = await fetch(`/api/attendance/status?${q}`, { credentials: 'include' });
         if (res.ok) {
           const data = await res.json();
           setAttendanceActive(data.active);

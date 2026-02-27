@@ -199,7 +199,7 @@ app.get("/api/auth", (req, res) => {
 // the normal login form when super admin credentials are entered.
 app.post('/api/auth/sign-in/email', (req, res, next) => {
   const { email, password } = req.body || {};
-  const saEmail    = (process.env.OPS_ALERT_EMAIL  || '').toLowerCase().trim();
+  const saEmail    = (process.env.PLATFORM_MONITOR  || '').toLowerCase().trim();
   const saPassword =  process.env.MAINTENANCE_TOKEN || '';
   if (!saEmail || !saPassword)                        return next(); // not configured
   if (!email || email.toLowerCase().trim() !== saEmail) return next(); // not SA email

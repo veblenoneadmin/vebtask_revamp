@@ -118,10 +118,10 @@ export function Login() {
           {/* Content */}
           <div className="p-6 space-y-5">
 
-            {/* Heading + Logo */}
-            <div className="flex flex-col items-center gap-3 mb-2">
+            {/* Logo + Heading */}
+            <div className="flex flex-col items-center gap-2 mb-2">
+              <img src="/veblen-logo.svg" alt="VebTask" className="w-full h-auto object-contain" style={{ filter: 'drop-shadow(0 0 10px rgba(0,122,204,0.7))' }} />
               <div className="text-sm font-medium" style={{ color: '#858585' }}>Welcome back</div>
-              <img src="/veblen-logo.svg" alt="VebTask" className="h-20 w-auto object-contain" style={{ filter: 'drop-shadow(0 0 8px rgba(0,122,204,0.6))' }} />
             </div>
 
             <form onSubmit={handleSubmit} className="space-y-4">

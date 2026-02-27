@@ -9,25 +9,24 @@ const router = express.Router();
 // Get all projects for a user/organization
 router.get('/', requireAuth, withOrgScope, validateQuery(commonSchemas.pagination), async (req, res) => {
   try {
-    const { userId, orgId, status, limit = 50 } = req.query;
-    
-    if (!orgId) {
-      return res.status(400).json({ error: 'orgId is required' });
-    }
-    
+    const { userId, status, limit = 50 } = req.query;
+    // Always use req.orgId — set by withOrgScope (falls back to EMERGENCY hardcoded value)
+    const orgId = req.orgId;
+
     // Check database connection first
     if (!(await checkDatabaseConnection(res))) {
       return; // Response already sent by checkDatabaseConnection
     }
-    
+
     const where = { orgId };
     if (status) where.status = status;
 
     // CLIENT role — restrict to projects linked to their client record
     const membership = await prisma.membership.findFirst({
-      where: { userId: req.user.id, orgId: req.orgId },
+      where: { userId: req.user.id, orgId },
       select: { role: true },
     });
+    console.log(`[Projects] GET / userId=${req.user.id} orgId=${orgId} role=${membership?.role || 'none'}`);
     if (membership?.role === 'CLIENT') {
       let clientId = null;
 

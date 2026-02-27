@@ -380,19 +380,12 @@ export function Projects() {
     } catch { /* ignore */ }
   };
 
-  const fetchProjects = async (role?: string) => {
+  const fetchProjects = async () => {
     if (!session?.user?.id) return;
     try {
       setLoading(true);
-      const effectiveRole = role !== undefined ? role : userRole;
-      let data;
-      if (effectiveRole === 'CLIENT') {
-        // Use dedicated endpoint that reuses /api/clients/my proven logic
-        data = await apiClient.fetch('/api/clients/my/projects');
-      } else {
-        const orgId = currentOrg?.id || 'org_1757046595553';
-        data = await apiClient.fetch(`/api/projects?userId=${session.user.id}&orgId=${orgId}&limit=100`);
-      }
+      // Backend handles CLIENT role filtering via membership check
+      const data = await apiClient.fetch(`/api/projects?userId=${session.user.id}&limit=100`);
       if (data.success) setProjects(data.projects || []);
       else setProjects([]);
     } catch { setProjects([]); }
@@ -400,14 +393,14 @@ export function Projects() {
   };
 
   useEffect(() => {
-    if (session?.user?.id && !orgLoading) {
-      // Use role from OrganizationContext — already fetched with credentials
+    if (session?.user?.id) {
+      // Sync role from OrganizationContext for UI gating (hide/show buttons)
       const role = currentOrg?.role || '';
       setUserRole(role);
-      fetchProjects(role);
+      fetchProjects();
       fetchClients();
     }
-  }, [session?.user?.id, currentOrg?.id, currentOrg?.role, orgLoading]);
+  }, [session?.user?.id, currentOrg?.id, currentOrg?.role]);
 
   const handleDeleteProject = async (project: DatabaseProject) => {
     if (!confirm(`Delete "${project.name}"? This cannot be undone.`)) return;

@@ -27,6 +27,7 @@ import invitationRoutes from './api/invitations.js';
 import skillsRoutes from './api/skills.js';
 import calendarRoutes from './api/calendar.js';
 import kpiReportRoutes from './api/kpi-report.js';
+import notificationsRoutes from './api/notifications.js';
 import { 
   blockPublicRegistration, 
   addInternalBranding, 
@@ -361,6 +362,7 @@ app.use('/api/invitations', invitationRoutes);
 app.use('/api/skills', skillsRoutes);
 app.use('/api/calendar', calendarRoutes);
 app.use('/api/kpi-report', kpiReportRoutes);
+app.use('/api/notifications', notificationsRoutes);
 
 // Test routes for debugging (NO AUTH - REMOVE IN PRODUCTION)
 import testProjectsRoutes from './api/test-projects.js';

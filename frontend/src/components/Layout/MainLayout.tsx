@@ -2,7 +2,7 @@ import React, { useState, useEffect, useRef } from 'react';
 import { Outlet, useLocation } from 'react-router-dom';
 import { useSession, signOut } from '../../lib/auth-client';
 import Sidebar from './Sidebar';
-import { LogOut, ChevronDown } from 'lucide-react';
+import { LogOut, ChevronDown, Bell, CheckCheck, X } from 'lucide-react';
 
 // ── VS Code Dark+ tokens ──────────────────────────────────────────────────────
 const VS = {
@@ -50,6 +50,12 @@ const MainLayout: React.FC = () => {
   const [showDropdown, setShowDropdown] = useState(false);
   const [userRole, setUserRole] = useState<string>('');
   const [orgId, setOrgId] = useState<string>('');
+
+  // Notifications
+  type Notif = { id: string; title: string; body: string | null; link: string | null; type: string; isRead: boolean; createdAt: string };
+  const [notifications, setNotifications] = useState<Notif[]>([]);
+  const [unreadCount, setUnreadCount] = useState(0);
+  const [showNotifications, setShowNotifications] = useState(false);
 
   // Wall clock
   const [currentTime, setCurrentTime] = useState(nowClock());
@@ -105,6 +111,51 @@ const MainLayout: React.FC = () => {
       window.removeEventListener('attendance-change', fetchStatus);
     };
   }, [session?.user?.id, orgId]);
+
+  // Fetch notifications once orgId is known, poll every 60s
+  useEffect(() => {
+    if (!session?.user?.id || !orgId) return;
+    const fetchNotifs = async () => {
+      try {
+        const res = await fetch('/api/notifications');
+        if (res.ok) {
+          const data = await res.json();
+          setNotifications(data.notifications ?? []);
+          setUnreadCount(data.unreadCount ?? 0);
+        }
+      } catch { /* ignore */ }
+    };
+    fetchNotifs();
+    const poll = setInterval(fetchNotifs, 60_000);
+    return () => clearInterval(poll);
+  }, [session?.user?.id, orgId]);
+
+  const handleMarkAllRead = async () => {
+    try {
+      await fetch('/api/notifications/read-all', { method: 'PUT' });
+      setNotifications(prev => prev.map(n => ({ ...n, isRead: true })));
+      setUnreadCount(0);
+    } catch { /* ignore */ }
+  };
+
+  const handleNotifClick = async (notif: { id: string; link: string | null; isRead: boolean }) => {
+    if (!notif.isRead) {
+      await fetch(`/api/notifications/${notif.id}/read`, { method: 'PUT' });
+      setNotifications(prev => prev.map(n => n.id === notif.id ? { ...n, isRead: true } : n));
+      setUnreadCount(prev => Math.max(0, prev - 1));
+    }
+    if (notif.link) window.location.href = notif.link;
+  };
+
+  const timeAgo = (iso: string) => {
+    const diff = Date.now() - new Date(iso).getTime();
+    const m = Math.floor(diff / 60000);
+    if (m < 1) return 'just now';
+    if (m < 60) return `${m}m ago`;
+    const h = Math.floor(m / 60);
+    if (h < 24) return `${h}h ago`;
+    return `${Math.floor(h / 24)}d ago`;
+  };
 
   // Live elapsed tick — pause on break or clock-out, subtract break time
   useEffect(() => {
@@ -184,11 +235,107 @@ const MainLayout: React.FC = () => {
           )}
         </div>
 
-        {/* Right — user dropdown */}
+        {/* Right — notifications + user dropdown */}
         <div className="flex items-center gap-2">
+
+          {/* Bell icon */}
           <div className="relative">
             <button
-              onClick={() => setShowDropdown(v => !v)}
+              onClick={() => { setShowNotifications(v => !v); setShowDropdown(false); }}
+              className="relative flex h-8 w-8 items-center justify-center rounded-lg transition-colors duration-150"
+              style={{ background: showNotifications ? VS.bg3 : 'transparent', color: VS.text1 }}
+              onMouseEnter={e => { if (!showNotifications) (e.currentTarget as HTMLElement).style.background = VS.bg2; }}
+              onMouseLeave={e => { if (!showNotifications) (e.currentTarget as HTMLElement).style.background = 'transparent'; }}
+              title="Notifications"
+            >
+              <Bell className="h-4 w-4" />
+              {unreadCount > 0 && (
+                <span
+                  className="absolute -top-0.5 -right-0.5 flex h-4 w-4 items-center justify-center rounded-full text-[9px] font-bold text-white"
+                  style={{ background: VS.red, minWidth: 16 }}
+                >
+                  {unreadCount > 9 ? '9+' : unreadCount}
+                </span>
+              )}
+            </button>
+
+            {showNotifications && (
+              <>
+                <div className="fixed inset-0 z-10" onClick={() => setShowNotifications(false)} />
+                <div
+                  className="absolute right-0 top-full mt-2 w-80 rounded-xl z-20 overflow-hidden flex flex-col"
+                  style={{ background: VS.bg1, border: `1px solid ${VS.border}`, boxShadow: '0 16px 48px rgba(0,0,0,0.7)', maxHeight: 420 }}
+                >
+                  {/* Header */}
+                  <div className="flex items-center justify-between px-4 py-2.5 shrink-0" style={{ borderBottom: `1px solid ${VS.border}` }}>
+                    <span className="text-[12px] font-semibold" style={{ color: VS.text0 }}>Notifications</span>
+                    <div className="flex items-center gap-2">
+                      {unreadCount > 0 && (
+                        <button
+                          onClick={handleMarkAllRead}
+                          className="flex items-center gap-1 text-[11px] transition-colors"
+                          style={{ color: VS.accent }}
+                          onMouseEnter={e => (e.currentTarget as HTMLElement).style.opacity = '0.75'}
+                          onMouseLeave={e => (e.currentTarget as HTMLElement).style.opacity = '1'}
+                        >
+                          <CheckCheck className="h-3 w-3" />
+                          Mark all read
+                        </button>
+                      )}
+                      <button
+                        onClick={() => setShowNotifications(false)}
+                        className="flex h-5 w-5 items-center justify-center rounded"
+                        style={{ color: VS.text2 }}
+                        onMouseEnter={e => (e.currentTarget as HTMLElement).style.color = VS.text0}
+                        onMouseLeave={e => (e.currentTarget as HTMLElement).style.color = VS.text2}
+                      >
+                        <X className="h-3.5 w-3.5" />
+                      </button>
+                    </div>
+                  </div>
+
+                  {/* List */}
+                  <div className="overflow-y-auto" style={{ maxHeight: 360 }}>
+                    {notifications.length === 0 ? (
+                      <div className="flex flex-col items-center justify-center py-10 gap-2" style={{ color: VS.text2 }}>
+                        <Bell className="h-6 w-6 opacity-30" />
+                        <p className="text-[12px]">No notifications yet</p>
+                      </div>
+                    ) : (
+                      notifications.map(n => (
+                        <button
+                          key={n.id}
+                          onClick={() => handleNotifClick(n)}
+                          className="w-full text-left flex items-start gap-3 px-4 py-3 transition-colors duration-100"
+                          style={{
+                            background: n.isRead ? 'transparent' : `${VS.accent}0f`,
+                            borderBottom: `1px solid ${VS.border}`,
+                          }}
+                          onMouseEnter={e => (e.currentTarget as HTMLElement).style.background = VS.bg2}
+                          onMouseLeave={e => (e.currentTarget as HTMLElement).style.background = n.isRead ? 'transparent' : `${VS.accent}0f`}
+                        >
+                          {/* Unread dot */}
+                          <span
+                            className="mt-1.5 h-1.5 w-1.5 shrink-0 rounded-full"
+                            style={{ background: n.isRead ? 'transparent' : VS.accent }}
+                          />
+                          <div className="flex-1 min-w-0">
+                            <p className="text-[12px] font-medium leading-snug truncate" style={{ color: n.isRead ? VS.text1 : VS.text0 }}>{n.title}</p>
+                            {n.body && <p className="text-[11px] mt-0.5 line-clamp-2" style={{ color: VS.text2 }}>{n.body}</p>}
+                            <p className="text-[10px] mt-1" style={{ color: VS.text2 }}>{timeAgo(n.createdAt)}</p>
+                          </div>
+                        </button>
+                      ))
+                    )}
+                  </div>
+                </div>
+              </>
+            )}
+          </div>
+
+          <div className="relative">
+            <button
+              onClick={() => { setShowDropdown(v => !v); setShowNotifications(false); }}
               className="flex items-center gap-2.5 rounded-lg px-3 py-1.5 transition-colors duration-150"
               style={{ background: showDropdown ? VS.bg3 : 'transparent' }}
               onMouseEnter={e => { if (!showDropdown) (e.currentTarget as HTMLElement).style.background = VS.bg2; }}

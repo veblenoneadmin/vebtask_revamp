@@ -353,7 +353,7 @@ function OverviewModal({
 
 export function Projects() {
   const { data: session } = useSession();
-  const { currentOrg } = useOrganization();
+  const { currentOrg, isLoading: orgLoading } = useOrganization();
   const apiClient = useApiClient();
 
   const [projects, setProjects] = useState<DatabaseProject[]>([]);
@@ -400,19 +400,14 @@ export function Projects() {
   };
 
   useEffect(() => {
-    // Fetch role first — CLIENT uses a different projects endpoint
-    if (session?.user?.id) {
-      fetch('/api/organizations')
-        .then(r => r.json())
-        .then(d => {
-          const role = d.organizations?.[0]?.role || '';
-          setUserRole(role);
-          fetchProjects(role);
-        })
-        .catch(() => fetchProjects());
+    if (session?.user?.id && !orgLoading) {
+      // Use role from OrganizationContext — already fetched with credentials
+      const role = currentOrg?.role || '';
+      setUserRole(role);
+      fetchProjects(role);
+      fetchClients();
     }
-    fetchClients();
-  }, [session?.user?.id, currentOrg?.id]);
+  }, [session?.user?.id, currentOrg?.id, currentOrg?.role, orgLoading]);
 
   const handleDeleteProject = async (project: DatabaseProject) => {
     if (!confirm(`Delete "${project.name}"? This cannot be undone.`)) return;

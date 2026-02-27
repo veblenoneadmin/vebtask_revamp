@@ -274,4 +274,44 @@ function formatLog(log, user, memberRole) {
   };
 }
 
+// ── GET /api/attendance/today ─────────────────────────────────────────────────
+router.get('/today', requireAuth, withOrgScope, async (req, res) => {
+  try {
+    const userId = req.query.userId || req.user.id;
+    const orgId  = req.orgId;
+    const today  = new Date().toISOString().split('T')[0];
+
+    const logs = await prisma.attendanceLog.findMany({
+      where: { userId, orgId, date: today },
+      orderBy: { timeIn: 'asc' },
+    });
+
+    const totalSeconds = logs.reduce((sum, l) => sum + (l.duration || 0), 0);
+    res.json({ logs, totalSeconds });
+  } catch (err) {
+    console.error('[Attendance] today error:', err);
+    res.status(500).json({ error: 'Failed to fetch today logs' });
+  }
+});
+
+// ── GET /api/attendance/history ───────────────────────────────────────────────
+router.get('/history', requireAuth, withOrgScope, async (req, res) => {
+  try {
+    const userId = req.query.userId || req.user.id;
+    const orgId  = req.orgId;
+    const limit  = Math.min(parseInt(req.query.limit || '10'), 100);
+
+    const logs = await prisma.attendanceLog.findMany({
+      where: { userId, orgId },
+      orderBy: { timeIn: 'desc' },
+      take: limit,
+    });
+
+    res.json({ logs });
+  } catch (err) {
+    console.error('[Attendance] history error:', err);
+    res.status(500).json({ error: 'Failed to fetch history' });
+  }
+});
+
 export default router;

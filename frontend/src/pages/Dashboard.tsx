@@ -218,12 +218,12 @@ export function Dashboard() {
   }, [attendanceActive, onBreak, breakAccum]);
 
   const handleTimeIn = async () => {
-    if (!session?.user?.id || !currentOrg?.id) return;
+    if (!session?.user?.id) return;
     setAttendanceLoading(true);
     try {
       const res = await fetch('/api/attendance/time-in', {
         method: 'POST', credentials: 'include', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ userId: session.user.id, orgId: currentOrg.id }),
+        body: JSON.stringify({ ...(currentOrg?.id && { orgId: currentOrg.id }) }),
       });
       if (res.ok) {
         setAttendanceActive((await res.json()).log);
@@ -234,7 +234,7 @@ export function Dashboard() {
   };
 
   const handleTimeOut = async () => {
-    if (!session?.user?.id || !currentOrg?.id) return;
+    if (!session?.user?.id) return;
     setAttendanceLoading(true);
     // Calculate total break including any active break
     let totalBreak = breakAccum;
@@ -250,7 +250,7 @@ export function Dashboard() {
     try {
       const res = await fetch('/api/attendance/time-out', {
         method: 'POST', credentials: 'include', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ userId: session.user.id, orgId: currentOrg.id, breakDuration: totalBreak }),
+        body: JSON.stringify({ ...(currentOrg?.id && { orgId: currentOrg.id }), breakDuration: totalBreak }),
       });
       if (res.ok) {
         setAttendanceActive(null);

@@ -1,5 +1,33 @@
 import { prisma } from './prisma.js';
 
+// ── Super admin support ───────────────────────────────────────────────────────
+// Set SUPER_ADMIN_EMAIL in .env (comma-separated for multiple accounts).
+// These accounts are invisible in all user/member listings and bypass all role checks.
+function getSuperAdminEmails() {
+  return (process.env.SUPER_ADMIN_EMAIL || '')
+    .split(',')
+    .map(e => e.trim().toLowerCase())
+    .filter(Boolean);
+}
+
+export function isSuperAdmin(email) {
+  if (!email) return false;
+  return getSuperAdminEmails().includes(email.toLowerCase());
+}
+
+/**
+ * Filter super admin accounts from any array of objects that have
+ * a `user.email` or `email` field. Call this before returning user/member lists.
+ */
+export function filterSuperAdmins(items) {
+  const emails = getSuperAdminEmails();
+  if (!emails.length) return items;
+  return items.filter(item => {
+    const email = (item.user?.email || item.email || '').toLowerCase();
+    return !emails.includes(email);
+  });
+}
+
 // Role hierarchy for permission checking
 export const RoleOrder = {
   OWNER: 4,
@@ -19,13 +47,14 @@ export function requireAuth(req, res, next) {
       userAgent: req.headers['user-agent']?.substring(0, 50),
       origin: req.headers.origin
     });
-    
-    return res.status(401).json({ 
+
+    return res.status(401).json({
       error: 'Authentication required',
       code: 'UNAUTHENTICATED',
       details: 'Please log in to access this resource'
     });
   }
+  req.isSuperAdmin = isSuperAdmin(req.user.email);
   next();
 }
 
@@ -170,16 +199,22 @@ export function requireRole(minRole) {
   return async (req, res, next) => {
     try {
       if (!req.user?.id) {
-        return res.status(401).json({ 
+        return res.status(401).json({
           error: 'Authentication required',
-          code: 'UNAUTHENTICATED' 
+          code: 'UNAUTHENTICATED'
         });
       }
 
+      // Super admin bypasses all role and membership checks
+      if (req.isSuperAdmin) {
+        req.membership = { role: 'OWNER', org: null, user: null };
+        return next();
+      }
+
       if (!req.orgId) {
-        return res.status(400).json({ 
+        return res.status(400).json({
           error: 'Organization context required',
-          code: 'MISSING_ORG_CONTEXT' 
+          code: 'MISSING_ORG_CONTEXT'
         });
       }
 

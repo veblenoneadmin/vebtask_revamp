@@ -2,14 +2,15 @@ import express from 'express';
 import { z } from 'zod';
 import { Role } from '@prisma/client';
 import { prisma } from '../lib/prisma.js';
-import { 
-  requireAuth, 
-  withOrgScope, 
+import {
+  requireAuth,
+  withOrgScope,
   requireRole,
   requireAdmin,
   canAssignRole,
   canModifyMember,
-  RoleOrder
+  RoleOrder,
+  filterSuperAdmins,
 } from '../lib/rbac.js';
 
 const router = express.Router();
@@ -106,14 +107,15 @@ router.get('/:orgId/members', requireAuth, withOrgScope, requireAdmin, async (re
       })
     );
 
+    const visibleMembers = filterSuperAdmins(membersWithStats);
     res.json({
       success: true,
-      members: membersWithStats,
+      members: visibleMembers,
       pagination: {
         page: pageNum,
         limit: limitNum,
-        total: totalCount,
-        pages: Math.ceil(totalCount / limitNum)
+        total: visibleMembers.length,
+        pages: Math.ceil(visibleMembers.length / limitNum)
       }
     });
   } catch (error) {

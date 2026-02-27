@@ -3,7 +3,7 @@ import { z } from 'zod';
 import { randomUUID } from 'crypto';
 import { prisma } from '../lib/prisma.js';
 import { auth } from '../auth.js'; // Better Auth instance - handles hashing correctly
-import { requireAuth, withOrgScope, requireAdmin, requireRole } from '../lib/rbac.js';
+import { requireAuth, withOrgScope, requireAdmin, requireRole, filterSuperAdmins } from '../lib/rbac.js';
 import { checkDatabaseConnection, handleDatabaseError } from '../lib/api-error-handler.js';
 import crypto from 'crypto';
 
@@ -164,8 +164,9 @@ router.get('/users', requireAuth, withOrgScope, requireRole('ADMIN'), async (req
       orderBy: { createdAt: 'desc' }
     });
 
-    console.log(`✅ Fetched ${users.length} users for org ${req.orgId}`);
-    res.json({ success: true, users, count: users.length });
+    const visibleUsers = filterSuperAdmins(users);
+    console.log(`✅ Fetched ${visibleUsers.length} users for org ${req.orgId}`);
+    res.json({ success: true, users: visibleUsers, count: visibleUsers.length });
   } catch (error) {
     console.error(`❌ Failed to fetch admin users for org ${req.orgId}:`, error.message);
     return handleDatabaseError(error, res, 'fetch admin users');

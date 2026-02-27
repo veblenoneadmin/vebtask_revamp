@@ -149,10 +149,43 @@ router.get('/logs', requireAuth, withOrgScope, async (req, res) => {
     });
     const role         = membership?.role || 'STAFF';
     const isPrivileged = role === 'OWNER' || role === 'ADMIN';
+    const isClient     = role === 'CLIENT';
+
+    // CLIENT — build list of staff userIds assigned to their projects
+    let clientStaffIds = null; // null means use default (own only)
+    if (isClient) {
+      try {
+        const clientRows = await prisma.$queryRawUnsafe(
+          'SELECT id FROM clients WHERE user_id = ? AND orgId = ? LIMIT 1',
+          userId, orgId
+        );
+        if (clientRows.length) {
+          const projects = await prisma.project.findMany({
+            where: { clientId: clientRows[0].id, orgId },
+            select: { id: true },
+          });
+          if (projects.length) {
+            const tasks = await prisma.macroTask.findMany({
+              where: { projectId: { in: projects.map(p => p.id) }, orgId },
+              select: { userId: true },
+            });
+            const staffIds = [...new Set(tasks.map(t => t.userId).filter(Boolean))];
+            clientStaffIds = [...new Set([userId, ...staffIds])];
+          }
+        }
+      } catch (e) {
+        console.warn('[Attendance] client staff lookup failed:', e.message);
+      }
+      if (!clientStaffIds) clientStaffIds = [userId];
+    }
 
     // Fetch logs (no JOIN — avoids collation issues with user table)
     const logs = await prisma.attendanceLog.findMany({
-      where:   isPrivileged ? { orgId } : { userId, orgId },
+      where: isPrivileged
+        ? { orgId }
+        : clientStaffIds
+          ? { userId: { in: clientStaffIds }, orgId }
+          : { userId, orgId },
       orderBy: { timeIn: 'desc' },
       take:    limit,
     });
@@ -170,21 +203,24 @@ router.get('/logs', requireAuth, withOrgScope, async (req, res) => {
       } catch { /* non-fatal */ }
     }
 
-    // Role map for privileged view
+    // Role map for privileged view or client multi-user view
     const roleMap = {};
-    if (isPrivileged) {
+    if (isPrivileged || (isClient && clientStaffIds && clientStaffIds.length > 1)) {
       try {
         const memberships = await prisma.membership.findMany({
-          where: { orgId },
+          where: isPrivileged ? { orgId } : { userId: { in: clientStaffIds }, orgId },
           select: { userId: true, role: true },
         });
         memberships.forEach(m => { roleMap[m.userId] = m.role; });
       } catch { /* non-fatal */ }
     }
 
+    // CLIENT sees a "team" view when they have project staff
+    const showTeamView = isPrivileged || (isClient && clientStaffIds && clientStaffIds.length > 1);
+
     return res.json({
       role,
-      isPrivileged,
+      isPrivileged: showTeamView,
       logs: logs.map(l => formatLog(l, usersMap[l.userId], roleMap[l.userId] || role)),
     });
   } catch (err) {

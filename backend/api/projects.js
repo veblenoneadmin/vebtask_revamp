@@ -22,7 +22,28 @@ router.get('/', requireAuth, withOrgScope, validateQuery(commonSchemas.paginatio
     
     const where = { orgId };
     if (status) where.status = status;
-    
+
+    // CLIENT role — restrict to projects linked to their client record
+    const membership = await prisma.membership.findFirst({
+      where: { userId: req.user.id, orgId: req.orgId },
+      select: { role: true },
+    });
+    if (membership?.role === 'CLIENT') {
+      try {
+        const clientRows = await prisma.$queryRawUnsafe(
+          'SELECT id FROM clients WHERE user_id = ? AND orgId = ? LIMIT 1',
+          req.user.id, req.orgId
+        );
+        if (clientRows.length) {
+          where.clientId = clientRows[0].id;
+        } else {
+          return res.json({ success: true, projects: [], total: 0 });
+        }
+      } catch {
+        return res.json({ success: true, projects: [], total: 0 });
+      }
+    }
+
     const projects = await prisma.project.findMany({
       where,
       include: {

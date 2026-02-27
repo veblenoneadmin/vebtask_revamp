@@ -364,6 +364,7 @@ export function Projects() {
   const [openMenuId, setOpenMenuId] = useState<string | null>(null);
   const [filterStatus, setFilterStatus] = useState('all');
   const [filterPriority, setFilterPriority] = useState('all');
+  const [userRole, setUserRole] = useState<string>('');
 
   // ── Overview / generate state ──
   const [generatingId, setGeneratingId] = useState<string | null>(null);
@@ -394,6 +395,13 @@ export function Projects() {
   useEffect(() => {
     fetchProjects();
     fetchClients();
+    // Fetch role to control CLIENT view
+    if (session?.user?.id) {
+      fetch('/api/organizations')
+        .then(r => r.json())
+        .then(d => { if (d.organizations?.[0]) setUserRole(d.organizations[0].role || ''); })
+        .catch(() => {});
+    }
   }, [session?.user?.id, currentOrg?.id]);
 
   const handleDeleteProject = async (project: DatabaseProject) => {
@@ -560,14 +568,16 @@ export function Projects() {
             <option value="medium">Medium</option>
             <option value="low">Low</option>
           </select>
-          <button
-            onClick={() => setShowNewProjectModal(true)}
-            className="flex items-center gap-1.5 px-4 py-1.5 rounded text-xs font-semibold text-white transition-all hover:opacity-90"
-            style={{ background: VS.accent }}
-          >
-            <Plus className="h-3.5 w-3.5" />
-            New Project
-          </button>
+          {userRole !== 'CLIENT' && (
+            <button
+              onClick={() => setShowNewProjectModal(true)}
+              className="flex items-center gap-1.5 px-4 py-1.5 rounded text-xs font-semibold text-white transition-all hover:opacity-90"
+              style={{ background: VS.accent }}
+            >
+              <Plus className="h-3.5 w-3.5" />
+              New Project
+            </button>
+          )}
         </div>
       </div>
 
@@ -612,13 +622,15 @@ export function Projects() {
             <p className="text-xs mt-1" style={{ color: VS.text2 }}>
               {filterStatus !== 'all' || filterPriority !== 'all' ? 'Try adjusting your filters' : 'Create your first project to get started'}
             </p>
-            <button
-              onClick={() => setShowNewProjectModal(true)}
-              className="mt-4 flex items-center gap-1.5 px-4 py-2 rounded-lg text-xs font-semibold text-white"
-              style={{ background: VS.accent }}
-            >
-              <Plus className="h-3.5 w-3.5" /> New Project
-            </button>
+            {userRole !== 'CLIENT' && (
+              <button
+                onClick={() => setShowNewProjectModal(true)}
+                className="mt-4 flex items-center gap-1.5 px-4 py-2 rounded-lg text-xs font-semibold text-white"
+                style={{ background: VS.accent }}
+              >
+                <Plus className="h-3.5 w-3.5" /> New Project
+              </button>
+            )}
           </div>
         ) : (
           <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
@@ -683,14 +695,16 @@ export function Projects() {
                               className="absolute right-0 top-full mt-1 z-20 rounded-xl overflow-hidden py-1 min-w-[150px]"
                               style={{ background: VS.bg1, border: `1px solid ${VS.border}`, boxShadow: '0 8px 24px rgba(0,0,0,0.5)' }}
                             >
-                              {/* Generate Tasks */}
-                              <button
-                                onClick={() => { setOpenMenuId(null); handleGenerateTasks(project); }}
-                                className="flex items-center gap-2 w-full px-3 py-2 text-xs hover:bg-white/5 transition-colors"
-                                style={{ color: VS.teal }}
-                              >
-                                <Zap className="h-3 w-3" /> Generate Tasks
-                              </button>
+                              {/* Generate Tasks — staff/admin only */}
+                              {userRole !== 'CLIENT' && (
+                                <button
+                                  onClick={() => { setOpenMenuId(null); handleGenerateTasks(project); }}
+                                  className="flex items-center gap-2 w-full px-3 py-2 text-xs hover:bg-white/5 transition-colors"
+                                  style={{ color: VS.teal }}
+                                >
+                                  <Zap className="h-3 w-3" /> Generate Tasks
+                                </button>
+                              )}
                               {/* View Overview */}
                               <button
                                 onClick={() => { setOpenMenuId(null); handleViewOverview(project); }}
@@ -700,24 +714,27 @@ export function Projects() {
                                 <Eye className="h-3 w-3" /> View Overview
                                 <ChevronRight className="h-3 w-3 ml-auto" />
                               </button>
-                              <div style={{ height: 1, background: VS.border, margin: '2px 0' }} />
-                              {/* Edit */}
-                              <button
-                                onClick={() => { setEditingProject(project); setOpenMenuId(null); }}
-                                className="flex items-center gap-2 w-full px-3 py-2 text-xs hover:bg-white/5 transition-colors"
-                                style={{ color: VS.text0 }}
-                              >
-                                <Edit3 className="h-3 w-3" /> Edit project
-                              </button>
-                              <div style={{ height: 1, background: VS.border, margin: '2px 0' }} />
-                              {/* Delete */}
-                              <button
-                                onClick={() => { setOpenMenuId(null); handleDeleteProject(project); }}
-                                className="flex items-center gap-2 w-full px-3 py-2 text-xs hover:bg-red-500/10 transition-colors"
-                                style={{ color: VS.red }}
-                              >
-                                <Trash2 className="h-3 w-3" /> Delete
-                              </button>
+                              {/* Edit & Delete — staff/admin only */}
+                              {userRole !== 'CLIENT' && (
+                                <>
+                                  <div style={{ height: 1, background: VS.border, margin: '2px 0' }} />
+                                  <button
+                                    onClick={() => { setEditingProject(project); setOpenMenuId(null); }}
+                                    className="flex items-center gap-2 w-full px-3 py-2 text-xs hover:bg-white/5 transition-colors"
+                                    style={{ color: VS.text0 }}
+                                  >
+                                    <Edit3 className="h-3 w-3" /> Edit project
+                                  </button>
+                                  <div style={{ height: 1, background: VS.border, margin: '2px 0' }} />
+                                  <button
+                                    onClick={() => { setOpenMenuId(null); handleDeleteProject(project); }}
+                                    className="flex items-center gap-2 w-full px-3 py-2 text-xs hover:bg-red-500/10 transition-colors"
+                                    style={{ color: VS.red }}
+                                  >
+                                    <Trash2 className="h-3 w-3" /> Delete
+                                  </button>
+                                </>
+                              )}
                             </div>
                           </>
                         )}

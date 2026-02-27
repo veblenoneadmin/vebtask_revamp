@@ -29,17 +29,39 @@ router.get('/', requireAuth, withOrgScope, validateQuery(commonSchemas.paginatio
       select: { role: true },
     });
     if (membership?.role === 'CLIENT') {
+      let clientId = null;
+
+      // 1) Try user_id lookup (column may not exist on older deployments)
       try {
-        const clientRows = await prisma.$queryRawUnsafe(
+        const rows = await prisma.$queryRawUnsafe(
           'SELECT id FROM clients WHERE user_id = ? AND orgId = ? LIMIT 1',
           req.user.id, req.orgId
         );
-        if (clientRows.length) {
-          where.clientId = clientRows[0].id;
-        } else {
-          return res.json({ success: true, projects: [], total: 0 });
-        }
-      } catch {
+        if (rows.length) clientId = rows[0].id;
+      } catch { /* user_id column not yet added */ }
+
+      // 2) Fallback: match by email
+      if (!clientId) {
+        try {
+          const user = await prisma.user.findUnique({
+            where: { id: req.user.id },
+            select: { email: true },
+          });
+          if (user?.email) {
+            const rows = await prisma.$queryRawUnsafe(
+              'SELECT id FROM clients WHERE email = ? AND orgId = ? LIMIT 1',
+              user.email, req.orgId
+            );
+            if (rows.length) clientId = rows[0].id;
+          }
+        } catch { /* non-fatal */ }
+      }
+
+      if (clientId) {
+        where.clientId = clientId;
+        console.log(`[Projects] CLIENT ${req.user.id} → clientId=${clientId}`);
+      } else {
+        console.log(`[Projects] CLIENT ${req.user.id} → no client record found in org ${req.orgId}`);
         return res.json({ success: true, projects: [], total: 0 });
       }
     }
@@ -62,10 +84,14 @@ router.get('/', requireAuth, withOrgScope, validateQuery(commonSchemas.paginatio
       take: parseInt(limit)
     });
     
-    res.json({ 
-      success: true, 
+    if (where.clientId) {
+      console.log(`[Projects] CLIENT query returned ${projects.length} projects for clientId=${where.clientId}`);
+    }
+
+    res.json({
+      success: true,
       projects,
-      total: projects.length 
+      total: projects.length
     });
     
   } catch (error) {

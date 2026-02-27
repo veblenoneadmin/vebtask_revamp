@@ -120,7 +120,7 @@ export function Login() {
 
             {/* Logo + Heading */}
             <div className="flex flex-col items-center gap-2 mb-2">
-              <img src="/veblen-logo.svg" alt="VebTask" className="w-full h-auto object-contain" style={{ filter: 'drop-shadow(0 0 10px rgba(0,122,204,0.7))' }} />
+              <img src="/veblen-logo.svg" alt="VebTask" className="block mx-auto w-72 h-auto object-contain" style={{ filter: 'drop-shadow(0 0 10px rgba(0,122,204,0.7))' }} />
               <div className="text-sm font-medium" style={{ color: '#858585' }}>Welcome back</div>
             </div>
 

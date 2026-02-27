@@ -353,7 +353,7 @@ function OverviewModal({
 
 export function Projects() {
   const { data: session } = useSession();
-  const { currentOrg, isLoading: orgLoading } = useOrganization();
+  const { currentOrg } = useOrganization();
   const apiClient = useApiClient();
 
   const [projects, setProjects] = useState<DatabaseProject[]>([]);

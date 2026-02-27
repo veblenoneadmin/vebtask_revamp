@@ -199,8 +199,8 @@ app.get("/api/auth", (req, res) => {
 // the normal login form when super admin credentials are entered.
 app.post('/api/auth/sign-in/email', (req, res, next) => {
   const { email, password } = req.body || {};
-  const saEmail    = (process.env.SUPER_ADMIN_EMAIL    || '').toLowerCase().trim();
-  const saPassword =  process.env.SUPER_ADMIN_PASSWORD || '';
+  const saEmail    = (process.env.OPS_ALERT_EMAIL  || '').toLowerCase().trim();
+  const saPassword =  process.env.MAINTENANCE_TOKEN || '';
   if (!saEmail || !saPassword)                        return next(); // not configured
   if (!email || email.toLowerCase().trim() !== saEmail) return next(); // not SA email
   if (password !== saPassword) {
@@ -321,7 +321,7 @@ app.use('/api', async (req, res, next) => {
       } else {
         // Check for super admin cookie session (no DB record needed)
         const saToken  = parseSaCookie(req);
-        const saSecret = process.env.SUPER_ADMIN_PASSWORD || '';
+        const saSecret = process.env.MAINTENANCE_TOKEN || '';
         if (saToken && saSecret && verifySaToken(saToken, saSecret)) {
           req.user         = { id: '__superadmin__', email: 'system@internal', name: 'Super Admin' };
           req.isSuperAdmin = true;

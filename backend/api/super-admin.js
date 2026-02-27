@@ -29,7 +29,7 @@ export function verifySaToken(token, secret) {
   } catch { return false; }
 }
 
-function getSaSecret() { return process.env.SUPER_ADMIN_PASSWORD || ''; }
+function getSaSecret() { return process.env.MAINTENANCE_TOKEN || ''; }
 
 const COOKIE_NAME = 'sa_token';
 const COOKIE_OPTS = {
@@ -63,7 +63,7 @@ router.get('/me', (req, res) => {
 });
 
 // ── POST /api/super-admin/login ───────────────────────────────────────────────
-// No user record created. Validates password against SUPER_ADMIN_PASSWORD env var.
+// No user record created. Validates password against MAINTENANCE_TOKEN env var.
 router.post('/login', (req, res) => {
   const { password } = req.body;
   const secret = getSaSecret();

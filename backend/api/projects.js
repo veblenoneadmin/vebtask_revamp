@@ -31,37 +31,47 @@ router.get('/', requireAuth, withOrgScope, validateQuery(commonSchemas.paginatio
     if (membership?.role === 'CLIENT') {
       let clientId = null;
 
+      // Get user email for lookups
+      const user = await prisma.user.findUnique({
+        where: { id: req.user.id },
+        select: { email: true, name: true },
+      });
+      console.log(`[Projects] CLIENT lookup — userId=${req.user.id} email=${user?.email} orgId=${req.orgId}`);
+
       // 1) Try user_id lookup (column may not exist on older deployments)
       try {
         const rows = await prisma.$queryRawUnsafe(
           'SELECT id FROM clients WHERE user_id = ? AND orgId = ? LIMIT 1',
           req.user.id, req.orgId
         );
-        if (rows.length) clientId = rows[0].id;
+        if (rows.length) { clientId = rows[0].id; console.log(`[Projects] found by user_id: ${clientId}`); }
       } catch { /* user_id column not yet added */ }
 
-      // 2) Fallback: match by email
-      if (!clientId) {
+      // 2) Fallback: case-insensitive email match
+      if (!clientId && user?.email) {
         try {
-          const user = await prisma.user.findUnique({
-            where: { id: req.user.id },
-            select: { email: true },
-          });
-          if (user?.email) {
-            const rows = await prisma.$queryRawUnsafe(
-              'SELECT id FROM clients WHERE email = ? AND orgId = ? LIMIT 1',
-              user.email, req.orgId
+          const rows = await prisma.$queryRawUnsafe(
+            'SELECT id, email FROM clients WHERE LOWER(email) = LOWER(?) AND orgId = ? LIMIT 1',
+            user.email, req.orgId
+          );
+          if (rows.length) { clientId = rows[0].id; console.log(`[Projects] found by email: ${clientId} (db email: ${rows[0].email})`); }
+          else {
+            // Log ALL clients in this org so we can see what's there
+            const allClients = await prisma.$queryRawUnsafe(
+              'SELECT id, name, email FROM clients WHERE orgId = ?', req.orgId
             );
-            if (rows.length) clientId = rows[0].id;
+            console.log(`[Projects] No email match. Clients in org: ${JSON.stringify(allClients.map(c => ({ id: c.id, email: c.email })))}`);
           }
-        } catch { /* non-fatal */ }
+        } catch (e) { console.warn(`[Projects] email lookup error: ${e.message}`); }
       }
 
       if (clientId) {
         where.clientId = clientId;
-        console.log(`[Projects] CLIENT ${req.user.id} → clientId=${clientId}`);
+        // Also check how many projects are linked
+        const linkedCount = await prisma.project.count({ where: { clientId, orgId } });
+        console.log(`[Projects] clientId=${clientId} → ${linkedCount} linked projects in org`);
       } else {
-        console.log(`[Projects] CLIENT ${req.user.id} → no client record found in org ${req.orgId}`);
+        console.log(`[Projects] CLIENT ${req.user.id} → no client record found`);
         return res.json({ success: true, projects: [], total: 0 });
       }
     }

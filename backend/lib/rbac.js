@@ -20,11 +20,11 @@ export function isSuperAdmin(identifier) {
  * a `user.email` or `email` field. Call this before returning user/member lists.
  */
 export function filterSuperAdmins(items) {
-  const emails = getSuperAdminEmails();
-  if (!emails.length) return items;
+  const ids = getSuperAdminIds();
+  if (!ids.length) return items;
   return items.filter(item => {
-    const email = (item.user?.email || item.email || '').toLowerCase();
-    return !emails.includes(email);
+    const identifier = (item.user?.email || item.email || '').trim();
+    return !ids.includes(identifier);
   });
 }
 

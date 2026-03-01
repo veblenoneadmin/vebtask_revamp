@@ -2537,7 +2537,7 @@ app.post('/api/brain-dump/save-tasks', async (req, res) => {
           `INSERT INTO macro_tasks (
             id, title, description, userId, createdBy, orgId, priority, estimatedHours,
             status, category, tags, createdAt
-          ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'todo', ?, ?, NOW())`,
+          ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'not_started', ?, ?, NOW())`,
           [
             taskId,
             task.title,
@@ -2545,9 +2545,9 @@ app.post('/api/brain-dump/save-tasks', async (req, res) => {
             userId,
             userId,
             orgId,
-            (task.priority || 'medium').toLowerCase(),
+            task.priority || 'Medium',
             task.estimatedHours || 1,
-            task.category || 'general',
+            task.category || 'General',
             JSON.stringify(task.tags || [])
           ]
         );
@@ -2919,10 +2919,44 @@ app.get('*', (req, res) => {
   res.sendFile(path.join(__dirname, '..', 'frontend', 'dist', 'index.html'));
 });
 
+// Ensure task_comments and task_attachments tables exist
+async function ensureTaskTablesSchema() {
+  if (!process.env.DATABASE_URL) return;
+  try {
+    await prisma.$executeRawUnsafe(
+      'CREATE TABLE IF NOT EXISTS `task_comments` (' +
+      '  `id` VARCHAR(191) NOT NULL, `taskId` VARCHAR(50) NOT NULL,' +
+      '  `orgId` VARCHAR(191) NOT NULL, `userId` VARCHAR(36) NOT NULL,' +
+      '  `content` TEXT NOT NULL,' +
+      '  `createdAt` DATETIME(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3),' +
+      '  `updatedAt` DATETIME(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3) ON UPDATE CURRENT_TIMESTAMP(3),' +
+      '  PRIMARY KEY (`id`), KEY `tc_taskId_idx` (`taskId`),' +
+      '  KEY `tc_orgId_idx` (`orgId`), KEY `tc_userId_idx` (`userId`)' +
+      ') DEFAULT CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci'
+    );
+    await prisma.$executeRawUnsafe(
+      'CREATE TABLE IF NOT EXISTS `task_attachments` (' +
+      '  `id` VARCHAR(191) NOT NULL, `taskId` VARCHAR(50) NOT NULL,' +
+      '  `orgId` VARCHAR(191) NOT NULL, `userId` VARCHAR(36) NOT NULL,' +
+      '  `name` VARCHAR(500) NOT NULL,' +
+      '  `mimeType` VARCHAR(100) NOT NULL DEFAULT \'application/octet-stream\',' +
+      '  `size` INT NOT NULL DEFAULT 0,' +
+      '  `data` LONGTEXT NOT NULL,' +
+      '  `category` VARCHAR(50) NOT NULL DEFAULT \'attachment\',' +
+      '  `createdAt` DATETIME(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3),' +
+      '  PRIMARY KEY (`id`), KEY `ta_taskId_idx` (`taskId`),' +
+      '  KEY `ta_orgId_idx` (`orgId`), KEY `ta_userId_idx` (`userId`)' +
+      ') DEFAULT CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci'
+    );
+    console.log('  ✅ task_comments + task_attachments tables ready');
+  } catch (e) { console.warn('  ⚠️  task tables:', e.message); }
+}
+
 // Run migrations and start server
 async function startServer() {
   await runDatabaseMigrations();
-  
+  await ensureTaskTablesSchema();
+
   app.listen(PORT, '0.0.0.0', () => {
     console.log(`✅ Server running on port ${PORT}`);
     console.log(`🔐 Auth endpoints available at /api/auth/*`);

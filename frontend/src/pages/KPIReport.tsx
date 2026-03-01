@@ -6,8 +6,8 @@ import {
   Star, TrendingUp, TrendingDown, Minus, AlertTriangle, Coffee,
   Users, Clock, CheckSquare, Target, BarChart3,
   Download, RefreshCw, ChevronDown, ChevronUp,
-  DollarSign, Flame, AlertCircle, Eye, EyeOff, ArrowRight,
-  Activity, Search,
+  DollarSign, Flame, AlertCircle, ArrowRight,
+  Activity, Search, CalendarDays, X,
 } from 'lucide-react';
 
 // ── VS Code Dark+ tokens (matches Dashboard) ───────────────────────────────────
@@ -91,7 +91,6 @@ const CLASS_CFG: Record<string, {
   coaster:        { label: 'Coasting',       color: VS.text2,   icon: Coffee        },
   solid:          { label: 'Solid',          color: VS.teal,    icon: CheckSquare   },
   inactive:       { label: 'Inactive',       color: VS.border2, icon: AlertCircle   },
-  client:         { label: 'Client',         color: VS.blue,    icon: Eye           },
 };
 
 // ─── Small helpers ────────────────────────────────────────────────────────────
@@ -153,30 +152,37 @@ export function KPIReport() {
   const [error, setError] = useState<string | null>(null);
   const [expandedUser, setExpandedUser] = useState<string | null>(null);
   const [filterClass, setFilterClass] = useState<string | null>(null);
-  const [showClients, setShowClients] = useState(false);
   const [sortBy, setSortBy] = useState<'score' | 'hours' | 'completion'>('score');
   const [searchQuery, setSearchQuery] = useState('');
+  const [customStart, setCustomStart] = useState('');
+  const [customEnd, setCustomEnd] = useState('');
 
   const fetchData = useCallback(async () => {
     if (!currentOrg?.id) return;
     setLoading(true);
     setError(null);
     try {
-      const result = await apiClient.fetch(`/api/kpi-report?orgId=${currentOrg.id}&period=${period}`);
+      let url = `/api/kpi-report?orgId=${currentOrg.id}`;
+      if (customStart && customEnd) {
+        url += `&start=${customStart}&end=${customEnd}`;
+      } else {
+        url += `&period=${period}`;
+      }
+      const result = await apiClient.fetch(url);
       setData(result);
     } catch (err: unknown) {
       setError(err instanceof Error ? err.message : 'Failed to load KPI data');
     } finally {
       setLoading(false);
     }
-  }, [currentOrg?.id, period]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [currentOrg?.id, period, customStart, customEnd]); // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => { fetchData(); }, [fetchData]);
 
   const kpi = data?.orgKPIs;
 
   const filteredUsers = (data?.users ?? [])
-    .filter(u => showClients || u.classification !== 'client')
+    .filter(u => u.classification !== 'client')
     .filter(u => !filterClass || u.classification === filterClass)
     .filter(u => {
       if (!searchQuery) return true;
@@ -250,11 +256,11 @@ export function KPIReport() {
           {/* Period switcher */}
           <div className="flex rounded-lg overflow-hidden" style={{ border: `1px solid ${VS.border}` }}>
             {(['daily', 'weekly', 'monthly'] as Period[]).map(p => (
-              <button key={p} onClick={() => setPeriod(p)}
+              <button key={p} onClick={() => { setPeriod(p); setCustomStart(''); setCustomEnd(''); }}
                 className="px-3 py-1.5 text-[12px] font-semibold transition-colors"
                 style={{
-                  background: period === p ? VS.accent : VS.bg1,
-                  color: period === p ? '#fff' : VS.text2,
+                  background: !customStart && period === p ? VS.accent : VS.bg1,
+                  color: !customStart && period === p ? '#fff' : VS.text2,
                   borderRight: p !== 'monthly' ? `1px solid ${VS.border}` : 'none',
                 }}>
                 {p.charAt(0).toUpperCase() + p.slice(1)}
@@ -314,21 +320,22 @@ export function KPIReport() {
         {/* ── LEFT: User cards ── */}
         <div className="lg:col-span-2 space-y-4">
 
-          {/* Classification filter + sort */}
-          <div className="rounded-xl p-4" style={{ background: VS.bg1, border: `1px solid ${VS.border}` }}>
-            <div className="flex items-center gap-2 mb-3">
+          {/* Filters panel */}
+          <div className="rounded-xl p-4 space-y-3" style={{ background: VS.bg1, border: `1px solid ${VS.border}` }}>
+            <div className="flex items-center gap-2">
               <BarChart3 className="h-4 w-4" style={{ color: VS.accent }} />
-              <h2 className="text-[13px] font-bold" style={{ color: VS.text0 }}>Performance Classification</h2>
+              <h2 className="text-[13px] font-bold" style={{ color: VS.text0 }}>Filters</h2>
             </div>
+
             {/* Search */}
-            <div className="relative mb-3">
+            <div className="relative">
               <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 pointer-events-none" style={{ color: VS.text2 }} />
               <input
                 type="text"
                 placeholder="Search by name or email…"
                 value={searchQuery}
                 onChange={e => setSearchQuery(e.target.value)}
-                className="w-full pl-8 pr-3 py-1.5 rounded-lg text-[12px] outline-none transition-colors"
+                className="w-full pl-8 pr-8 py-1.5 rounded-lg text-[12px] outline-none transition-colors"
                 style={{
                   background: VS.bg2,
                   border: `1px solid ${searchQuery ? VS.accent + '66' : VS.border}`,
@@ -336,16 +343,55 @@ export function KPIReport() {
                 }}
               />
               {searchQuery && (
-                <button
-                  onClick={() => setSearchQuery('')}
-                  className="absolute right-2.5 top-1/2 -translate-y-1/2 text-[11px] font-semibold"
+                <button onClick={() => setSearchQuery('')}
+                  className="absolute right-2.5 top-1/2 -translate-y-1/2"
                   style={{ color: VS.text2 }}>
-                  ✕
+                  <X className="h-3.5 w-3.5" />
                 </button>
               )}
             </div>
+
+            {/* Date range */}
+            <div className="flex items-center gap-2 flex-wrap">
+              <CalendarDays className="h-3.5 w-3.5 shrink-0" style={{ color: VS.text2 }} />
+              <input
+                type="date"
+                value={customStart}
+                onChange={e => setCustomStart(e.target.value)}
+                className="flex-1 min-w-[130px] px-2.5 py-1.5 rounded-lg text-[12px] outline-none transition-colors"
+                style={{
+                  background: VS.bg2,
+                  border: `1px solid ${customStart ? VS.accent + '66' : VS.border}`,
+                  color: customStart ? VS.text0 : VS.text2,
+                  colorScheme: 'dark',
+                }}
+              />
+              <span className="text-[11px]" style={{ color: VS.text2 }}>to</span>
+              <input
+                type="date"
+                value={customEnd}
+                min={customStart || undefined}
+                onChange={e => setCustomEnd(e.target.value)}
+                className="flex-1 min-w-[130px] px-2.5 py-1.5 rounded-lg text-[12px] outline-none transition-colors"
+                style={{
+                  background: VS.bg2,
+                  border: `1px solid ${customEnd ? VS.accent + '66' : VS.border}`,
+                  color: customEnd ? VS.text0 : VS.text2,
+                  colorScheme: 'dark',
+                }}
+              />
+              {(customStart || customEnd) && (
+                <button onClick={() => { setCustomStart(''); setCustomEnd(''); }}
+                  className="flex items-center gap-1 px-2 py-1.5 rounded-lg text-[11px] font-semibold"
+                  style={{ background: VS.bg2, border: `1px solid ${VS.border}`, color: VS.text2 }}>
+                  <X className="h-3 w-3" /> Clear
+                </button>
+              )}
+            </div>
+
+            {/* Classification chips */}
             <div className="flex flex-wrap gap-2">
-              {Object.entries(CLASS_CFG).filter(([k]) => k !== 'client').map(([key, cfg]) => {
+              {Object.entries(CLASS_CFG).map(([key, cfg]) => {
                 const count = kpi?.classificationCounts?.[key] ?? 0;
                 const Icon = cfg.icon;
                 const active = filterClass === key;
@@ -364,12 +410,6 @@ export function KPIReport() {
                   </button>
                 );
               })}
-              <button onClick={() => setShowClients(!showClients)}
-                className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-[11px] font-semibold transition-all ml-auto"
-                style={{ background: VS.bg2, border: `1px solid ${VS.border}`, color: VS.text2 }}>
-                {showClients ? <EyeOff className="h-3 w-3" /> : <Eye className="h-3 w-3" />}
-                Clients
-              </button>
             </div>
           </div>
 
@@ -482,7 +522,7 @@ export function KPIReport() {
               <h2 className="text-[13px] font-bold" style={{ color: VS.text0 }}>Classification Breakdown</h2>
             </div>
             <div className="space-y-2.5">
-              {Object.entries(CLASS_CFG).filter(([k]) => k !== 'client').map(([key, cfg]) => {
+              {Object.entries(CLASS_CFG).map(([key, cfg]) => {
                 const count = kpi?.classificationCounts?.[key] ?? 0;
                 const total = kpi?.totalMembers ?? 1;
                 const pct = total > 0 ? Math.round((count / total) * 100) : 0;

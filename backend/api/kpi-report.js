@@ -19,7 +19,7 @@ const router = express.Router();
  */
 router.get('/', requireAuth, async (req, res) => {
   try {
-    const { orgId, period = 'weekly', date } = req.query;
+    const { orgId, period = 'weekly', date, start: customStart, end: customEnd } = req.query;
 
     if (!orgId) {
       return res.status(400).json({ error: 'orgId is required' });
@@ -27,8 +27,20 @@ router.get('/', requireAuth, async (req, res) => {
 
     if (!(await checkDatabaseConnection(res))) return;
 
-    const refDate = date ? new Date(date) : new Date();
-    const { start, end, previousStart, previousEnd, label } = getDateRange(period, refDate);
+    let start, end, previousStart, previousEnd, label, expectedHoursOverride;
+    if (customStart && customEnd) {
+      start = new Date(customStart); start.setHours(0, 0, 0, 0);
+      end = new Date(customEnd); end.setHours(23, 59, 59, 999);
+      const spanMs = end - start;
+      previousEnd = new Date(start.getTime() - 1);
+      previousStart = new Date(previousEnd.getTime() - spanMs);
+      const days = Math.max(1, Math.ceil(spanMs / (1000 * 60 * 60 * 24)));
+      expectedHoursOverride = days * 8;
+      label = `${start.toLocaleDateString('en-US', { month: 'short', day: 'numeric' })} – ${end.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}`;
+    } else {
+      const refDate = date ? new Date(date) : new Date();
+      ({ start, end, previousStart, previousEnd, label } = getDateRange(period, refDate));
+    }
 
     // ─── Fetch all members in org ───────────────────────────────────────────
     const memberships = await prisma.membership.findMany({
@@ -118,7 +130,7 @@ router.get('/', requireAuth, async (req, res) => {
         : null;
 
       // Expected hours per period
-      const expectedHours = period === 'daily' ? 8 : period === 'weekly' ? 40 : 160;
+      const expectedHours = expectedHoursOverride ?? (period === 'daily' ? 8 : period === 'weekly' ? 40 : 160);
       const utilizationRate = (currentHours / expectedHours) * 100;
 
       // Task completion rate

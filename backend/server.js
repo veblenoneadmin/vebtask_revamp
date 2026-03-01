@@ -2480,7 +2480,10 @@ app.post('/api/brain-dump/save-tasks', async (req, res) => {
   try {
     const { extractedTasks, dailySchedule, userId, orgId } = req.body;
 
+    console.log('💾 save-tasks received:', { userId, orgId, taskCount: extractedTasks?.length });
+
     if (!extractedTasks || !userId || !orgId) {
+      console.warn('💾 save-tasks validation failed:', { hasExtractedTasks: !!extractedTasks, hasUserId: !!userId, hasOrgId: !!orgId });
       return res.status(400).json({ error: 'extractedTasks, userId, and orgId are required' });
     }
 

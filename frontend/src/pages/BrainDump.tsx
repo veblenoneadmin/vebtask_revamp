@@ -1,6 +1,7 @@
 import { useState, useRef, useEffect } from 'react';
 // import { useNavigate } from 'react-router-dom';
 import { useSession } from '../lib/auth-client';
+import { useOrganization } from '../contexts/OrganizationContext';
 import { WhisperRecorder, transcribeWithWhisper } from '../utils/whisperApi';
 import {
   Brain,
@@ -109,6 +110,7 @@ export function BrainDump() {
   const [error, setError] = useState('');
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const { data: session } = useSession();
+  const { currentOrg } = useOrganization();
   console.log('Session:', session); // Keep session for future use
 
   // Auto-resize textarea
@@ -422,7 +424,7 @@ export function BrainDump() {
 
   const handleSaveTasks = async () => {
     const selectedTasksList = processedTasks.filter(task => selectedTasks.has(task.id));
-    if (!selectedTasksList.length || !session?.user?.id) {
+    if (!selectedTasksList.length || !session?.user?.id || !currentOrg?.id) {
       setError('Please select at least one task to import.');
       return;
     }
@@ -438,6 +440,7 @@ export function BrainDump() {
           extractedTasks: selectedTasksList,
           dailySchedule: dailySchedule,
           userId: session.user.id,
+          orgId: currentOrg.id,
           originalContent: content
         }),
       });

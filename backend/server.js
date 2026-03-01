@@ -1964,41 +1964,41 @@ app.post('/api/ai/process-brain-dump', async (req, res) => {
       return res.status(400).json({ error: 'Content is required' });
     }
 
-    const OPENROUTER_API_KEY = process.env.OPENROUTER_API_KEY;
-    const OPENROUTER_BASE_URL = 'https://openrouter.ai/api/v1';
+    const OPENAI_API_KEY = process.env.OPENAI_API_KEY?.trim();
 
     // If no API key, fallback to simulation
-    if (!OPENROUTER_API_KEY) {
-      console.warn('OpenRouter API key not found, using simulation fallback');
+    if (!OPENAI_API_KEY) {
+      console.warn('OpenAI API key not found, using simulation fallback');
       const result = simulateAIProcessing(content, preferences);
       return res.status(200).json(result);
     }
 
     console.log('🤖 Processing brain dump with GPT-4o Mini...');
 
-    // Call OpenRouter API securely from server
-    const response = await fetch(`${OPENROUTER_BASE_URL}/chat/completions`, {
+    // Call OpenAI API directly
+    const response = await fetch('https://api.openai.com/v1/chat/completions', {
       method: 'POST',
       headers: {
-        'Authorization': `Bearer ${OPENROUTER_API_KEY}`,
+        'Authorization': `Bearer ${OPENAI_API_KEY}`,
         'Content-Type': 'application/json',
       },
       body: JSON.stringify({
-        model: 'openai/gpt-4o-mini',
+        model: 'gpt-4o-mini',
         messages: [{
           role: 'system',
           content: getAISystemPrompt(preferences)
         }, {
-          role: 'user', 
+          role: 'user',
           content: content
         }],
         temperature: 0.3,
-        max_tokens: 2000
+        max_tokens: 4000
       })
     });
 
     if (!response.ok) {
-      console.error(`OpenRouter API error: ${response.status} ${response.statusText}`);
+      const errText = await response.text();
+      console.error(`OpenAI API error: ${response.status} ${response.statusText}`, errText);
       // Fallback to simulation on API error
       const result = simulateAIProcessing(content, preferences);
       return res.status(200).json(result);
@@ -2008,17 +2008,19 @@ app.post('/api/ai/process-brain-dump', async (req, res) => {
     const aiResponse = data.choices[0].message.content;
     
     try {
-      const parsed = JSON.parse(aiResponse);
+      // Strip markdown code fences if the model wrapped its JSON
+      const cleaned = aiResponse.replace(/^```(?:json)?\s*/i, '').replace(/\s*```$/, '').trim();
+      const parsed = JSON.parse(cleaned);
       const result = {
         ...parsed,
         processingTimestamp: new Date().toISOString(),
         aiModel: 'gpt-4o-mini'
       };
-      
-      console.log('✅ Brain dump processed successfully with AI');
+
+      console.log(`✅ Brain dump processed: ${result.extractedTasks?.length || 0} tasks extracted (gpt-4o-mini)`);
       return res.status(200).json(result);
     } catch (parseError) {
-      console.warn('AI response not valid JSON, falling back to simulation');
+      console.warn('AI response not valid JSON, falling back to simulation. Response preview:', aiResponse?.substring(0, 300));
       const result = simulateAIProcessing(content);
       return res.status(200).json(result);
     }
@@ -2176,38 +2178,37 @@ CRITICAL: Return ONLY the JSON object. No additional text, explanations, or form
 }
 
 function simulateAIProcessing(content, preferences = {}) {
-  const lines = content.split('\n').filter(line => line.trim());
+  // Split on newlines and also on sentence-ending punctuation followed by capital letters
+  const rawLines = content.split(/\n|(?<=[.!?])\s+(?=[A-Z])/);
   const tasks = [];
-  
-  lines.forEach((line) => {
-    const trimmedLine = line.trim();
-    if (trimmedLine.length < 5) return;
-    
-    if (isTaskLike(trimmedLine)) {
-      const priority = determinePriority(trimmedLine);
-      const estimatedTime = Math.random() * 4 + 1;
-      
-      tasks.push({
-        id: generateSimpleId(),
-        title: extractSimpleTitle(trimmedLine),
-        description: trimmedLine,
-        priority,
-        estimatedHours: Math.round(estimatedTime * 10) / 10,
-        category: 'general',
-        tags: [],
-        microTasks: []
-      });
-    }
+
+  rawLines.forEach((line) => {
+    const trimmedLine = line.replace(/^[-•*\d.)\s]+/, '').trim(); // strip bullet/number prefixes
+    if (trimmedLine.length < 8) return;
+
+    const priority = determinePriority(trimmedLine);
+    const estimatedTime = trimmedLine.length > 100 ? 3 : trimmedLine.length > 50 ? 2 : 1;
+
+    tasks.push({
+      id: generateSimpleId(),
+      title: extractSimpleTitle(trimmedLine),
+      description: trimmedLine,
+      priority,
+      estimatedHours: estimatedTime,
+      category: inferCategory(trimmedLine),
+      tags: [],
+      microTasks: []
+    });
   });
 
   if (tasks.length === 0) {
     tasks.push({
       id: generateSimpleId(),
-      title: extractSimpleTitle(content.substring(0, 50)),
+      title: extractSimpleTitle(content.substring(0, 60)),
       description: content,
-      priority: 'medium',
+      priority: 'Medium',
       estimatedHours: 2,
-      category: 'general',
+      category: 'General',
       tags: [],
       microTasks: []
     });
@@ -2216,10 +2217,21 @@ function simulateAIProcessing(content, preferences = {}) {
   return {
     originalContent: content,
     extractedTasks: tasks,
-    summary: `Identified ${tasks.length} actionable tasks. Estimated total time: ${Math.round(tasks.reduce((sum, task) => sum + task.estimatedHours, 0) * 10) / 10} hours.`,
+    summary: `Identified ${tasks.length} actionable tasks. Estimated total time: ${tasks.reduce((sum, t) => sum + t.estimatedHours, 0)} hours. (Note: AI processing unavailable — add OPENROUTER_API_KEY for smarter extraction)`,
     processingTimestamp: new Date().toISOString(),
     aiModel: 'simulation-fallback'
   };
+}
+
+function inferCategory(text) {
+  const lower = text.toLowerCase();
+  if (/\b(code|build|implement|develop|api|bug|fix|refactor|deploy|release)\b/.test(lower)) return 'Development';
+  if (/\b(design|ui|ux|mockup|wireframe|figma|layout|style)\b/.test(lower)) return 'Design';
+  if (/\b(test|qa|review|validate|check|verify)\b/.test(lower)) return 'Testing';
+  if (/\b(research|analyze|investigate|explore|study|learn)\b/.test(lower)) return 'Research';
+  if (/\b(write|document|spec|report|proposal|draft)\b/.test(lower)) return 'Documentation';
+  if (/\b(call|meet|discuss|present|sync|standup|demo)\b/.test(lower)) return 'Meeting';
+  return 'General';
 }
 
 function isTaskLike(text) {
@@ -2456,9 +2468,6 @@ async function getDbPool() {
       // Production optimizations
       connectionLimit: 10,
       queueLimit: 0,
-      acquireTimeout: 30000,
-      timeout: 30000,
-      reconnect: true,
       idleTimeout: 300000,
       ssl: process.env.NODE_ENV === 'production' ? { rejectUnauthorized: false } : false
     });
@@ -2469,13 +2478,33 @@ async function getDbPool() {
 // Save brain dump tasks to database with optimal scheduling
 app.post('/api/brain-dump/save-tasks', async (req, res) => {
   try {
-    const { extractedTasks, dailySchedule, userId } = req.body;
+    const { extractedTasks, dailySchedule, userId, orgId } = req.body;
 
-    if (!extractedTasks || !userId) {
-      return res.status(400).json({ error: 'extractedTasks and userId are required' });
+    if (!extractedTasks || !userId || !orgId) {
+      return res.status(400).json({ error: 'extractedTasks, userId, and orgId are required' });
     }
 
     const pool = await getDbPool();
+
+    // Ensure brain_dumps table exists
+    try {
+      await pool.execute(
+        `CREATE TABLE IF NOT EXISTS brain_dumps (
+          id VARCHAR(255) PRIMARY KEY,
+          userId VARCHAR(255) NOT NULL,
+          orgId VARCHAR(191) NOT NULL,
+          rawContent TEXT NOT NULL,
+          processedContent JSON,
+          processingStatus ENUM('pending','processing','completed','failed') DEFAULT 'pending',
+          aiModel VARCHAR(100),
+          processedAt TIMESTAMP NULL,
+          createdAt TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+          INDEX bd_userId_idx (userId),
+          INDEX bd_orgId_idx (orgId)
+        ) DEFAULT CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci`
+      );
+    } catch (e) { /* table already exists */ }
+
     const savedTasks = [];
 
     // Begin transaction
@@ -2486,30 +2515,24 @@ app.post('/api/brain-dump/save-tasks', async (req, res) => {
       // Save tasks to macro_tasks table
       for (const task of extractedTasks) {
         const taskId = task.id || `${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
-        
+
         // Insert into macro_tasks
         await connection.execute(
           `INSERT INTO macro_tasks (
-            id, title, description, userId, createdBy, priority, estimatedHours, 
+            id, title, description, userId, createdBy, orgId, priority, estimatedHours,
             status, category, tags, createdAt
-          ) VALUES (?, ?, ?, ?, ?, ?, ?, 'not_started', ?, ?, NOW())`,
+          ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'todo', ?, ?, NOW())`,
           [
             taskId,
             task.title,
-            task.description,
+            task.description || '',
             userId,
             userId,
-            task.priority,
-            task.estimatedHours,
-            task.category,
-            JSON.stringify({
-              tags: task.tags || [],
-              microTasks: task.microTasks || [],
-              energyLevel: task.energyLevel,
-              focusType: task.focusType,
-              optimalTimeSlot: task.optimalTimeSlot,
-              suggestedDay: task.suggestedDay
-            })
+            orgId,
+            (task.priority || 'medium').toLowerCase(),
+            task.estimatedHours || 1,
+            task.category || 'general',
+            JSON.stringify(task.tags || [])
           ]
         );
 
@@ -2524,12 +2547,13 @@ app.post('/api/brain-dump/save-tasks', async (req, res) => {
       const brainDumpId = `dump-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
       await connection.execute(
         `INSERT INTO brain_dumps (
-          id, userId, rawContent, processedContent, processingStatus, 
+          id, userId, orgId, rawContent, processedContent, processingStatus,
           aiModel, processedAt, createdAt
-        ) VALUES (?, ?, ?, ?, 'completed', 'ai-scheduler', NOW(), NOW())`,
+        ) VALUES (?, ?, ?, ?, ?, 'completed', 'gpt-4o-mini', NOW(), NOW())`,
         [
           brainDumpId,
           userId,
+          orgId,
           req.body.originalContent || '',
           JSON.stringify({
             extractedTasks,

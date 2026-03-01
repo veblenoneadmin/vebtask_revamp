@@ -7,7 +7,7 @@ import {
   Users, Clock, CheckSquare, Target, BarChart3,
   Download, RefreshCw, ChevronDown, ChevronUp,
   DollarSign, Flame, AlertCircle, Eye, EyeOff, ArrowRight,
-  Activity,
+  Activity, Search,
 } from 'lucide-react';
 
 // ── VS Code Dark+ tokens (matches Dashboard) ───────────────────────────────────
@@ -155,6 +155,7 @@ export function KPIReport() {
   const [filterClass, setFilterClass] = useState<string | null>(null);
   const [showClients, setShowClients] = useState(false);
   const [sortBy, setSortBy] = useState<'score' | 'hours' | 'completion'>('score');
+  const [searchQuery, setSearchQuery] = useState('');
 
   const fetchData = useCallback(async () => {
     if (!currentOrg?.id) return;
@@ -177,6 +178,11 @@ export function KPIReport() {
   const filteredUsers = (data?.users ?? [])
     .filter(u => showClients || u.classification !== 'client')
     .filter(u => !filterClass || u.classification === filterClass)
+    .filter(u => {
+      if (!searchQuery) return true;
+      const q = searchQuery.toLowerCase();
+      return u.user.name?.toLowerCase().includes(q) || u.user.email?.toLowerCase().includes(q);
+    })
     .sort((a, b) => {
       if (sortBy === 'score') return (b.score ?? 0) - (a.score ?? 0);
       if (sortBy === 'hours') return b.currentHours - a.currentHours;
@@ -313,6 +319,30 @@ export function KPIReport() {
             <div className="flex items-center gap-2 mb-3">
               <BarChart3 className="h-4 w-4" style={{ color: VS.accent }} />
               <h2 className="text-[13px] font-bold" style={{ color: VS.text0 }}>Performance Classification</h2>
+            </div>
+            {/* Search */}
+            <div className="relative mb-3">
+              <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 pointer-events-none" style={{ color: VS.text2 }} />
+              <input
+                type="text"
+                placeholder="Search by name or email…"
+                value={searchQuery}
+                onChange={e => setSearchQuery(e.target.value)}
+                className="w-full pl-8 pr-3 py-1.5 rounded-lg text-[12px] outline-none transition-colors"
+                style={{
+                  background: VS.bg2,
+                  border: `1px solid ${searchQuery ? VS.accent + '66' : VS.border}`,
+                  color: VS.text0,
+                }}
+              />
+              {searchQuery && (
+                <button
+                  onClick={() => setSearchQuery('')}
+                  className="absolute right-2.5 top-1/2 -translate-y-1/2 text-[11px] font-semibold"
+                  style={{ color: VS.text2 }}>
+                  ✕
+                </button>
+              )}
             </div>
             <div className="flex flex-wrap gap-2">
               {Object.entries(CLASS_CFG).filter(([k]) => k !== 'client').map(([key, cfg]) => {

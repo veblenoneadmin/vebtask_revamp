@@ -1974,7 +1974,7 @@ app.post('/api/ai/process-brain-dump', async (req, res) => {
       return res.status(200).json(result);
     }
 
-    console.log('🤖 Processing brain dump with GPT-5 Nano...');
+    console.log('🤖 Processing brain dump with GPT-4o Mini...');
 
     // Call OpenRouter API securely from server
     const response = await fetch(`${OPENROUTER_BASE_URL}/chat/completions`, {
@@ -1984,7 +1984,7 @@ app.post('/api/ai/process-brain-dump', async (req, res) => {
         'Content-Type': 'application/json',
       },
       body: JSON.stringify({
-        model: 'openai/gpt-5-nano',
+        model: 'openai/gpt-4o-mini',
         messages: [{
           role: 'system',
           content: getAISystemPrompt(preferences)
@@ -2012,7 +2012,7 @@ app.post('/api/ai/process-brain-dump', async (req, res) => {
       const result = {
         ...parsed,
         processingTimestamp: new Date().toISOString(),
-        aiModel: 'gpt-5-nano'
+        aiModel: 'gpt-4o-mini'
       };
       
       console.log('✅ Brain dump processed successfully with AI');

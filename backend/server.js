@@ -2478,14 +2478,27 @@ async function getDbPool() {
 // Save brain dump tasks to database with optimal scheduling
 app.post('/api/brain-dump/save-tasks', async (req, res) => {
   try {
-    const { extractedTasks, dailySchedule, userId, orgId } = req.body;
+    const { extractedTasks, dailySchedule, userId } = req.body;
+    let { orgId } = req.body;
 
-    console.log('💾 save-tasks received:', { userId, orgId, taskCount: extractedTasks?.length });
-
-    if (!extractedTasks || !userId || !orgId) {
-      console.warn('💾 save-tasks validation failed:', { hasExtractedTasks: !!extractedTasks, hasUserId: !!userId, hasOrgId: !!orgId });
-      return res.status(400).json({ error: 'extractedTasks, userId, and orgId are required' });
+    if (!extractedTasks || !userId) {
+      return res.status(400).json({ error: 'extractedTasks and userId are required' });
     }
+
+    // Auto-resolve orgId from DB if not provided by frontend
+    if (!orgId) {
+      const membership = await prisma.membership.findFirst({
+        where: { userId },
+        select: { orgId: true }
+      });
+      orgId = membership?.orgId;
+    }
+
+    if (!orgId) {
+      return res.status(400).json({ error: 'Could not determine organization for this user' });
+    }
+
+    console.log('💾 save-tasks:', { userId, orgId, taskCount: extractedTasks?.length });
 
     const pool = await getDbPool();
 

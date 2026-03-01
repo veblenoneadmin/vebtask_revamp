@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { NavLink, useLocation } from 'react-router-dom';
 import { useSession } from '../../lib/auth-client';
+import { EverSenseLogo } from '../EverSenseLogo';
 import {
   LayoutDashboard,
   CheckSquare,
@@ -70,7 +71,7 @@ const Sidebar: React.FC = () => {
         className="flex h-14 items-center gap-3 px-4 shrink-0"
         style={{ borderBottom: `1px solid ${VS.border}` }}
       >
-        <img src="/veblen-logo.svg" alt="VebTask" className="h-9 w-auto object-contain" />
+        <EverSenseLogo height={36} width={211} />
       </div>
 
       {/* Nav */}

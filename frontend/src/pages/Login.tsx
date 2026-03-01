@@ -3,6 +3,7 @@ import type { FormEvent } from 'react';
 import { signIn } from '../lib/auth-client';
 import { Link, useNavigate } from 'react-router-dom';
 import { Eye, EyeOff } from 'lucide-react';
+import { EverSenseLogo } from '../components/EverSenseLogo';
 import { FcGoogle } from 'react-icons/fc';
 import { useAuthConfig } from '../hooks/useAuthConfig';
 
@@ -93,7 +94,7 @@ export function Login() {
               className="flex items-center gap-2 px-4 py-2 text-xs"
               style={{ color: '#cccccc', borderBottom: '1px solid #007acc', backgroundColor: '#1e1e1e', fontFamily: 'monospace' }}
             >
-              <img src="/veblen-logo.svg" alt="" className="h-4 w-auto object-contain" />
+              <EverSenseLogo height={16} width={94} />
               sign-in.ts
             </div>
           </div>
@@ -103,7 +104,7 @@ export function Login() {
 
             {/* Logo + Heading */}
             <div className="flex flex-col items-center gap-2 mb-2">
-              <img src="/veblen-logo.svg" alt="VebTask" className="block mx-auto w-72 h-auto object-contain" style={{ filter: 'drop-shadow(0 0 10px rgba(0,122,204,0.7))' }} />
+              <EverSenseLogo width={288} height={49} />
               <div className="text-sm font-medium" style={{ color: '#858585' }}>Welcome back</div>
             </div>
 

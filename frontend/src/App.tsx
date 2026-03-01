@@ -1,5 +1,6 @@
 import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom';
 import { useState, useEffect } from 'react';
+import { EverSenseLogo } from './components/EverSenseLogo';
 import { Login } from './pages/Login';
 import { Register } from './pages/Register';
 import { ForgotPassword } from './pages/ForgotPassword';
@@ -65,11 +66,7 @@ function AppContent() {
       <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-background via-surface to-surface-elevated">
         <div className="flex flex-col items-center space-y-6 animate-fade-in">
           <div className="relative">
-            <img 
-              src="/veblen-logo.svg"
-              alt="Veblen"
-              className="h-20 w-auto object-contain animate-pulse-glow"
-            />
+            <EverSenseLogo height={80} width={468} />
           </div>
           <div className="flex flex-col items-center space-y-2">
             <div className="w-8 h-8 border-2 border-primary border-t-transparent rounded-full animate-spin"></div>

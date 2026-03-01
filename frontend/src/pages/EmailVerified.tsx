@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { Link, useSearchParams } from 'react-router-dom';
 import { CheckCircle, XCircle, ArrowRight, Sparkles } from 'lucide-react';
+import { EverSenseLogo } from '../components/EverSenseLogo';
 import { Card, CardContent, CardHeader } from '../components/ui/card';
 import { Button } from '../components/ui/button';
 
@@ -55,7 +56,7 @@ export function EmailVerified() {
         {/* Logo & Brand */}
         <div className="text-center mb-8">
           <div className="flex items-center justify-center mb-6">
-            <img src="/veblen-logo.svg" alt="VebTask" className="h-14 w-auto object-contain rounded-xl animate-pulse-glow" />
+            <EverSenseLogo height={56} width={328} />
           </div>
           <div className="space-y-2">
             <h1 className="text-3xl font-bold gradient-text">VebTask</h1>

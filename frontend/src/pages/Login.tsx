@@ -21,23 +21,6 @@ export function Login() {
     setError('');
 
     try {
-      // Non-email input (e.g. numeric identifier) — bypass Better Auth client validation
-      if (!email.includes('@')) {
-        const res = await fetch('/api/auth/sign-in/email', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          credentials: 'include',
-          body: JSON.stringify({ email, password }),
-        });
-        if (res.ok) {
-          navigate('/dashboard');
-        } else {
-          const data = await res.json().catch(() => ({}));
-          setError(data.error || 'Invalid credentials');
-        }
-        return;
-      }
-
       const result = await signIn.email({ email, password });
       if (result.error) {
         setError(result.error.message || 'Login failed');
@@ -131,7 +114,7 @@ export function Login() {
                   // identifier
                 </label>
                 <input
-                  type="text"
+                  type="email"
                   id="email"
                   placeholder="user@company.com"
                   value={email}

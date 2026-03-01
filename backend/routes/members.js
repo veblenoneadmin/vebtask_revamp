@@ -10,7 +10,6 @@ import {
   canAssignRole,
   canModifyMember,
   RoleOrder,
-  filterSuperAdmins,
 } from '../lib/rbac.js';
 
 const router = express.Router();
@@ -107,15 +106,14 @@ router.get('/:orgId/members', requireAuth, withOrgScope, requireAdmin, async (re
       })
     );
 
-    const visibleMembers = filterSuperAdmins(membersWithStats);
     res.json({
       success: true,
-      members: visibleMembers,
+      members: membersWithStats,
       pagination: {
         page: pageNum,
         limit: limitNum,
-        total: visibleMembers.length,
-        pages: Math.ceil(visibleMembers.length / limitNum)
+        total: membersWithStats.length,
+        pages: Math.ceil(membersWithStats.length / limitNum)
       }
     });
   } catch (error) {

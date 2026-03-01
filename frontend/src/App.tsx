@@ -37,12 +37,6 @@ function AppContent() {
   useEffect(() => {
     const checkOnboardingStatus = async () => {
       if (session?.user?.id) {
-        // Super admin never needs onboarding
-        if (session.user.id === '__superadmin__') {
-          setNeedsOnboarding(false);
-          setCheckingOnboarding(false);
-          return;
-        }
         try {
           const response = await fetch('/api/onboarding/status');
           if (response.ok) {

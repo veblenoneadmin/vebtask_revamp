@@ -17,38 +17,17 @@ interface SessionProviderProps {
 export function SessionProvider({ children }: SessionProviderProps) {
   const { data: session, isPending: isLoading, error } = useBetterAuthSession();
   const [stableSession, setStableSession] = useState(session);
-  const [saSession, setSaSession]         = useState<any>(null);
-  const [checkingSa, setCheckingSa]       = useState(false);
 
   // Only update session when it actually changes to prevent unnecessary re-renders
   useEffect(() => {
     if (session !== stableSession) {
       setStableSession(session);
     }
-    // Clear super admin session if a real session appears
-    if (session) setSaSession(null);
-  }, [session?.user?.id, session?.user?.email]); // Only depend on stable user properties
-
-  // When Better Auth finds no session, check for a super admin cookie (no DB record)
-  useEffect(() => {
-    if (isLoading || session) return;
-    let cancelled = false;
-    setCheckingSa(true);
-    fetch('/api/super-admin/me', { credentials: 'include' })
-      .then(r => r.ok ? r.json() : null)
-      .then(data => {
-        if (!cancelled && data?.isSuperAdmin) {
-          setSaSession({ user: data.user });
-        }
-      })
-      .catch(() => {})
-      .finally(() => { if (!cancelled) setCheckingSa(false); });
-    return () => { cancelled = true; };
-  }, [isLoading, session?.user?.id]);
+  }, [session?.user?.id, session?.user?.email]);
 
   const contextValue = {
-    session:   stableSession || saSession,
-    isLoading: isLoading || checkingSa,
+    session: stableSession,
+    isLoading,
     error,
   };
 

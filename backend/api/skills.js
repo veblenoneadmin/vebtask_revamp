@@ -105,11 +105,20 @@ router.delete('/library/:skillId', requireAuth, withOrgScope, async (req, res) =
 router.get('/staff/:userId', requireAuth, withOrgScope, async (req, res) => {
   try {
     await ensureSkillsTables();
-    const staffSkills = await prisma.staffSkill.findMany({
+    const raw = await prisma.staffSkill.findMany({
       where: { userId: req.params.userId, orgId: req.orgId },
       include: { skill: true },
       orderBy: [{ skill: { category: 'asc' } }, { level: 'desc' }],
     });
+    const staffSkills = raw.map(ss => ({
+      id:       ss.id,
+      skillId:  ss.skillId,
+      name:     ss.skill.name,
+      category: ss.skill.category,
+      level:    ss.level,
+      yearsExp: ss.yearsExp,
+      notes:    ss.notes,
+    }));
     res.json({ staffSkills });
   } catch (err) {
     res.status(500).json({ error: 'Failed to fetch staff skills' });

@@ -3,6 +3,7 @@ import express from 'express';
 import { prisma } from '../lib/prisma.js';
 import { requireAuth, withOrgScope, requireTaskOwnership } from '../lib/rbac.js';
 import { validateBody, validateQuery, commonSchemas, taskSchemas } from '../lib/validation.js';
+import { createNotification } from './notifications.js';
 const router = express.Router();
 
 // Get tasks (main endpoint)
@@ -379,7 +380,19 @@ router.post('/', requireAuth, withOrgScope, validateBody(taskSchemas.create), as
     });
     
     console.log(`✅ Created new task: ${title}`);
-    
+
+    // Notify assignee if they're not the one creating the task
+    if (userId && userId !== req.user.id) {
+      const creator = await prisma.user.findUnique({ where: { id: req.user.id }, select: { name: true } });
+      createNotification({
+        userId,
+        orgId,
+        title: `New Task Assigned: ${title}`,
+        body: `Assigned to you by ${creator?.name || 'a team member'}${task.project ? ` in "${task.project.name}"` : ''}.`,
+        type: 'task',
+      });
+    }
+
     res.status(201).json({
       task: task,
       message: 'Task created successfully'
@@ -469,7 +482,19 @@ router.put('/:taskId', requireAuth, withOrgScope, requireTaskOwnership, async (r
     });
     
     console.log(`📝 Updated task ${taskId}`);
-    
+
+    // Notify new assignee if the task was reassigned to someone else
+    if (updates.userId && updates.userId !== req.user.id) {
+      const updater = await prisma.user.findUnique({ where: { id: req.user.id }, select: { name: true } });
+      createNotification({
+        userId: updates.userId,
+        orgId: req.orgId,
+        title: `Task Assigned to You: ${task.title}`,
+        body: `Assigned by ${updater?.name || 'a team member'}${task.project ? ` (${task.project.name})` : ''}.`,
+        type: 'task',
+      });
+    }
+
     res.json({
       task: task,
       message: 'Task updated successfully'
@@ -560,6 +585,18 @@ router.patch('/:taskId', requireAuth, withOrgScope, requireTaskOwnership, async 
 
     console.log(`📝 PATCH Updated task ${taskId}`);
 
+    // Notify new assignee if the task was reassigned to someone else
+    if (updates.userId && updates.userId !== req.user.id) {
+      const updater = await prisma.user.findUnique({ where: { id: req.user.id }, select: { name: true } });
+      createNotification({
+        userId: updates.userId,
+        orgId: req.orgId,
+        title: `Task Assigned to You: ${task.title}`,
+        body: `Assigned by ${updater?.name || 'a team member'}${task.project ? ` (${task.project.name})` : ''}.`,
+        type: 'task',
+      });
+    }
+
     res.json({
       task: task,
       message: 'Task updated successfully'
@@ -596,7 +633,38 @@ router.patch('/:taskId/status', requireAuth, withOrgScope, requireTaskOwnership,
     });
     
     console.log(`📝 Updated task ${taskId} status to: ${status}`);
-    
+
+    // Notify the task assignee about the status change (if someone else changed it)
+    if (task.userId && task.userId !== req.user.id) {
+      const updater = await prisma.user.findUnique({ where: { id: req.user.id }, select: { name: true } });
+      createNotification({
+        userId: task.userId,
+        orgId: req.orgId,
+        title: `Task Status Updated: ${task.title}`,
+        body: `Status changed to "${status}" by ${updater?.name || 'a team member'}.`,
+        type: 'task',
+      });
+    }
+    // If completed, also notify all org admins/owners (excluding the completer and assignee)
+    if (status === 'completed') {
+      prisma.membership.findMany({
+        where: { orgId: req.orgId, role: { in: ['OWNER', 'ADMIN'] } },
+        select: { userId: true },
+      }).then(admins => {
+        for (const { userId: adminId } of admins) {
+          if (adminId !== req.user.id && adminId !== task.userId) {
+            createNotification({
+              userId: adminId,
+              orgId: req.orgId,
+              title: `Task Completed: ${task.title}`,
+              body: `"${task.title}" has been marked as completed.`,
+              type: 'task',
+            });
+          }
+        }
+      }).catch(() => {});
+    }
+
     res.json({
       message: 'Task status updated successfully',
       taskId: taskId,
@@ -809,6 +877,29 @@ router.post('/:taskId/comments', requireAuth, withOrgScope, async (req, res) => 
       data: { taskId: req.params.taskId, orgId: req.orgId, userId: req.user.id, content: content.trim() },
       include: { user: { select: { id: true, name: true, email: true } } },
     });
+
+    // Notify task assignee and creator (excluding the commenter)
+    try {
+      const taskInfo = await prisma.macroTask.findUnique({
+        where: { id: req.params.taskId },
+        select: { userId: true, title: true, createdBy: true },
+      });
+      if (taskInfo) {
+        const notifyIds = new Set([taskInfo.userId, taskInfo.createdBy].filter(id => id && id !== req.user.id));
+        const commenterName = comment.user?.name || 'Someone';
+        const preview = content.trim().length > 100 ? content.trim().slice(0, 97) + '...' : content.trim();
+        for (const uid of notifyIds) {
+          createNotification({
+            userId: uid,
+            orgId: req.orgId,
+            title: `New Comment on: ${taskInfo.title}`,
+            body: `${commenterName}: "${preview}"`,
+            type: 'comment',
+          });
+        }
+      }
+    } catch (_) {}
+
     res.status(201).json({ success: true, comment });
   } catch (e) { console.error('Failed to post comment:', e); res.status(500).json({ error: 'Failed to post comment' }); }
 });

@@ -4,6 +4,7 @@ import { prisma } from '../lib/prisma.js';
 import { requireAuth, withOrgScope, requireResourceOwnership } from '../lib/rbac.js';
 import { validateBody, validateQuery, commonSchemas, projectSchemas } from '../lib/validation.js';
 import { checkDatabaseConnection, handleDatabaseError } from '../lib/api-error-handler.js';
+import { createNotification } from './notifications.js';
 const router = express.Router();
 
 // Get all projects for a user/organization
@@ -154,10 +155,30 @@ router.post('/', requireAuth, withOrgScope, validateBody(projectSchemas.create),
     });
     
     console.log(`✅ Created new project: ${name}`);
-    
-    res.status(201).json({ 
-      success: true, 
-      project 
+
+    // Notify all org admins/owners about the new project (excluding the creator)
+    try {
+      const creator = await prisma.user.findUnique({ where: { id: req.user.id }, select: { name: true } });
+      const admins = await prisma.membership.findMany({
+        where: { orgId: project.orgId, role: { in: ['OWNER', 'ADMIN'] } },
+        select: { userId: true },
+      });
+      for (const { userId: adminId } of admins) {
+        if (adminId !== req.user.id) {
+          createNotification({
+            userId: adminId,
+            orgId: project.orgId,
+            title: `New Project: ${project.name}`,
+            body: `Created by ${creator?.name || 'a team member'}.`,
+            type: 'project',
+          });
+        }
+      }
+    } catch (_) {}
+
+    res.status(201).json({
+      success: true,
+      project
     });
     
   } catch (error) {
@@ -222,11 +243,33 @@ router.patch('/:id', requireAuth, withOrgScope, validateBody(projectSchemas.upda
     });
     
     console.log(`📝 Updated project ${id}`);
-    
-    res.json({ 
-      success: true, 
+
+    // Notify org admins/owners if status was changed (excluding the updater)
+    if (updates.status) {
+      try {
+        const updater = await prisma.user.findUnique({ where: { id: req.user.id }, select: { name: true } });
+        const admins = await prisma.membership.findMany({
+          where: { orgId: project.orgId, role: { in: ['OWNER', 'ADMIN'] } },
+          select: { userId: true },
+        });
+        for (const { userId: adminId } of admins) {
+          if (adminId !== req.user.id) {
+            createNotification({
+              userId: adminId,
+              orgId: project.orgId,
+              title: `Project Updated: ${project.name}`,
+              body: `Status changed to "${project.status}" by ${updater?.name || 'a team member'}.`,
+              type: 'project',
+            });
+          }
+        }
+      } catch (_) {}
+    }
+
+    res.json({
+      success: true,
       project,
-      message: 'Project updated successfully' 
+      message: 'Project updated successfully'
     });
     
   } catch (error) {

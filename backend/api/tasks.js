@@ -1,10 +1,44 @@
 // Task management API endpoints
 import express from 'express';
+import { randomUUID } from 'crypto';
 import { prisma } from '../lib/prisma.js';
 import { requireAuth, withOrgScope, requireTaskOwnership } from '../lib/rbac.js';
 import { validateBody, validateQuery, commonSchemas, taskSchemas } from '../lib/validation.js';
 import { createNotification } from './notifications.js';
 const router = express.Router();
+
+// ── Lazy task_assignees table init ────────────────────────────────────────────
+let assigneesTableReady = false;
+async function ensureAssigneesTable() {
+  if (assigneesTableReady) return;
+  try {
+    await prisma.$executeRawUnsafe(
+      'CREATE TABLE IF NOT EXISTS `task_assignees` (' +
+      '  `id` VARCHAR(191) NOT NULL, `taskId` VARCHAR(50) NOT NULL,' +
+      '  `userId` VARCHAR(36) NOT NULL, `orgId` VARCHAR(191) NOT NULL,' +
+      '  PRIMARY KEY (`id`),' +
+      '  UNIQUE KEY `ta_task_user_key` (`taskId`,`userId`),' +
+      '  KEY `ta_taskId_idx` (`taskId`), KEY `ta_userId_idx` (`userId`)' +
+      ') DEFAULT CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci'
+    );
+    assigneesTableReady = true;
+  } catch (_) { assigneesTableReady = true; }
+}
+
+// ── Replace all assignees for a task ─────────────────────────────────────────
+async function setTaskAssignees(taskId, orgId, assigneeIds) {
+  if (!Array.isArray(assigneeIds) || assigneeIds.length === 0) return;
+  await ensureAssigneesTable();
+  await prisma.$executeRawUnsafe('DELETE FROM task_assignees WHERE taskId = ?', taskId);
+  for (const uid of assigneeIds) {
+    try {
+      await prisma.$executeRawUnsafe(
+        'INSERT IGNORE INTO task_assignees (id, taskId, userId, orgId) VALUES (?, ?, ?, ?)',
+        randomUUID(), taskId, uid, orgId
+      );
+    } catch (_) {}
+  }
+}
 
 // Get tasks (main endpoint)
 router.get('/', requireAuth, withOrgScope, validateQuery(commonSchemas.pagination), async (req, res) => {
@@ -107,8 +141,28 @@ router.get('/', requireAuth, withOrgScope, validateQuery(commonSchemas.paginatio
       hourlyRate: 0,
       tags: task.tags ? (Array.isArray(task.tags) ? task.tags : []) : [],
       createdAt: task.createdAt,
-      updatedAt: task.updatedAt
+      updatedAt: task.updatedAt,
+      assignees: [],
     }));
+
+    // Batch-fetch multi-assignees and attach to tasks
+    if (formattedTasks.length > 0) {
+      try {
+        await ensureAssigneesTable();
+        const taskIds = formattedTasks.map(t => t.id);
+        const ph = taskIds.map(() => '?').join(',');
+        const rows = await prisma.$queryRawUnsafe(
+          `SELECT ta.taskId, ta.userId, u.name, u.email FROM task_assignees ta JOIN user u ON u.id = ta.userId WHERE ta.taskId IN (${ph})`,
+          ...taskIds
+        );
+        const aMap = {};
+        for (const r of rows) {
+          if (!aMap[r.taskId]) aMap[r.taskId] = [];
+          aMap[r.taskId].push({ id: r.userId, name: r.name, email: r.email });
+        }
+        for (const t of formattedTasks) t.assignees = aMap[t.id] || [];
+      } catch (_) {}
+    }
 
     res.json({
       success: true,
@@ -381,16 +435,26 @@ router.post('/', requireAuth, withOrgScope, validateBody(taskSchemas.create), as
     
     console.log(`✅ Created new task: ${title}`);
 
-    // Notify assignee if they're not the one creating the task
-    if (userId && userId !== req.user.id) {
+    // Store multi-assignees
+    const assigneeIds = Array.isArray(req.body.assigneeIds) && req.body.assigneeIds.length > 0
+      ? req.body.assigneeIds
+      : (userId ? [userId] : []);
+    await setTaskAssignees(task.id, orgId, assigneeIds);
+
+    // Notify all assignees (excluding the creator)
+    if (assigneeIds.length > 0) {
       const creator = await prisma.user.findUnique({ where: { id: req.user.id }, select: { name: true } });
-      createNotification({
-        userId,
-        orgId,
-        title: `New Task Assigned: ${title}`,
-        body: `Assigned to you by ${creator?.name || 'a team member'}${task.project ? ` in "${task.project.name}"` : ''}.`,
-        type: 'task',
-      });
+      for (const assigneeId of assigneeIds) {
+        if (assigneeId !== req.user.id) {
+          createNotification({
+            userId: assigneeId,
+            orgId,
+            title: `New Task Assigned: ${title}`,
+            body: `Assigned to you by ${creator?.name || 'a team member'}${task.project ? ` in "${task.project.name}"` : ''}.`,
+            type: 'task',
+          });
+        }
+      }
     }
 
     res.status(201).json({
@@ -417,11 +481,13 @@ router.put('/:taskId', requireAuth, withOrgScope, requireTaskOwnership, async (r
     });
     
     // Remove fields that shouldn't be updated directly
+    const newAssigneeIds = updates.assigneeIds;
     delete updates.id;
     delete updates.createdAt;
     delete updates.updatedAt;
     delete updates.createdBy;
-    
+    delete updates.assigneeIds;
+
     // Handle date fields
     if (updates.dueDate !== undefined) {
       updates.dueDate = updates.dueDate ? new Date(updates.dueDate) : null;
@@ -429,7 +495,7 @@ router.put('/:taskId', requireAuth, withOrgScope, requireTaskOwnership, async (r
     if (updates.completedAt) {
       updates.completedAt = new Date(updates.completedAt);
     }
-    
+
     // Handle numeric fields
     if (updates.estimatedHours !== undefined) {
       updates.estimatedHours = typeof updates.estimatedHours === 'number' ? updates.estimatedHours : parseFloat(updates.estimatedHours) || 0;
@@ -480,19 +546,29 @@ router.put('/:taskId', requireAuth, withOrgScope, requireTaskOwnership, async (r
         }
       }
     });
-    
+
+    // Replace assignees if provided
+    if (Array.isArray(newAssigneeIds) && newAssigneeIds.length > 0) {
+      await setTaskAssignees(taskId, req.orgId, newAssigneeIds);
+    }
+
     console.log(`📝 Updated task ${taskId}`);
 
-    // Notify new assignee if the task was reassigned to someone else
-    if (updates.userId && updates.userId !== req.user.id) {
+    // Notify new assignees if task was reassigned
+    const notifyIds = Array.isArray(newAssigneeIds) ? newAssigneeIds : (updates.userId ? [updates.userId] : []);
+    if (notifyIds.length > 0) {
       const updater = await prisma.user.findUnique({ where: { id: req.user.id }, select: { name: true } });
-      createNotification({
-        userId: updates.userId,
-        orgId: req.orgId,
-        title: `Task Assigned to You: ${task.title}`,
-        body: `Assigned by ${updater?.name || 'a team member'}${task.project ? ` (${task.project.name})` : ''}.`,
-        type: 'task',
-      });
+      for (const uid of notifyIds) {
+        if (uid !== req.user.id) {
+          createNotification({
+            userId: uid,
+            orgId: req.orgId,
+            title: `Task Assigned to You: ${task.title}`,
+            body: `Assigned by ${updater?.name || 'a team member'}${task.project ? ` (${task.project.name})` : ''}.`,
+            type: 'task',
+          });
+        }
+      }
     }
 
     res.json({
@@ -519,10 +595,12 @@ router.patch('/:taskId', requireAuth, withOrgScope, requireTaskOwnership, async 
     });
 
     // Remove fields that shouldn't be updated directly
+    const newAssigneeIdsPatch = updates.assigneeIds;
     delete updates.id;
     delete updates.createdAt;
     delete updates.updatedAt;
     delete updates.createdBy;
+    delete updates.assigneeIds;
 
     // Handle date fields
     if (updates.dueDate !== undefined) {
@@ -583,18 +661,28 @@ router.patch('/:taskId', requireAuth, withOrgScope, requireTaskOwnership, async 
       }
     });
 
+    // Replace assignees if provided
+    if (Array.isArray(newAssigneeIdsPatch) && newAssigneeIdsPatch.length > 0) {
+      await setTaskAssignees(taskId, req.orgId, newAssigneeIdsPatch);
+    }
+
     console.log(`📝 PATCH Updated task ${taskId}`);
 
-    // Notify new assignee if the task was reassigned to someone else
-    if (updates.userId && updates.userId !== req.user.id) {
+    // Notify new assignees if reassigned
+    const notifyIdsPatch = Array.isArray(newAssigneeIdsPatch) ? newAssigneeIdsPatch : (updates.userId ? [updates.userId] : []);
+    if (notifyIdsPatch.length > 0) {
       const updater = await prisma.user.findUnique({ where: { id: req.user.id }, select: { name: true } });
-      createNotification({
-        userId: updates.userId,
-        orgId: req.orgId,
-        title: `Task Assigned to You: ${task.title}`,
-        body: `Assigned by ${updater?.name || 'a team member'}${task.project ? ` (${task.project.name})` : ''}.`,
-        type: 'task',
-      });
+      for (const uid of notifyIdsPatch) {
+        if (uid !== req.user.id) {
+          createNotification({
+            userId: uid,
+            orgId: req.orgId,
+            title: `Task Assigned to You: ${task.title}`,
+            body: `Assigned by ${updater?.name || 'a team member'}${task.project ? ` (${task.project.name})` : ''}.`,
+            type: 'task',
+          });
+        }
+      }
     }
 
     res.json({

@@ -32,6 +32,7 @@ interface Task {
   actualHours: number;
   dueDate?: string;
   assignee?: string;
+  assignees?: { id: string; name: string; email: string }[];
   project?: string;
   projectId?: string;
   isBillable: boolean;
@@ -148,7 +149,7 @@ export function Tasks() {
   const [newTaskColumnStatus, setNewTaskColumnStatus] = useState<Task['status']>('not_started');
   const [newTaskForm, setNewTaskForm] = useState({
     title: '', description: '', priority: 'Medium' as Task['priority'],
-    projectId: '', estimatedHours: 0, dueDate: '', tags: '', assigneeId: '',
+    projectId: '', estimatedHours: 0, dueDate: '', tags: '', assigneeIds: [] as string[],
   });
   const [taskFormLoading, setTaskFormLoading] = useState(false);
 
@@ -405,7 +406,8 @@ export function Tasks() {
         body: JSON.stringify({
           title,
           description: newTaskForm.description,
-          userId: newTaskForm.assigneeId || session.user.id,
+          userId: newTaskForm.assigneeIds[0] || session.user.id,
+          assigneeIds: newTaskForm.assigneeIds.length > 0 ? newTaskForm.assigneeIds : [session.user.id],
           orgId: currentOrg.id,
           priority: newTaskForm.priority,
           status: newTaskColumnStatus,
@@ -417,7 +419,7 @@ export function Tasks() {
       });
       if (data.task) {
         await fetchTasks();
-        setNewTaskForm({ title: '', description: '', priority: 'Medium', projectId: '', estimatedHours: 0, dueDate: '', tags: '', assigneeId: '' });
+        setNewTaskForm({ title: '', description: '', priority: 'Medium', projectId: '', estimatedHours: 0, dueDate: '', tags: '', assigneeIds: [] });
         setShowNewTaskForm(false);
       }
     } catch { alert('Failed to create task.'); }
@@ -883,29 +885,47 @@ export function Tasks() {
                           {/* Avatars (left) + Status badge (right) */}
                           <div className="flex items-center justify-between">
                             <div className="flex -space-x-2">
-                              {task.assignee ? (
-                                <div className="relative group/avatar">
+                              {(() => {
+                                const people = task.assignees && task.assignees.length > 0
+                                  ? task.assignees
+                                  : task.assignee
+                                    ? [{ id: '', name: task.assignee, email: '' }]
+                                    : [];
+                                if (people.length === 0) return (
                                   <div
-                                    className="h-8 w-8 rounded-full flex items-center justify-center text-[10px] font-bold text-white ring-2 ring-[#2d2d2d]"
-                                    style={{ background: avatarGradient(task.assignee) }}
-                                  >
-                                    {getInitials(task.assignee)}
-                                  </div>
-                                  <div
-                                    className="absolute bottom-full left-1/2 -translate-x-1/2 mb-1.5 px-2 py-1 rounded-md text-[11px] whitespace-nowrap pointer-events-none opacity-0 group-hover/avatar:opacity-100 transition-opacity duration-150 z-50"
-                                    style={{ background: VS.bg1, color: VS.text0, border: `1px solid ${VS.border}`, boxShadow: '0 4px 12px rgba(0,0,0,0.4)' }}
-                                  >
-                                    {task.assignee}
-                                  </div>
-                                </div>
-                              ) : (
-                                <div
-                                  className="h-8 w-8 rounded-full flex items-center justify-center text-[10px] font-bold ring-2 ring-[#2d2d2d]"
-                                  style={{ background: VS.bg3, color: VS.text2, border: `1px dashed ${VS.border2}` }}
-                                >
-                                  ?
-                                </div>
-                              )}
+                                    className="h-8 w-8 rounded-full flex items-center justify-center text-[10px] font-bold ring-2 ring-[#2d2d2d]"
+                                    style={{ background: VS.bg3, color: VS.text2, border: `1px dashed ${VS.border2}` }}
+                                  >?</div>
+                                );
+                                return (
+                                  <>
+                                    {people.slice(0, 4).map((a, i) => (
+                                      <div key={a.id || i} className="relative group/avatar">
+                                        <div
+                                          className="h-8 w-8 rounded-full flex items-center justify-center text-[10px] font-bold text-white ring-2 ring-[#2d2d2d]"
+                                          style={{ background: avatarGradient(a.name || a.email) }}
+                                        >
+                                          {getInitials(a.name || a.email)}
+                                        </div>
+                                        <div
+                                          className="absolute bottom-full left-1/2 -translate-x-1/2 mb-1.5 px-2 py-1 rounded-md text-[11px] whitespace-nowrap pointer-events-none opacity-0 group-hover/avatar:opacity-100 transition-opacity duration-150 z-50"
+                                          style={{ background: VS.bg1, color: VS.text0, border: `1px solid ${VS.border}`, boxShadow: '0 4px 12px rgba(0,0,0,0.4)' }}
+                                        >
+                                          {a.name || a.email}
+                                        </div>
+                                      </div>
+                                    ))}
+                                    {people.length > 4 && (
+                                      <div
+                                        className="h-8 w-8 rounded-full flex items-center justify-center text-[10px] font-bold ring-2 ring-[#2d2d2d]"
+                                        style={{ background: VS.bg3, color: VS.text2 }}
+                                      >
+                                        +{people.length - 4}
+                                      </div>
+                                    )}
+                                  </>
+                                );
+                              })()}
                             </div>
 
                             <span
@@ -1116,18 +1136,51 @@ export function Tasks() {
               </div>
 
               <div>
-                <label className="block text-[11px] font-semibold mb-1.5 uppercase tracking-wide" style={{ color: VS.text2 }}>Assignee</label>
-                <select
-                  value={newTaskForm.assigneeId}
-                  onChange={e => setNewTaskForm(p => ({ ...p, assigneeId: e.target.value }))}
-                  className={inputCls}
-                  style={{ ...inputStyle, color: VS.text1 }}
+                <label className="block text-[11px] font-semibold mb-1.5 uppercase tracking-wide" style={{ color: VS.text2 }}>
+                  Assignees
+                  {newTaskForm.assigneeIds.length > 0 && (
+                    <span className="ml-1.5 normal-case font-normal" style={{ color: VS.accent }}>
+                      {newTaskForm.assigneeIds.length} selected
+                    </span>
+                  )}
+                </label>
+                <div
+                  className="rounded-lg overflow-hidden"
+                  style={{ border: `1px solid ${VS.border}`, maxHeight: '152px', overflowY: 'auto' }}
                 >
-                  <option value="">Assign to myself</option>
-                  {orgMembers.map(m => (
-                    <option key={m.id} value={m.id}>{m.name || m.email}</option>
-                  ))}
-                </select>
+                  {orgMembers.length === 0 ? (
+                    <div className="px-3 py-3 text-xs" style={{ color: VS.text2 }}>Loading members…</div>
+                  ) : orgMembers.map((m, i) => {
+                    const selected = newTaskForm.assigneeIds.includes(m.id);
+                    return (
+                      <button
+                        key={m.id}
+                        type="button"
+                        onClick={() => setNewTaskForm(p => ({
+                          ...p,
+                          assigneeIds: selected
+                            ? p.assigneeIds.filter(id => id !== m.id)
+                            : [...p.assigneeIds, m.id],
+                        }))}
+                        className="flex items-center gap-2.5 w-full px-3 py-2 text-left transition-colors"
+                        style={{
+                          background: selected ? `${VS.accent}22` : i % 2 === 0 ? VS.bg3 : 'transparent',
+                          borderBottom: i < orgMembers.length - 1 ? `1px solid ${VS.border}` : 'none',
+                          color: selected ? VS.text0 : VS.text1,
+                        }}
+                      >
+                        <div
+                          className="h-6 w-6 rounded-full flex items-center justify-center text-[10px] font-bold text-white flex-shrink-0"
+                          style={{ background: avatarGradient(m.name || m.email) }}
+                        >
+                          {getInitials(m.name || m.email)}
+                        </div>
+                        <span className="flex-1 text-xs truncate">{m.name || m.email}</span>
+                        {selected && <Check className="h-3.5 w-3.5 flex-shrink-0" style={{ color: VS.accent }} />}
+                      </button>
+                    );
+                  })}
+                </div>
               </div>
 
               <div className="grid grid-cols-2 gap-3">

@@ -2954,10 +2954,31 @@ async function ensureTaskTablesSchema() {
   } catch (e) { console.warn('  ⚠️  task tables:', e.message); }
 }
 
+async function ensureTaskAssigneesSchema() {
+  if (!process.env.DATABASE_URL) return;
+  try {
+    await prisma.$executeRawUnsafe(
+      'CREATE TABLE IF NOT EXISTS `task_assignees` (' +
+      '  `id` VARCHAR(191) NOT NULL,' +
+      '  `taskId` VARCHAR(50) NOT NULL,' +
+      '  `userId` VARCHAR(36) NOT NULL,' +
+      '  `orgId` VARCHAR(191) NOT NULL,' +
+      '  PRIMARY KEY (`id`),' +
+      '  UNIQUE KEY `ta_task_user_key` (`taskId`,`userId`),' +
+      '  KEY `ta_taskId_idx` (`taskId`),' +
+      '  KEY `ta_userId_idx` (`userId`),' +
+      '  KEY `ta_orgId_idx` (`orgId`)' +
+      ') DEFAULT CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci'
+    );
+    console.log('  ✅ task_assignees table ready');
+  } catch (e) { console.warn('  ⚠️  task_assignees table:', e.message); }
+}
+
 // Run migrations and start server
 async function startServer() {
   await runDatabaseMigrations();
   await ensureTaskTablesSchema();
+  await ensureTaskAssigneesSchema();
 
   app.listen(PORT, '0.0.0.0', () => {
     console.log(`✅ Server running on port ${PORT}`);

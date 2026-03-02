@@ -29,6 +29,7 @@ import attendanceRoutes from './api/attendance.js';
 import calendarRoutes from './api/calendar.js';
 import kpiReportRoutes from './api/kpi-report.js';
 import notificationsRoutes from './api/notifications.js';
+import firefliesRoutes from './api/fireflies.js';
 import { 
   blockPublicRegistration, 
   addInternalBranding, 
@@ -365,6 +366,7 @@ app.use('/api/attendance', attendanceRoutes);
 app.use('/api/calendar', calendarRoutes);
 app.use('/api/kpi-report', kpiReportRoutes);
 app.use('/api/notifications', notificationsRoutes);
+app.use('/api/fireflies', firefliesRoutes);
 
 // Test routes for debugging (NO AUTH - REMOVE IN PRODUCTION)
 import testProjectsRoutes from './api/test-projects.js';

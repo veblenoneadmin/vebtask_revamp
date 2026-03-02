@@ -106,7 +106,7 @@ router.post('/webhook', async (req, res) => {
 
     const placeholders = lcEmails.map(() => '?').join(',');
     const users = await prisma.$queryRawUnsafe(
-      `SELECT id, email FROM user WHERE LOWER(email) IN (${placeholders})`,
+      `SELECT id, email FROM User WHERE LOWER(email) IN (${placeholders})`,
       ...lcEmails
     );
 

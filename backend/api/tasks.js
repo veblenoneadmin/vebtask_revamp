@@ -27,7 +27,7 @@ async function ensureAssigneesTable() {
 
 // ── Replace all assignees for a task ─────────────────────────────────────────
 async function setTaskAssignees(taskId, orgId, assigneeIds) {
-  if (!Array.isArray(assigneeIds) || assigneeIds.length === 0) return;
+  if (!Array.isArray(assigneeIds)) return;
   await ensureAssigneesTable();
   await prisma.$executeRawUnsafe('DELETE FROM task_assignees WHERE taskId = ?', taskId);
   for (const uid of assigneeIds) {
@@ -39,6 +39,28 @@ async function setTaskAssignees(taskId, orgId, assigneeIds) {
     } catch (_) {}
   }
 }
+
+// ── GET /api/tasks/members — org members for assignee picker ─────────────────
+router.get('/members', requireAuth, withOrgScope, async (req, res) => {
+  try {
+    const memberships = await prisma.membership.findMany({
+      where: { orgId: req.orgId },
+      include: { user: { select: { id: true, name: true, email: true } } },
+      orderBy: { user: { name: 'asc' } },
+    });
+    res.json({
+      members: memberships.map(m => ({
+        id:    m.user.id,
+        name:  m.user.name,
+        email: m.user.email,
+        role:  m.role,
+      })),
+    });
+  } catch (err) {
+    console.error('[Tasks] members error:', err);
+    res.status(500).json({ error: 'Failed to fetch members' });
+  }
+});
 
 // Get tasks (main endpoint)
 router.get('/', requireAuth, withOrgScope, validateQuery(commonSchemas.pagination), async (req, res) => {
@@ -152,7 +174,7 @@ router.get('/', requireAuth, withOrgScope, validateQuery(commonSchemas.paginatio
         const taskIds = formattedTasks.map(t => t.id);
         const ph = taskIds.map(() => '?').join(',');
         const rows = await prisma.$queryRawUnsafe(
-          `SELECT ta.taskId, ta.userId, u.name, u.email FROM task_assignees ta JOIN user u ON u.id = ta.userId WHERE ta.taskId IN (${ph})`,
+          `SELECT ta.taskId, ta.userId, u.name, u.email FROM task_assignees ta JOIN User u ON u.id = ta.userId WHERE ta.taskId IN (${ph})`,
           ...taskIds
         );
         const aMap = {};
@@ -547,8 +569,8 @@ router.put('/:taskId', requireAuth, withOrgScope, requireTaskOwnership, async (r
       }
     });
 
-    // Replace assignees if provided
-    if (Array.isArray(newAssigneeIds) && newAssigneeIds.length > 0) {
+    // Replace assignees if provided (empty array clears all)
+    if (Array.isArray(newAssigneeIds)) {
       await setTaskAssignees(taskId, req.orgId, newAssigneeIds);
     }
 
@@ -661,8 +683,8 @@ router.patch('/:taskId', requireAuth, withOrgScope, requireTaskOwnership, async 
       }
     });
 
-    // Replace assignees if provided
-    if (Array.isArray(newAssigneeIdsPatch) && newAssigneeIdsPatch.length > 0) {
+    // Replace assignees if provided (empty array clears all)
+    if (Array.isArray(newAssigneeIdsPatch)) {
       await setTaskAssignees(taskId, req.orgId, newAssigneeIdsPatch);
     }
 

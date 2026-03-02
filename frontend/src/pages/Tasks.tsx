@@ -157,7 +157,7 @@ export function Tasks() {
   const [editingTask, setEditingTask] = useState<Task | null>(null);
   const [editTaskForm, setEditTaskForm] = useState({
     title: '', description: '', priority: 'Medium' as Task['priority'],
-    projectId: '', estimatedHours: 0, dueDate: '', tags: '',
+    projectId: '', estimatedHours: 0, dueDate: '', tags: '', assigneeIds: [] as string[],
   });
 
   // Drag and drop
@@ -254,13 +254,13 @@ export function Tasks() {
     if (showNewTaskForm || editingTask) fetchProjects();
   }, [showNewTaskForm, editingTask]);
 
-  // ── fetch org members for assignee dropdown ────────────────────────────────
+  // ── fetch org members for assignee dropdown (load once on mount) ───────────
   useEffect(() => {
-    if (!showNewTaskForm) return;
-    apiClient.fetch('/api/calendar/members')
+    if (!session?.user?.id || !currentOrg?.id) return;
+    apiClient.fetch('/api/tasks/members')
       .then(d => { if (d.members) setOrgMembers(d.members); })
       .catch(() => {});
-  }, [showNewTaskForm]);
+  }, [session?.user?.id, currentOrg?.id]);
 
   // ── timer: resume interval on mount if a timer was running ─────────────────
   useEffect(() => {
@@ -444,6 +444,7 @@ export function Tasks() {
           projectId: editTaskForm.projectId || null,
           dueDate: editTaskForm.dueDate ? new Date(editTaskForm.dueDate + 'T00:00:00.000Z').toISOString() : null,
           tags: editTaskForm.tags ? editTaskForm.tags.split(',').map(t => t.trim()).filter(Boolean) : null,
+          assigneeIds: editTaskForm.assigneeIds,
         }),
       });
       if (data.task) {
@@ -475,6 +476,7 @@ export function Tasks() {
       estimatedHours: task.estimatedHours,
       dueDate: task.dueDate ? new Date(task.dueDate).toISOString().split('T')[0] : '',
       tags: Array.isArray(task.tags) ? task.tags.join(', ') : '',
+      assigneeIds: task.assignees?.map(a => a.id) ?? [],
     });
   };
 
@@ -1149,7 +1151,7 @@ export function Tasks() {
                   style={{ border: `1px solid ${VS.border}`, maxHeight: '152px', overflowY: 'auto' }}
                 >
                   {orgMembers.length === 0 ? (
-                    <div className="px-3 py-3 text-xs" style={{ color: VS.text2 }}>Loading members…</div>
+                    <div className="px-3 py-3 text-xs" style={{ color: VS.text2 }}>No members found</div>
                   ) : orgMembers.map((m, i) => {
                     const selected = newTaskForm.assigneeIds.includes(m.id);
                     return (
@@ -1339,6 +1341,54 @@ export function Tasks() {
                 />
               </div>
 
+              <div>
+                <label className="block text-[11px] font-semibold mb-1.5 uppercase tracking-wide" style={{ color: VS.text2 }}>
+                  Assignees
+                  {editTaskForm.assigneeIds.length > 0 && (
+                    <span className="ml-1.5 normal-case font-normal" style={{ color: VS.accent }}>
+                      {editTaskForm.assigneeIds.length} selected
+                    </span>
+                  )}
+                </label>
+                <div
+                  className="rounded-lg overflow-hidden"
+                  style={{ border: `1px solid ${VS.border}`, maxHeight: '152px', overflowY: 'auto' }}
+                >
+                  {orgMembers.length === 0 ? (
+                    <div className="px-3 py-3 text-xs" style={{ color: VS.text2 }}>No members found</div>
+                  ) : orgMembers.map((m, i) => {
+                    const selected = editTaskForm.assigneeIds.includes(m.id);
+                    return (
+                      <button
+                        key={m.id}
+                        type="button"
+                        onClick={() => setEditTaskForm(p => ({
+                          ...p,
+                          assigneeIds: selected
+                            ? p.assigneeIds.filter(id => id !== m.id)
+                            : [...p.assigneeIds, m.id],
+                        }))}
+                        className="flex items-center gap-2.5 w-full px-3 py-2 text-left transition-colors"
+                        style={{
+                          background: selected ? `${VS.accent}22` : i % 2 === 0 ? VS.bg3 : 'transparent',
+                          borderBottom: i < orgMembers.length - 1 ? `1px solid ${VS.border}` : 'none',
+                          color: selected ? VS.text0 : VS.text1,
+                        }}
+                      >
+                        <div
+                          className="h-6 w-6 rounded-full flex items-center justify-center text-[10px] font-bold text-white flex-shrink-0"
+                          style={{ background: avatarGradient(m.name || m.email) }}
+                        >
+                          {getInitials(m.name || m.email)}
+                        </div>
+                        <span className="flex-1 text-xs truncate">{m.name || m.email}</span>
+                        {selected && <Check className="h-3.5 w-3.5 flex-shrink-0" style={{ color: VS.accent }} />}
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+
               <div className="grid grid-cols-2 gap-3">
                 <div>
                   <label className="block text-[11px] font-semibold mb-1.5 uppercase tracking-wide" style={{ color: VS.text2 }}>Priority</label>
@@ -1402,57 +1452,6 @@ export function Tasks() {
                   style={inputStyle}
                 />
               </div>
-
-              {/* ── Timer ── */}
-              {(() => {
-                const isRunning = timerTaskId === editingTask?.id;
-                const canStart = editingTask?.status === 'in_progress';
-                return (
-                  <div
-                    className="rounded-xl p-3 flex items-center justify-between"
-                    style={{ background: VS.bg3, border: `1px solid ${VS.border2}` }}
-                  >
-                    <div>
-                      <div className="text-[10px] uppercase tracking-wider mb-1" style={{ color: VS.text2 }}>
-                        Time Tracked
-                      </div>
-                      <div
-                        className="text-xl font-mono font-bold tabular-nums"
-                        style={{ color: isRunning ? VS.teal : VS.text0 }}
-                      >
-                        {formatTimer(getTimerSeconds(editingTask?.id ?? ''))}
-                      </div>
-                      {!canStart && !isRunning && (
-                        <div className="text-[10px] mt-1" style={{ color: VS.yellow }}>
-                          Move to In Progress to start timer
-                        </div>
-                      )}
-                    </div>
-                    <button
-                      type="button"
-                      disabled={!isRunning && !canStart}
-                      onClick={() =>
-                        isRunning
-                          ? handleStopTimer(editingTask!.id)
-                          : handleStartTimer(editingTask!.id)
-                      }
-                      className="flex items-center gap-1.5 px-4 py-2 rounded-lg text-sm font-semibold transition-all"
-                      style={
-                        isRunning
-                          ? { background: `${VS.red}22`,  color: VS.red,  border: `1px solid ${VS.red}55`  }
-                          : canStart
-                          ? { background: `${VS.teal}22`, color: VS.teal, border: `1px solid ${VS.teal}55` }
-                          : { background: VS.bg2, color: VS.text2, border: `1px solid ${VS.border}`, cursor: 'not-allowed', opacity: 0.5 }
-                      }
-                    >
-                      {isRunning
-                        ? <><Square className="h-3.5 w-3.5 fill-current" /> Stop</>
-                        : <><Play  className="h-3.5 w-3.5 fill-current" /> Start</>
-                      }
-                    </button>
-                  </div>
-                );
-              })()}
 
               <div className="flex gap-2 pt-2">
                 <button

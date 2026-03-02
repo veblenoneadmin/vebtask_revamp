@@ -1,6 +1,6 @@
 export function EverSenseLogo({ width = 460, height = 110 }: { width?: number; height?: number }) {
   return (
-    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 460 110" width={width} height={height} style={{ display: 'block' }}>
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 475 110" width={width} height={height} style={{ display: 'block' }}>
       <defs>
         <linearGradient id="wgrad" x1="0%" y1="0%" x2="100%" y2="0%">
           <stop offset="0%" style={{ stopColor: '#007acc' }} />
@@ -50,15 +50,15 @@ export function EverSenseLogo({ width = 460, height = 110 }: { width?: number; h
       <circle cx="48"  cy="107" r="1"   fill="#29b6f6" opacity="0.4" />
 
       {/* WORDMARK */}
-      <text x="116" y="56" fontFamily="'Segoe UI', sans-serif" fontSize="46" fontWeight="800" letterSpacing="-2">
+      <text x="130" y="56" fontFamily="'Segoe UI', sans-serif" fontSize="46" fontWeight="800" letterSpacing="-2">
         <tspan fontWeight="300" fill="#c0c0c0">Ever</tspan>
         <tspan fill="url(#wgrad)" filter="url(#glow)"> Sense</tspan>
         <tspan fill="url(#aigl)" filter="url(#glow)" fontSize="32"> Ai</tspan>
       </text>
 
       {/* Tagline */}
-      <line x1="118" y1="70" x2="118" y2="94" stroke="#007acc" strokeWidth="1.5" opacity="0.6" />
-      <text x="128" y="88" fontFamily="'Segoe UI', sans-serif" fontSize="12" fontWeight="400" fill="#909090" letterSpacing="2.5">INTELLIGENT PLATFORM</text>
+      <line x1="132" y1="70" x2="132" y2="94" stroke="#007acc" strokeWidth="1.5" opacity="0.6" />
+      <text x="142" y="88" fontFamily="'Segoe UI', sans-serif" fontSize="12" fontWeight="400" fill="#909090" letterSpacing="2.5">INTELLIGENT PLATFORM</text>
     </svg>
   );
 }

@@ -1,12 +1,19 @@
 import { useState, useEffect, useCallback } from 'react';
 import { useSession } from '../lib/auth-client';
-import { Card, CardContent, CardHeader } from '../components/ui/card';
-import { Button } from '../components/ui/button';
 import {
   Plus, Trash2, Star, Users, Layers, ChevronDown, ChevronUp,
   Search, X, Check, Sparkles,
 } from 'lucide-react';
-import { cn } from '../lib/utils';
+
+// ─── VS Code Dark+ tokens ─────────────────────────────────────────────────────
+const VS = {
+  bg0: '#1e1e1e', bg1: '#252526', bg2: '#2d2d2d', bg3: '#3c3c3c',
+  border: '#3c3c3c', border2: '#4d4d4d',
+  text0: '#d4d4d4', text1: '#cccccc', text2: '#888888',
+  blue: '#569cd6', teal: '#4ec9b0', yellow: '#dcdcaa',
+  orange: '#ce9178', purple: '#c586c0', red: '#f44747',
+  green: '#4ec9b0', accent: '#007acc',
+};
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 interface Skill { id: string; name: string; category: string; _count?: { staffSkills: number } }
@@ -27,11 +34,13 @@ const SKILL_CATEGORIES = ['Technical', 'Design', 'Management', 'Communication', 
 
 function LevelStars({ level, onChange }: { level: number; onChange?: (l: number) => void }) {
   return (
-    <div className="flex gap-1">
+    <div style={{ display: 'flex', gap: 4 }}>
       {[1, 2, 3, 4, 5].map(i => (
         <button key={i} onClick={() => onChange?.(i)} type="button"
-          className={cn('transition-all', onChange ? 'cursor-pointer hover:scale-110' : 'cursor-default')}>
-          <Star className="h-4 w-4" fill={i <= level ? LEVEL_TEXT[level] : 'none'} stroke={i <= level ? LEVEL_TEXT[level] : '#555'} />
+          style={{ background: 'none', border: 'none', cursor: onChange ? 'pointer' : 'default', padding: 0, lineHeight: 1, transition: 'transform 0.1s' }}
+          onMouseEnter={e => onChange && ((e.currentTarget as HTMLElement).style.transform = 'scale(1.2)')}
+          onMouseLeave={e => ((e.currentTarget as HTMLElement).style.transform = 'scale(1)')}>
+          <Star style={{ width: 16, height: 16 }} fill={i <= level ? LEVEL_TEXT[level] : 'none'} stroke={i <= level ? LEVEL_TEXT[level] : '#555'} />
         </button>
       ))}
     </div>
@@ -46,6 +55,17 @@ function MemberAvatar({ name, image, size = 32 }: { name: string; image?: string
     ? <img src={image} alt={name} style={{ width: size, height: size, borderRadius: '50%', objectFit: 'cover', flexShrink: 0 }} />
     : <div style={{ width: size, height: size, borderRadius: '50%', background: color, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: size * 0.35, fontWeight: 700, color: '#fff', flexShrink: 0 }}>{initials}</div>;
 }
+
+const inputStyle: React.CSSProperties = {
+  width: '100%', padding: '8px 12px', background: VS.bg2,
+  border: `1px solid ${VS.border}`, borderRadius: 6,
+  color: VS.text0, fontSize: 13, outline: 'none', boxSizing: 'border-box',
+};
+
+const labelStyle: React.CSSProperties = {
+  display: 'block', fontSize: 12, fontWeight: 600,
+  color: VS.text2, textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: 6,
+};
 
 // ─── Main Component ───────────────────────────────────────────────────────────
 export function Skills() {
@@ -105,7 +125,6 @@ export function Skills() {
 
   const headers = useCallback(() => ({ 'x-org-id': orgId, 'Content-Type': 'application/json' }), [orgId]);
 
-  // Authenticated fetch wrapper — always sends session cookie
   const apiFetch = useCallback((url: string, options: RequestInit = {}) =>
     fetch(url, { ...options, headers: { ...headers(), ...(options.headers as object) }, credentials: 'include' }),
   [headers]);
@@ -254,99 +273,112 @@ export function Skills() {
     return acc;
   }, {} as Record<string, StaffSkill[]>);
 
+  // ── Loading skeleton ──────────────────────────────────────────────────────
   if (loading) {
     return (
-      <div className="space-y-8">
-        <div><h1 className="text-3xl font-bold gradient-text">Skills</h1><p className="text-muted-foreground mt-2">Loading...</p></div>
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-          {[...Array(6)].map((_, i) => <Card key={i} className="glass p-6"><div className="animate-pulse"><div className="h-4 bg-muted rounded w-3/4 mb-3"></div><div className="h-3 bg-muted rounded w-1/2"></div></div></Card>)}
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 24 }}>
+        <div>
+          <h1 style={{ fontSize: 28, fontWeight: 700, color: VS.text0, margin: 0 }}>Skills</h1>
+          <p style={{ color: VS.text2, marginTop: 4, fontSize: 14 }}>Loading...</p>
+        </div>
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(240px, 1fr))', gap: 16 }}>
+          {[...Array(6)].map((_, i) => (
+            <div key={i} style={{ background: VS.bg1, border: `1px solid ${VS.border}`, borderRadius: 8, padding: 20 }}>
+              <div style={{ height: 14, background: VS.bg3, borderRadius: 4, width: '75%', marginBottom: 10 }} />
+              <div style={{ height: 12, background: VS.bg3, borderRadius: 4, width: '50%' }} />
+            </div>
+          ))}
         </div>
       </div>
     );
   }
 
   return (
-    <div className="space-y-8">
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 24 }}>
 
-      {/* Header */}
-      <div className="flex items-center justify-between flex-wrap gap-4">
+      {/* ── Header ─────────────────────────────────────────────────────────── */}
+      <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', flexWrap: 'wrap', gap: 16 }}>
         <div>
-          <h1 className="text-3xl font-bold gradient-text">Skills</h1>
-          <p className="text-muted-foreground mt-1">Manage your skillset and team capabilities</p>
+          <h1 style={{ fontSize: 28, fontWeight: 700, color: VS.text0, margin: 0 }}>Skills</h1>
+          <p style={{ color: VS.text2, marginTop: 4, fontSize: 14 }}>Manage your skillset and team capabilities</p>
         </div>
-        <div className="flex gap-2 flex-wrap">
+        <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
           {isPrivileged && (
             <>
-              <Button variant="outline" className="glass-surface" onClick={() => setShowAiGenerate(true)}>
-                <Sparkles className="h-4 w-4 mr-2 text-yellow-400" />Generate with AI
-              </Button>
-              <Button variant="outline" className="glass-surface" onClick={() => setShowAddLibrary(true)}>
-                <Plus className="h-4 w-4 mr-2" />Add to Library
-              </Button>
+              <button onClick={() => setShowAiGenerate(true)}
+                style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '8px 16px', background: VS.bg2, border: `1px solid ${VS.border2}`, borderRadius: 6, color: VS.text1, fontSize: 13, cursor: 'pointer', fontWeight: 500 }}>
+                <Sparkles style={{ width: 15, height: 15, color: VS.yellow }} />Generate with AI
+              </button>
+              <button onClick={() => setShowAddLibrary(true)}
+                style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '8px 16px', background: VS.bg2, border: `1px solid ${VS.border2}`, borderRadius: 6, color: VS.text1, fontSize: 13, cursor: 'pointer', fontWeight: 500 }}>
+                <Plus style={{ width: 15, height: 15 }} />Add to Library
+              </button>
             </>
           )}
-          <Button className="bg-gradient-primary hover:bg-gradient-primary/90 text-white shadow-glow"
-            onClick={() => setShowAddSkill(true)}>
-            <Plus className="h-4 w-4 mr-2" />Add Skill
-          </Button>
+          <button onClick={() => setShowAddSkill(true)}
+            style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '8px 16px', background: VS.accent, border: 'none', borderRadius: 6, color: '#fff', fontSize: 13, cursor: 'pointer', fontWeight: 600 }}>
+            <Plus style={{ width: 15, height: 15 }} />Add Skill
+          </button>
         </div>
       </div>
 
-      {/* Tabs */}
-      <div className="flex gap-1 p-1 glass-surface rounded-xl border border-border w-fit">
+      {/* ── Tabs ───────────────────────────────────────────────────────────── */}
+      <div style={{ display: 'flex', gap: 4, background: VS.bg1, border: `1px solid ${VS.border}`, borderRadius: 8, padding: 4, width: 'fit-content' }}>
         {[
           { key: 'my', label: 'My Skills', icon: Star },
           ...(isPrivileged ? [{ key: 'team', label: 'Team Skills', icon: Users }] : []),
           { key: 'library', label: 'Skill Library', icon: Layers },
-        ].map(t => (
-          <button key={t.key} onClick={() => setTab(t.key as any)}
-            className={cn('flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium transition-all',
-              tab === t.key ? 'bg-primary text-primary-foreground shadow-sm' : 'text-muted-foreground hover:text-foreground')}>
-            <t.icon className="h-4 w-4" />{t.label}
-          </button>
-        ))}
+        ].map(t => {
+          const active = tab === t.key;
+          return (
+            <button key={t.key} onClick={() => setTab(t.key as any)}
+              style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '6px 14px', borderRadius: 6, border: 'none', cursor: 'pointer', fontSize: 13, fontWeight: 500, background: active ? VS.accent : 'transparent', color: active ? '#fff' : VS.text2, transition: 'all 0.15s' }}>
+              <t.icon style={{ width: 14, height: 14 }} />{t.label}
+            </button>
+          );
+        })}
       </div>
 
-      {/* ── MY SKILLS TAB ── */}
+      {/* ── MY SKILLS TAB ──────────────────────────────────────────────────── */}
       {tab === 'my' && (
-        <div className="space-y-6">
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 24 }}>
           {mySkills.length === 0 ? (
-            <Card className="glass shadow-elevation">
-              <CardContent className="py-16 text-center">
-                <Star className="h-12 w-12 text-muted-foreground mx-auto mb-4" />
-                <h3 className="text-lg font-semibold mb-2">No skills added yet</h3>
-                <p className="text-muted-foreground mb-6">Add your skills so the AI can assign tasks that match your expertise</p>
-                <Button onClick={() => setShowAddSkill(true)} className="bg-gradient-primary text-white">
-                  <Plus className="h-4 w-4 mr-2" />Add Your First Skill
-                </Button>
-              </CardContent>
-            </Card>
+            <div style={{ background: VS.bg1, border: `1px solid ${VS.border}`, borderRadius: 8, padding: '64px 24px', textAlign: 'center' }}>
+              <Star style={{ width: 48, height: 48, color: VS.text2, margin: '0 auto 16px' }} />
+              <h3 style={{ fontSize: 17, fontWeight: 600, color: VS.text0, margin: '0 0 8px' }}>No skills added yet</h3>
+              <p style={{ color: VS.text2, fontSize: 14, margin: '0 0 24px' }}>Add your skills so the AI can assign tasks that match your expertise</p>
+              <button onClick={() => setShowAddSkill(true)}
+                style={{ display: 'inline-flex', alignItems: 'center', gap: 6, padding: '8px 18px', background: VS.accent, border: 'none', borderRadius: 6, color: '#fff', fontSize: 13, cursor: 'pointer', fontWeight: 600 }}>
+                <Plus style={{ width: 15, height: 15 }} />Add Your First Skill
+              </button>
+            </div>
           ) : (
             Object.entries(grouped).map(([category, skills]) => (
               <div key={category}>
-                <h3 className="text-sm font-semibold text-muted-foreground uppercase tracking-wider mb-3">{category}</h3>
-                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                <p style={{ fontSize: 11, fontWeight: 700, color: VS.text2, textTransform: 'uppercase', letterSpacing: '0.08em', marginBottom: 12 }}>{category}</p>
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(240px, 1fr))', gap: 16 }}>
                   {skills.map(s => (
-                    <Card key={s.id} className="glass shadow-elevation border border-border/50 hover:border-primary/30 transition-all">
-                      <CardContent className="p-5">
-                        <div className="flex items-start justify-between mb-3">
-                          <div>
-                            <p className="font-semibold">{s.name}</p>
-                            <span className="text-xs px-2 py-0.5 rounded-full font-medium mt-1 inline-block"
-                              style={{ background: LEVEL_COLORS[s.level], color: LEVEL_TEXT[s.level] }}>
-                              {LEVEL_LABELS[s.level]}
-                            </span>
-                          </div>
-                          <button onClick={() => handleRemoveSkill(s.skillId)}
-                            className="text-muted-foreground hover:text-red-400 transition-colors p-1">
-                            <Trash2 className="h-4 w-4" />
-                          </button>
+                    <div key={s.id} style={{ background: VS.bg1, border: `1px solid ${VS.border}`, borderRadius: 8, padding: 18, transition: 'border-color 0.15s' }}
+                      onMouseEnter={e => (e.currentTarget as HTMLElement).style.borderColor = VS.accent + '55'}
+                      onMouseLeave={e => (e.currentTarget as HTMLElement).style.borderColor = VS.border}>
+                      <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', marginBottom: 12 }}>
+                        <div>
+                          <p style={{ fontWeight: 600, color: VS.text0, fontSize: 14, margin: 0 }}>{s.name}</p>
+                          <span style={{ display: 'inline-block', marginTop: 6, fontSize: 11, padding: '2px 8px', borderRadius: 4, fontWeight: 500, background: LEVEL_COLORS[s.level], color: LEVEL_TEXT[s.level] }}>
+                            {LEVEL_LABELS[s.level]}
+                          </span>
                         </div>
-                        <LevelStars level={s.level} />
-                        {s.yearsExp > 0 && <p className="text-xs text-muted-foreground mt-2">{s.yearsExp} yr{s.yearsExp !== 1 ? 's' : ''} experience</p>}
-                        {s.notes && <p className="text-xs text-muted-foreground mt-1 italic">{s.notes}</p>}
-                      </CardContent>
-                    </Card>
+                        <button onClick={() => handleRemoveSkill(s.skillId)}
+                          style={{ background: 'none', border: 'none', cursor: 'pointer', color: VS.text2, padding: 4, lineHeight: 1, borderRadius: 4, transition: 'color 0.15s' }}
+                          onMouseEnter={e => (e.currentTarget as HTMLElement).style.color = VS.red}
+                          onMouseLeave={e => (e.currentTarget as HTMLElement).style.color = VS.text2}>
+                          <Trash2 style={{ width: 15, height: 15 }} />
+                        </button>
+                      </div>
+                      <LevelStars level={s.level} />
+                      {s.yearsExp > 0 && <p style={{ fontSize: 12, color: VS.text2, marginTop: 8 }}>{s.yearsExp} yr{s.yearsExp !== 1 ? 's' : ''} experience</p>}
+                      {s.notes && <p style={{ fontSize: 12, color: VS.text2, marginTop: 4, fontStyle: 'italic' }}>{s.notes}</p>}
+                    </div>
                   ))}
                 </div>
               </div>
@@ -355,262 +387,265 @@ export function Skills() {
         </div>
       )}
 
-      {/* ── TEAM SKILLS TAB ── */}
+      {/* ── TEAM SKILLS TAB ────────────────────────────────────────────────── */}
       {tab === 'team' && isPrivileged && (
-        <div className="space-y-4">
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
           {team.length === 0 ? (
-            <Card className="glass"><CardContent className="py-12 text-center"><p className="text-muted-foreground">No team members found.</p></CardContent></Card>
+            <div style={{ background: VS.bg1, border: `1px solid ${VS.border}`, borderRadius: 8, padding: '48px 24px', textAlign: 'center' }}>
+              <p style={{ color: VS.text2, fontSize: 14 }}>No team members found.</p>
+            </div>
           ) : (
             team.map(member => (
-              <Card key={member.userId} className="glass shadow-elevation">
-                <CardContent className="p-0">
-                  <button className="w-full flex items-center justify-between p-5 text-left"
-                    onClick={() => setExpandedMember(expandedMember === member.userId ? null : member.userId)}>
-                    <div className="flex items-center gap-3">
-                      <MemberAvatar name={member.name} image={member.image} />
-                      <div>
-                        <p className="font-semibold">{member.name}</p>
-                        <p className="text-xs text-muted-foreground">{member.email}</p>
+              <div key={member.userId} style={{ background: VS.bg1, border: `1px solid ${VS.border}`, borderRadius: 8, overflow: 'hidden' }}>
+                <button style={{ width: '100%', display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '16px 20px', background: 'none', border: 'none', cursor: 'pointer', textAlign: 'left' }}
+                  onClick={() => setExpandedMember(expandedMember === member.userId ? null : member.userId)}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+                    <MemberAvatar name={member.name} image={member.image} />
+                    <div>
+                      <p style={{ fontWeight: 600, color: VS.text0, fontSize: 14, margin: 0 }}>{member.name}</p>
+                      <p style={{ fontSize: 12, color: VS.text2, margin: 0 }}>{member.email}</p>
+                    </div>
+                    <span style={{ fontSize: 11, padding: '2px 8px', borderRadius: 4, fontWeight: 500, textTransform: 'capitalize', marginLeft: 8, ...(member.role === 'ADMIN' ? { background: 'rgba(197,134,192,0.15)', color: '#c586c0' } : { background: 'rgba(78,201,176,0.15)', color: '#4ec9b0' }) }}>
+                      {member.role.toLowerCase()}
+                    </span>
+                  </div>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+                    <span style={{ fontSize: 13, color: VS.text2 }}>{member.skills.length} skill{member.skills.length !== 1 ? 's' : ''}</span>
+                    {member.skills.length > 0 && (
+                      <div style={{ display: 'flex', gap: 4, flexWrap: 'wrap', maxWidth: 240 }}>
+                        {member.skills.slice(0, 4).map(s => (
+                          <span key={s.skillId} style={{ fontSize: 11, padding: '2px 8px', borderRadius: 4, background: VS.bg2, border: `1px solid ${VS.border}`, color: VS.text1 }}>{s.name}</span>
+                        ))}
+                        {member.skills.length > 4 && <span style={{ fontSize: 11, color: VS.text2 }}>+{member.skills.length - 4}</span>}
                       </div>
-                      <span className="text-xs px-2 py-0.5 rounded font-medium capitalize ml-2"
-                        style={member.role === 'ADMIN' ? { background: 'rgba(197,134,192,0.15)', color: '#c586c0' } : { background: 'rgba(78,201,176,0.15)', color: '#4ec9b0' }}>
-                        {member.role.toLowerCase()}
-                      </span>
-                    </div>
-                    <div className="flex items-center gap-3">
-                      <span className="text-sm text-muted-foreground">{member.skills.length} skill{member.skills.length !== 1 ? 's' : ''}</span>
-                      {member.skills.length > 0 && (
-                        <div className="hidden md:flex gap-1 flex-wrap max-w-xs">
-                          {member.skills.slice(0, 4).map(s => (
-                            <span key={s.skillId} className="text-xs px-2 py-0.5 rounded glass-surface border border-border">{s.name}</span>
-                          ))}
-                          {member.skills.length > 4 && <span className="text-xs text-muted-foreground">+{member.skills.length - 4}</span>}
-                        </div>
-                      )}
-                      {expandedMember === member.userId ? <ChevronUp className="h-4 w-4 text-muted-foreground" /> : <ChevronDown className="h-4 w-4 text-muted-foreground" />}
-                    </div>
-                  </button>
+                    )}
+                    {expandedMember === member.userId
+                      ? <ChevronUp style={{ width: 16, height: 16, color: VS.text2 }} />
+                      : <ChevronDown style={{ width: 16, height: 16, color: VS.text2 }} />}
+                  </div>
+                </button>
 
-                  {expandedMember === member.userId && (
-                    <div className="border-t border-border px-5 pb-5 pt-4">
-                      {member.skills.length === 0 ? (
-                        <p className="text-sm text-muted-foreground italic">No skills added yet</p>
-                      ) : (
-                        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
-                          {member.skills.map(s => (
-                            <div key={s.skillId} className="flex items-center justify-between p-3 glass-surface rounded-lg border border-border/50">
-                              <div>
-                                <p className="text-sm font-medium">{s.name}</p>
-                                <p className="text-xs text-muted-foreground">{s.category}</p>
-                              </div>
-                              <div className="text-right">
-                                <LevelStars level={s.level} />
-                                <p className="text-xs mt-1" style={{ color: LEVEL_TEXT[s.level] }}>{LEVEL_LABELS[s.level]}</p>
-                              </div>
+                {expandedMember === member.userId && (
+                  <div style={{ borderTop: `1px solid ${VS.border}`, padding: '16px 20px 20px' }}>
+                    {member.skills.length === 0 ? (
+                      <p style={{ fontSize: 13, color: VS.text2, fontStyle: 'italic' }}>No skills added yet</p>
+                    ) : (
+                      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(220px, 1fr))', gap: 10 }}>
+                        {member.skills.map(s => (
+                          <div key={s.skillId} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '10px 14px', background: VS.bg2, borderRadius: 6, border: `1px solid ${VS.border}` }}>
+                            <div>
+                              <p style={{ fontSize: 13, fontWeight: 500, color: VS.text0, margin: 0 }}>{s.name}</p>
+                              <p style={{ fontSize: 11, color: VS.text2, margin: '2px 0 0' }}>{s.category}</p>
                             </div>
-                          ))}
-                        </div>
-                      )}
-                    </div>
-                  )}
-                </CardContent>
-              </Card>
+                            <div style={{ textAlign: 'right' }}>
+                              <LevelStars level={s.level} />
+                              <p style={{ fontSize: 11, marginTop: 4, color: LEVEL_TEXT[s.level] }}>{LEVEL_LABELS[s.level]}</p>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                )}
+              </div>
             ))
           )}
         </div>
       )}
 
-      {/* ── SKILL LIBRARY TAB ── */}
+      {/* ── SKILL LIBRARY TAB ──────────────────────────────────────────────── */}
       {tab === 'library' && (
-        <Card className="glass shadow-elevation">
-          <CardHeader>
-            <h2 className="text-lg font-semibold">Skill Library ({library.length} skills)</h2>
-            <p className="text-sm text-muted-foreground">All skills available in your organisation</p>
-          </CardHeader>
-          <CardContent>
-            {library.length === 0 ? (
-              <div className="text-center py-8">
-                <Layers className="h-10 w-10 text-muted-foreground mx-auto mb-3" />
-                <p className="text-muted-foreground mb-4">No skills in library yet</p>
-                {isPrivileged && <Button onClick={() => setShowAddLibrary(true)}><Plus className="h-4 w-4 mr-2" />Add First Skill</Button>}
-              </div>
-            ) : (
-              <div className="space-y-6">
-                {SKILL_CATEGORIES.map(cat => {
-                  const catSkills = library.filter(s => s.category === cat);
-                  if (catSkills.length === 0) return null;
-                  return (
-                    <div key={cat}>
-                      <h3 className="text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-3">{cat}</h3>
-                      <div className="flex flex-wrap gap-2">
-                        {catSkills.map(s => (
-                          <div key={s.id} className="flex items-center gap-2 px-3 py-1.5 glass-surface rounded-lg border border-border text-sm">
-                            <span>{s.name}</span>
-                            <span className="text-xs text-muted-foreground">({s._count?.staffSkills || 0})</span>
-                            {isPrivileged && (
-                              <button onClick={async () => { await apiFetch(`/api/skills/library/${s.id}`, { method: 'DELETE' }); fetchAll(); }}
-                                className="text-muted-foreground hover:text-red-400 transition-colors">
-                                <X className="h-3 w-3" />
-                              </button>
-                            )}
-                          </div>
-                        ))}
-                      </div>
+        <div style={{ background: VS.bg1, border: `1px solid ${VS.border}`, borderRadius: 8, padding: 24 }}>
+          <div style={{ marginBottom: 20 }}>
+            <h2 style={{ fontSize: 16, fontWeight: 600, color: VS.text0, margin: '0 0 4px' }}>Skill Library ({library.length} skills)</h2>
+            <p style={{ fontSize: 13, color: VS.text2, margin: 0 }}>All skills available in your organisation</p>
+          </div>
+          {library.length === 0 ? (
+            <div style={{ textAlign: 'center', padding: '32px 0' }}>
+              <Layers style={{ width: 40, height: 40, color: VS.text2, margin: '0 auto 12px' }} />
+              <p style={{ color: VS.text2, fontSize: 14, marginBottom: 16 }}>No skills in library yet</p>
+              {isPrivileged && (
+                <button onClick={() => setShowAddLibrary(true)}
+                  style={{ display: 'inline-flex', alignItems: 'center', gap: 6, padding: '8px 16px', background: VS.accent, border: 'none', borderRadius: 6, color: '#fff', fontSize: 13, cursor: 'pointer', fontWeight: 600 }}>
+                  <Plus style={{ width: 14, height: 14 }} />Add First Skill
+                </button>
+              )}
+            </div>
+          ) : (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 20 }}>
+              {SKILL_CATEGORIES.map(cat => {
+                const catSkills = library.filter(s => s.category === cat);
+                if (catSkills.length === 0) return null;
+                return (
+                  <div key={cat}>
+                    <p style={{ fontSize: 11, fontWeight: 700, color: VS.text2, textTransform: 'uppercase', letterSpacing: '0.08em', marginBottom: 10 }}>{cat}</p>
+                    <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
+                      {catSkills.map(s => (
+                        <div key={s.id} style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '5px 12px', background: VS.bg2, border: `1px solid ${VS.border}`, borderRadius: 6, fontSize: 13 }}>
+                          <span style={{ color: VS.text1 }}>{s.name}</span>
+                          <span style={{ fontSize: 11, color: VS.text2 }}>({s._count?.staffSkills || 0})</span>
+                          {isPrivileged && (
+                            <button onClick={async () => { await apiFetch(`/api/skills/library/${s.id}`, { method: 'DELETE' }); fetchAll(); }}
+                              style={{ background: 'none', border: 'none', cursor: 'pointer', color: VS.text2, padding: 0, lineHeight: 1, transition: 'color 0.15s' }}
+                              onMouseEnter={e => (e.currentTarget as HTMLElement).style.color = VS.red}
+                              onMouseLeave={e => (e.currentTarget as HTMLElement).style.color = VS.text2}>
+                              <X style={{ width: 12, height: 12 }} />
+                            </button>
+                          )}
+                        </div>
+                      ))}
                     </div>
-                  );
-                })}
-              </div>
-            )}
-          </CardContent>
-        </Card>
+                  </div>
+                );
+              })}
+            </div>
+          )}
+        </div>
       )}
 
-      {/* ── ADD SKILL MODAL ── */}
+      {/* ── ADD SKILL MODAL ────────────────────────────────────────────────── */}
       {showAddSkill && (
-        <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 flex items-center justify-center p-4">
-          <Card className="glass w-full max-w-md shadow-2xl border border-border">
-            <CardHeader>
-              <div className="flex items-center justify-between">
-                <h2 className="text-xl font-semibold">Add Skill to Profile</h2>
-                <button onClick={() => setShowAddSkill(false)} className="text-muted-foreground hover:text-foreground"><X className="h-5 w-5" /></button>
-              </div>
-            </CardHeader>
-            <CardContent className="space-y-5">
+        <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.7)', zIndex: 50, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 16 }}>
+          <div style={{ background: VS.bg1, border: `1px solid ${VS.border2}`, borderRadius: 8, padding: 28, width: '100%', maxWidth: 440, boxShadow: '0 24px 64px rgba(0,0,0,0.7)' }}>
+            {/* Header */}
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 24 }}>
+              <h2 style={{ fontSize: 17, fontWeight: 700, color: VS.text0, margin: 0 }}>Add Skill to Profile</h2>
+              <button onClick={() => setShowAddSkill(false)}
+                style={{ background: 'none', border: 'none', cursor: 'pointer', color: VS.text2, padding: 4, lineHeight: 1 }}>
+                <X style={{ width: 18, height: 18 }} />
+              </button>
+            </div>
 
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 18 }}>
               {/* Skill search/select */}
               <div>
-                <label className="text-sm font-medium mb-2 block">Select Skill</label>
-                <div className="relative mb-2">
-                  <Search className="absolute left-3 top-2.5 h-4 w-4 text-muted-foreground" />
+                <label style={labelStyle}>Select Skill</label>
+                <div style={{ position: 'relative', marginBottom: 8 }}>
+                  <Search style={{ position: 'absolute', left: 10, top: 9, width: 14, height: 14, color: VS.text2 }} />
                   <input value={skillSearch} onChange={e => setSkillSearch(e.target.value)}
-                    placeholder="Search skills..." className="w-full pl-9 pr-4 py-2 glass-surface border border-border rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-primary" />
+                    placeholder="Search skills..."
+                    style={{ ...inputStyle, paddingLeft: 32 }} />
                 </div>
-                <div className="max-h-44 overflow-y-auto space-y-1 rounded-lg border border-border glass-surface p-2">
+                <div style={{ maxHeight: 176, overflowY: 'auto', border: `1px solid ${VS.border}`, borderRadius: 6, background: VS.bg2, padding: 6, display: 'flex', flexDirection: 'column', gap: 2 }}>
                   {availableSkills.length === 0 ? (
-                    <p className="text-sm text-muted-foreground text-center py-4">
+                    <p style={{ fontSize: 13, color: VS.text2, textAlign: 'center', padding: '16px 0' }}>
                       {library.length === 0 ? 'No skills in library yet. Ask an admin to add some.' : 'All library skills already added to your profile.'}
                     </p>
                   ) : (
-                    availableSkills.map(s => (
-                      <button key={s.id} onClick={() => setSelectedSkillId(s.id)}
-                        className={cn('w-full flex items-center justify-between px-3 py-2 rounded-lg text-sm transition-all text-left',
-                          selectedSkillId === s.id ? 'bg-primary/20 border border-primary/40' : 'hover:bg-muted/30')}>
-                        <span>{s.name}</span>
-                        <span className="text-xs text-muted-foreground">{s.category}</span>
-                        {selectedSkillId === s.id && <Check className="h-4 w-4 text-primary ml-2" />}
-                      </button>
-                    ))
+                    availableSkills.map(s => {
+                      const selected = selectedSkillId === s.id;
+                      return (
+                        <button key={s.id} onClick={() => setSelectedSkillId(s.id)}
+                          style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '7px 10px', borderRadius: 5, border: selected ? `1px solid ${VS.accent}55` : '1px solid transparent', background: selected ? `${VS.accent}22` : 'transparent', cursor: 'pointer', textAlign: 'left', transition: 'background 0.12s' }}>
+                          <span style={{ fontSize: 13, color: VS.text0 }}>{s.name}</span>
+                          <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                            <span style={{ fontSize: 11, color: VS.text2 }}>{s.category}</span>
+                            {selected && <Check style={{ width: 13, height: 13, color: VS.accent }} />}
+                          </div>
+                        </button>
+                      );
+                    })
                   )}
                 </div>
               </div>
 
               {/* Proficiency level */}
               <div>
-                <label className="text-sm font-medium mb-2 block">Proficiency Level</label>
-                <div className="flex items-center gap-3">
+                <label style={labelStyle}>Proficiency Level</label>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
                   <LevelStars level={selectedLevel} onChange={setSelectedLevel} />
-                  <span className="text-sm font-medium" style={{ color: LEVEL_TEXT[selectedLevel] }}>{LEVEL_LABELS[selectedLevel]}</span>
+                  <span style={{ fontSize: 13, fontWeight: 500, color: LEVEL_TEXT[selectedLevel] }}>{LEVEL_LABELS[selectedLevel]}</span>
                 </div>
               </div>
 
               {/* Years experience */}
               <div>
-                <label className="text-sm font-medium mb-2 block">Years of Experience <span className="text-muted-foreground">(optional)</span></label>
+                <label style={labelStyle}>Years of Experience <span style={{ color: VS.text2, textTransform: 'none', fontWeight: 400 }}>(optional)</span></label>
                 <input type="number" min="0" max="50" step="0.5" value={selectedYears} onChange={e => setSelectedYears(e.target.value)}
-                  placeholder="e.g. 2.5" className="w-full px-4 py-2 glass-surface border border-border rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-primary" />
+                  placeholder="e.g. 2.5" style={inputStyle} />
               </div>
 
               {/* Notes */}
               <div>
-                <label className="text-sm font-medium mb-2 block">Notes <span className="text-muted-foreground">(optional)</span></label>
+                <label style={labelStyle}>Notes <span style={{ color: VS.text2, textTransform: 'none', fontWeight: 400 }}>(optional)</span></label>
                 <input type="text" value={skillNotes} onChange={e => setSkillNotes(e.target.value)}
-                  placeholder="e.g. Certified, main stack, etc." className="w-full px-4 py-2 glass-surface border border-border rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-primary" />
+                  placeholder="e.g. Certified, main stack, etc." style={inputStyle} />
               </div>
 
-              {skillError && <p className="text-sm text-red-400">{skillError}</p>}
-              <div className="flex gap-3 pt-2">
-                <Button variant="outline" className="flex-1 glass-surface" onClick={() => { setShowAddSkill(false); setSkillError(''); }}>Cancel</Button>
-                <Button className="flex-1 bg-gradient-primary text-white" disabled={!selectedSkillId || saving} onClick={handleAddSkill}>
+              {skillError && <p style={{ fontSize: 13, color: VS.red }}>{skillError}</p>}
+
+              <div style={{ display: 'flex', gap: 10, paddingTop: 4 }}>
+                <button onClick={() => { setShowAddSkill(false); setSkillError(''); }}
+                  style={{ flex: 1, padding: '9px 0', background: VS.bg2, border: `1px solid ${VS.border2}`, borderRadius: 6, color: VS.text1, fontSize: 13, cursor: 'pointer', fontWeight: 500 }}>
+                  Cancel
+                </button>
+                <button onClick={handleAddSkill} disabled={!selectedSkillId || saving}
+                  style={{ flex: 1, padding: '9px 0', background: selectedSkillId && !saving ? VS.accent : VS.bg3, border: 'none', borderRadius: 6, color: selectedSkillId && !saving ? '#fff' : VS.text2, fontSize: 13, cursor: selectedSkillId && !saving ? 'pointer' : 'not-allowed', fontWeight: 600 }}>
                   {saving ? 'Saving...' : 'Add Skill'}
-                </Button>
+                </button>
               </div>
-            </CardContent>
-          </Card>
+            </div>
+          </div>
         </div>
       )}
 
-      {/* ── AI GENERATE SKILLS MODAL ── */}
+      {/* ── AI GENERATE SKILLS MODAL ───────────────────────────────────────── */}
       {showAiGenerate && isPrivileged && (
-        <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 flex items-center justify-center p-4">
-          <Card className="glass w-full max-w-2xl shadow-2xl border border-border max-h-[90vh] flex flex-col">
-            <CardHeader>
-              <div className="flex items-center justify-between">
-                <div className="flex items-center gap-2">
-                  <Sparkles className="h-5 w-5 text-yellow-400" />
-                  <h2 className="text-xl font-semibold">Generate Skills with AI</h2>
-                </div>
-                <button onClick={() => { setShowAiGenerate(false); setAiSuggested([]); setAiError(''); setAiPrompt(''); }}
-                  className="text-muted-foreground hover:text-foreground"><X className="h-5 w-5" /></button>
+        <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.7)', zIndex: 50, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 16 }}>
+          <div style={{ background: VS.bg1, border: `1px solid ${VS.border2}`, borderRadius: 8, padding: 28, width: '100%', maxWidth: 640, boxShadow: '0 24px 64px rgba(0,0,0,0.7)', maxHeight: '90vh', display: 'flex', flexDirection: 'column' }}>
+            {/* Header */}
+            <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', marginBottom: 6 }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                <Sparkles style={{ width: 18, height: 18, color: VS.yellow }} />
+                <h2 style={{ fontSize: 17, fontWeight: 700, color: VS.text0, margin: 0 }}>Generate Skills with AI</h2>
               </div>
-              <p className="text-sm text-muted-foreground">Describe your team, industry, or role and AI will suggest relevant skills for your library.</p>
-            </CardHeader>
-            <CardContent className="space-y-4 overflow-y-auto flex-1">
+              <button onClick={() => { setShowAiGenerate(false); setAiSuggested([]); setAiError(''); setAiPrompt(''); }}
+                style={{ background: 'none', border: 'none', cursor: 'pointer', color: VS.text2, padding: 4, lineHeight: 1 }}>
+                <X style={{ width: 18, height: 18 }} />
+              </button>
+            </div>
+            <p style={{ fontSize: 13, color: VS.text2, margin: '0 0 20px' }}>Describe your team, industry, or role and AI will suggest relevant skills for your library.</p>
 
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 16, overflowY: 'auto', flex: 1 }}>
               {/* Prompt input */}
               <div>
-                <label className="text-sm font-medium mb-2 block">Describe your team or context</label>
-                <textarea
-                  value={aiPrompt}
-                  onChange={e => setAiPrompt(e.target.value)}
-                  rows={3}
+                <label style={labelStyle}>Describe your team or context</label>
+                <textarea value={aiPrompt} onChange={e => setAiPrompt(e.target.value)} rows={3}
                   placeholder="e.g. We're a digital agency specialising in React, Node.js, and mobile apps. We also have project managers and designers."
-                  className="w-full px-4 py-2 glass-surface border border-border rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-primary resize-none"
-                />
+                  style={{ ...inputStyle, resize: 'none', lineHeight: 1.5, paddingTop: 10, paddingBottom: 10 }} />
               </div>
 
-              <Button
-                className="w-full bg-gradient-primary text-white"
-                disabled={!aiPrompt.trim() || aiGenerating}
-                onClick={handleAiGenerate}>
+              <button onClick={handleAiGenerate} disabled={!aiPrompt.trim() || aiGenerating}
+                style={{ width: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8, padding: '10px 0', background: !aiPrompt.trim() || aiGenerating ? VS.bg3 : VS.accent, border: 'none', borderRadius: 6, color: !aiPrompt.trim() || aiGenerating ? VS.text2 : '#fff', fontSize: 13, cursor: !aiPrompt.trim() || aiGenerating ? 'not-allowed' : 'pointer', fontWeight: 600 }}>
                 {aiGenerating
-                  ? <><span className="animate-spin mr-2">⟳</span>Generating…</>
-                  : <><Sparkles className="h-4 w-4 mr-2" />Generate Skills</>}
-              </Button>
+                  ? <><span style={{ display: 'inline-block', animation: 'spin 1s linear infinite' }}>⟳</span> Generating…</>
+                  : <><Sparkles style={{ width: 14, height: 14 }} /> Generate Skills</>}
+              </button>
 
-              {aiError && <p className="text-sm text-red-400">{aiError}</p>}
+              {aiError && <p style={{ fontSize: 13, color: VS.red }}>{aiError}</p>}
 
               {/* Suggested skills */}
               {aiSuggested.length > 0 && (
-                <div className="space-y-3">
-                  <div className="flex items-center justify-between">
-                    <p className="text-sm font-medium">{aiSuggested.length} skills suggested — click to deselect</p>
-                    <div className="flex gap-2 text-xs">
-                      <button className="text-primary hover:underline"
-                        onClick={() => setAiSelected(new Set(aiSuggested.map((_, i) => i)))}>
-                        Select all
-                      </button>
-                      <span className="text-muted-foreground">·</span>
-                      <button className="text-muted-foreground hover:underline"
-                        onClick={() => setAiSelected(new Set())}>
-                        Deselect all
-                      </button>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
+                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                    <p style={{ fontSize: 13, fontWeight: 500, color: VS.text1, margin: 0 }}>{aiSuggested.length} skills suggested — click to deselect</p>
+                    <div style={{ display: 'flex', gap: 8, fontSize: 12 }}>
+                      <button onClick={() => setAiSelected(new Set(aiSuggested.map((_, i) => i)))}
+                        style={{ background: 'none', border: 'none', cursor: 'pointer', color: VS.accent, fontSize: 12 }}>Select all</button>
+                      <span style={{ color: VS.text2 }}>·</span>
+                      <button onClick={() => setAiSelected(new Set())}
+                        style={{ background: 'none', border: 'none', cursor: 'pointer', color: VS.text2, fontSize: 12 }}>Deselect all</button>
                     </div>
                   </div>
 
-                  {/* Group by category */}
                   {Array.from(new Set(aiSuggested.map(s => s.category))).map(cat => (
                     <div key={cat}>
-                      <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-2">{cat}</p>
-                      <div className="flex flex-wrap gap-2">
+                      <p style={{ fontSize: 11, fontWeight: 700, color: VS.text2, textTransform: 'uppercase', letterSpacing: '0.08em', marginBottom: 8 }}>{cat}</p>
+                      <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
                         {aiSuggested.map((s, i) => s.category !== cat ? null : (
                           <button key={i} onClick={() => toggleAiSkill(i)}
-                            className={cn(
-                              'flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-sm font-medium border transition-all',
-                              aiSelected.has(i)
-                                ? 'bg-primary/20 border-primary/40 text-foreground'
-                                : 'glass-surface border-border text-muted-foreground line-through opacity-50'
-                            )}>
-                            {aiSelected.has(i) && <Check className="h-3 w-3 text-primary" />}
+                            style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '5px 12px', borderRadius: 6, border: aiSelected.has(i) ? `1px solid ${VS.accent}55` : `1px solid ${VS.border}`, background: aiSelected.has(i) ? `${VS.accent}22` : VS.bg2, cursor: 'pointer', fontSize: 13, fontWeight: 500, color: aiSelected.has(i) ? VS.text0 : VS.text2, textDecoration: aiSelected.has(i) ? 'none' : 'line-through', opacity: aiSelected.has(i) ? 1 : 0.5, transition: 'all 0.12s' }}>
+                            {aiSelected.has(i) && <Check style={{ width: 12, height: 12, color: VS.accent }} />}
                             {s.name}
                           </button>
                         ))}
@@ -621,57 +656,63 @@ export function Skills() {
               )}
 
               {aiSuggested.length > 0 && (
-                <div className="flex gap-3 pt-2">
-                  <Button variant="outline" className="flex-1 glass-surface"
-                    onClick={() => { setShowAiGenerate(false); setAiSuggested([]); setAiError(''); setAiPrompt(''); }}>
+                <div style={{ display: 'flex', gap: 10, paddingTop: 4 }}>
+                  <button onClick={() => { setShowAiGenerate(false); setAiSuggested([]); setAiError(''); setAiPrompt(''); }}
+                    style={{ flex: 1, padding: '9px 0', background: VS.bg2, border: `1px solid ${VS.border2}`, borderRadius: 6, color: VS.text1, fontSize: 13, cursor: 'pointer', fontWeight: 500 }}>
                     Cancel
-                  </Button>
-                  <Button className="flex-1 bg-gradient-primary text-white"
-                    disabled={aiSelected.size === 0 || aiSaving}
-                    onClick={handleAiSave}>
+                  </button>
+                  <button onClick={handleAiSave} disabled={aiSelected.size === 0 || aiSaving}
+                    style={{ flex: 1, padding: '9px 0', background: aiSelected.size === 0 || aiSaving ? VS.bg3 : VS.accent, border: 'none', borderRadius: 6, color: aiSelected.size === 0 || aiSaving ? VS.text2 : '#fff', fontSize: 13, cursor: aiSelected.size === 0 || aiSaving ? 'not-allowed' : 'pointer', fontWeight: 600 }}>
                     {aiSaving ? 'Saving…' : `Add ${aiSelected.size} Skill${aiSelected.size !== 1 ? 's' : ''} to Library`}
-                  </Button>
+                  </button>
                 </div>
               )}
-            </CardContent>
-          </Card>
+            </div>
+          </div>
         </div>
       )}
 
-      {/* ── ADD TO LIBRARY MODAL ── */}
+      {/* ── ADD TO LIBRARY MODAL ───────────────────────────────────────────── */}
       {showAddLibrary && isPrivileged && (
-        <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 flex items-center justify-center p-4">
-          <Card className="glass w-full max-w-sm shadow-2xl border border-border">
-            <CardHeader>
-              <div className="flex items-center justify-between">
-                <h2 className="text-xl font-semibold">Add Skill to Library</h2>
-                <button onClick={() => { setShowAddLibrary(false); setLibError(''); }} className="text-muted-foreground hover:text-foreground"><X className="h-5 w-5" /></button>
-              </div>
-            </CardHeader>
-            <CardContent className="space-y-4">
+        <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.7)', zIndex: 50, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 16 }}>
+          <div style={{ background: VS.bg1, border: `1px solid ${VS.border2}`, borderRadius: 8, padding: 28, width: '100%', maxWidth: 380, boxShadow: '0 24px 64px rgba(0,0,0,0.7)' }}>
+            {/* Header */}
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 24 }}>
+              <h2 style={{ fontSize: 17, fontWeight: 700, color: VS.text0, margin: 0 }}>Add Skill to Library</h2>
+              <button onClick={() => { setShowAddLibrary(false); setLibError(''); }}
+                style={{ background: 'none', border: 'none', cursor: 'pointer', color: VS.text2, padding: 4, lineHeight: 1 }}>
+                <X style={{ width: 18, height: 18 }} />
+              </button>
+            </div>
+
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
               <div>
-                <label className="text-sm font-medium mb-2 block">Skill Name</label>
+                <label style={labelStyle}>Skill Name</label>
                 <input value={newSkillName} onChange={e => setNewSkillName(e.target.value)}
                   onKeyDown={e => e.key === 'Enter' && handleAddToLibrary()}
                   placeholder="e.g. React, Project Management, Figma..."
-                  className="w-full px-4 py-2 glass-surface border border-border rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-primary" />
+                  style={inputStyle} />
               </div>
               <div>
-                <label className="text-sm font-medium mb-2 block">Category</label>
+                <label style={labelStyle}>Category</label>
                 <select value={newSkillCategory} onChange={e => setNewSkillCategory(e.target.value)}
-                  className="w-full px-4 py-2 glass-surface border border-border rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-primary">
+                  style={{ ...inputStyle, cursor: 'pointer' }}>
                   {SKILL_CATEGORIES.map(c => <option key={c} value={c}>{c}</option>)}
                 </select>
               </div>
-              {libError && <p className="text-sm text-red-400">{libError}</p>}
-              <div className="flex gap-3 pt-2">
-                <Button variant="outline" className="flex-1 glass-surface" onClick={() => { setShowAddLibrary(false); setLibError(''); }}>Cancel</Button>
-                <Button className="flex-1 bg-gradient-primary text-white" disabled={!newSkillName.trim() || savingLibrary} onClick={handleAddToLibrary}>
+              {libError && <p style={{ fontSize: 13, color: VS.red }}>{libError}</p>}
+              <div style={{ display: 'flex', gap: 10, paddingTop: 4 }}>
+                <button onClick={() => { setShowAddLibrary(false); setLibError(''); }}
+                  style={{ flex: 1, padding: '9px 0', background: VS.bg2, border: `1px solid ${VS.border2}`, borderRadius: 6, color: VS.text1, fontSize: 13, cursor: 'pointer', fontWeight: 500 }}>
+                  Cancel
+                </button>
+                <button onClick={handleAddToLibrary} disabled={!newSkillName.trim() || savingLibrary}
+                  style={{ flex: 1, padding: '9px 0', background: newSkillName.trim() && !savingLibrary ? VS.accent : VS.bg3, border: 'none', borderRadius: 6, color: newSkillName.trim() && !savingLibrary ? '#fff' : VS.text2, fontSize: 13, cursor: newSkillName.trim() && !savingLibrary ? 'pointer' : 'not-allowed', fontWeight: 600 }}>
                   {savingLibrary ? 'Adding...' : 'Add Skill'}
-                </Button>
+                </button>
               </div>
-            </CardContent>
-          </Card>
+            </div>
+          </div>
         </div>
       )}
     </div>

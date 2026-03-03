@@ -167,46 +167,28 @@ export function InviteAccept() {
 
     setAccepting(true);
     try {
-      // Step 1: Create account via Better Auth
-      const signupRes = await fetch('/api/auth/sign-up/email', {
+      // Single backend call: creates account via Better Auth's internal API,
+      // accepts the invite, and forwards the session cookie — no two-step race condition.
+      const res = await fetch('/api/invites/register-and-accept', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         credentials: 'include',
-        body: JSON.stringify({
-          email: invite!.email,
-          password,
-          name: name.trim(),
-        }),
+        body: JSON.stringify({ token, name: name.trim(), password }),
       });
 
-      const signupData = await signupRes.json();
-      if (!signupRes.ok) {
-        const msg = signupData.message || signupData.error || 'Failed to create account.';
-        // If email already exists, prompt to sign in
-        if (msg.toLowerCase().includes('already') || msg.toLowerCase().includes('exists')) {
+      const data = await res.json();
+
+      if (!res.ok) {
+        if (res.status === 409 || data.code === 'EMAIL_EXISTS') {
           setError('An account with this email already exists. Please sign in instead.');
           setMode('signin');
         } else {
-          setError(msg);
+          setError(data.error || 'Failed to create account.');
         }
         return;
       }
 
-      // Step 2: Accept the invite
-      const acceptRes = await fetch('/api/invites/accept', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        credentials: 'include',
-        body: JSON.stringify({ token }),
-      });
-
-      if (!acceptRes.ok) {
-        const d = await acceptRes.json();
-        setError(d.error || 'Account created but failed to join organization. Please try signing in.');
-        return;
-      }
-
-      // Step 3: Redirect (full reload to pick up new session)
+      // Full reload so the session cookie is picked up by the React app
       setSuccess(true);
       setTimeout(() => { window.location.href = '/dashboard'; }, 2000);
 

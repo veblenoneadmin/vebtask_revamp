@@ -4,19 +4,134 @@ import crypto from 'crypto';
 import { randomUUID } from 'crypto';
 import { Role } from '@prisma/client';
 import { prisma } from '../lib/prisma.js';
-import { 
-  requireAuth, 
-  withOrgScope, 
+import { auth } from '../auth.js';
+import {
+  requireAuth,
+  withOrgScope,
   requireAdmin,
   canAssignRole
 } from '../lib/rbac.js';
-import { 
-  sendInviteEmail, 
-  sendWelcomeEmail, 
-  formatDuration 
+import {
+  sendInviteEmail,
+  sendWelcomeEmail,
+  formatDuration
 } from '../lib/mailer.js';
 
 const router = express.Router();
+
+/**
+ * POST /api/invites/register-and-accept
+ * Create an account + accept an invite in one step (public endpoint).
+ * Uses Better Auth's server-side API so the password is hashed identically
+ * to a normal sign-up, fixing any "Invalid password" mismatch on sign-in.
+ */
+router.post('/register-and-accept', async (req, res) => {
+  try {
+    const { token, name, password } = req.body;
+
+    if (!token || !password || !name?.trim()) {
+      return res.status(400).json({ error: 'token, name, and password are required' });
+    }
+    if (password.length < 8) {
+      return res.status(400).json({ error: 'Password must be at least 8 characters' });
+    }
+
+    // 1. Validate invite token
+    const invite = await prisma.invite.findUnique({
+      where: { token },
+      include: { org: { select: { name: true } } }
+    });
+
+    if (!invite) return res.status(404).json({ error: 'Invalid invite token' });
+    if (invite.status !== 'PENDING') return res.status(400).json({ error: `Invite is already ${invite.status.toLowerCase()}` });
+    if (invite.expiresAt < new Date()) {
+      await prisma.invite.update({ where: { id: invite.id }, data: { status: 'EXPIRED' } });
+      return res.status(400).json({ error: 'Invite has expired' });
+    }
+
+    // 2. Create account via Better Auth server-side API
+    // Using asResponse:true so we can forward the session cookie exactly as
+    // Better Auth would set it — no manual cookie construction needed.
+    let authResponse;
+    try {
+      authResponse = await auth.api.signUpEmail({
+        body: { email: invite.email, name: name.trim(), password },
+        asResponse: true,
+      });
+    } catch (err) {
+      console.error('auth.api.signUpEmail error:', err);
+      return res.status(400).json({ error: err.message || 'Failed to create account' });
+    }
+
+    if (!authResponse.ok) {
+      const errData = await authResponse.json().catch(() => ({}));
+      const msg = errData.message || errData.error || 'Failed to create account';
+      if (msg.toLowerCase().includes('email') || msg.toLowerCase().includes('exist') || msg.toLowerCase().includes('already')) {
+        return res.status(409).json({ error: 'An account with this email already exists. Please sign in instead.', code: 'EMAIL_EXISTS' });
+      }
+      return res.status(authResponse.status).json({ error: msg });
+    }
+
+    const authData = await authResponse.json();
+    const userId = authData.user?.id;
+
+    if (!userId) {
+      return res.status(500).json({ error: 'Account created but could not determine user ID' });
+    }
+
+    // 3. Accept invite — create membership
+    try {
+      await prisma.$transaction(async (tx) => {
+        const existing = await tx.membership.findUnique({
+          where: { userId_orgId: { userId, orgId: invite.orgId } }
+        });
+        if (!existing) {
+          await tx.membership.create({ data: { userId, orgId: invite.orgId, role: invite.role } });
+        }
+        await tx.invite.update({
+          where: { id: invite.id },
+          data: { status: 'ACCEPTED', acceptedById: userId }
+        });
+      });
+    } catch (err) {
+      console.error('Failed to create membership:', err);
+      return res.status(500).json({ error: 'Account created but failed to join organisation. Please contact support.' });
+    }
+
+    // Auto-create Client record for CLIENT role
+    if (invite.role === 'CLIENT') {
+      try {
+        const existing = await prisma.$queryRawUnsafe(
+          'SELECT id FROM clients WHERE email = ? AND orgId = ? LIMIT 1',
+          invite.email, invite.orgId
+        );
+        if (!existing.length) {
+          const clientId = randomUUID();
+          await prisma.$executeRawUnsafe(
+            'INSERT INTO clients (id, name, email, orgId, createdAt, updatedAt) VALUES (?, ?, ?, ?, NOW(), NOW())',
+            clientId, name.trim(), invite.email, invite.orgId
+          );
+        }
+      } catch (e) {
+        console.warn('Could not auto-create client record:', e.message);
+      }
+    }
+
+    // 4. Forward Better Auth's Set-Cookie headers to the browser so the
+    //    session is set exactly as it would be on a normal sign-up.
+    const cookies = authResponse.headers.getSetCookie?.() ?? [];
+    if (cookies.length) {
+      res.setHeader('Set-Cookie', cookies);
+    }
+
+    console.log(`✅ Invite accepted: ${invite.email} joined ${invite.org.name} as ${invite.role}`);
+    res.json({ success: true, message: `Welcome to ${invite.org.name}!` });
+
+  } catch (err) {
+    console.error('register-and-accept error:', err);
+    res.status(500).json({ error: err.message || 'An unexpected error occurred' });
+  }
+});
 
 // Validation schemas
 const createInviteSchema = z.object({

@@ -1,579 +1,241 @@
 import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useSession } from '../lib/auth-client';
-import { Button } from '../components/ui/button';
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '../components/ui/card';
-import { Input } from '../components/ui/input';
-import { Progress } from '../components/ui/progress';
-import { Building2, Users, UserCheck, CheckCircle, ArrowRight, ArrowLeft } from 'lucide-react';
+import { CheckCircle, ArrowRight } from 'lucide-react';
 import { EverSenseLogo } from '../components/EverSenseLogo';
 
-interface OnboardingStep {
-  id: string;
-  title: string;
-  description: string;
-  icon: React.ReactNode;
-  completed: boolean;
+// ─── module-level constants (no re-creation on re-render) ─────────────────────
+
+const inputStyle = {
+  backgroundColor: '#3c3c3c',
+  border: '1px solid #3c3c3c',
+  borderRadius: '4px',
+  color: '#cccccc',
+  fontFamily: 'monospace',
+};
+
+const STEPS = [
+  { id: 'welcome', file: 'welcome.ts' },
+  { id: 'profile', file: 'profile.ts' },
+];
+
+// ─── Shell (defined outside Onboarding to keep identity stable) ───────────────
+
+function Shell({ children, stepIdx }: { children: React.ReactNode; stepIdx: number }) {
+  const filename = STEPS[stepIdx]?.file ?? 'onboarding.ts';
+  return (
+    <div
+      className="min-h-screen flex items-center justify-center p-4 relative overflow-hidden"
+      style={{ backgroundColor: '#1e1e1e' }}
+    >
+      {/* Background orbs */}
+      <div className="absolute inset-0" style={{ background: 'radial-gradient(ellipse at 20% 50%, rgba(0,122,204,0.06) 0%, transparent 60%), radial-gradient(ellipse at 80% 20%, rgba(0,122,204,0.04) 0%, transparent 50%)' }} />
+      <div className="absolute inset-0 pointer-events-none">
+        <div className="absolute rounded-full blur-3xl animate-pulse" style={{ top: '20%', left: '15%', width: '380px', height: '380px', background: 'rgba(0,122,204,0.08)' }} />
+        <div className="absolute rounded-full blur-3xl animate-pulse" style={{ bottom: '20%', right: '15%', width: '340px', height: '340px', background: 'rgba(0,122,204,0.06)', animationDelay: '1s' }} />
+      </div>
+
+      <div className="w-full max-w-sm relative z-10" style={{ filter: 'drop-shadow(0 8px 32px rgba(0,0,0,0.6))' }}>
+
+        {/* Title bar */}
+        <div className="flex items-center justify-between px-4" style={{ backgroundColor: '#323233', borderRadius: '8px 8px 0 0', height: '32px', borderBottom: '1px solid #3c3c3c' }}>
+          <div className="flex items-center gap-1.5">
+            <span className="w-3 h-3 rounded-full" style={{ backgroundColor: '#ff5f57' }} />
+            <span className="w-3 h-3 rounded-full" style={{ backgroundColor: '#febc2e' }} />
+            <span className="w-3 h-3 rounded-full" style={{ backgroundColor: '#28c840' }} />
+          </div>
+          <span className="text-xs" style={{ color: '#858585', fontFamily: 'monospace' }}>
+            EverSense Ai — {filename}
+          </span>
+          <div className="w-12" />
+        </div>
+
+        {/* Editor panel */}
+        <div style={{ backgroundColor: '#252526', border: '1px solid #3c3c3c', borderTop: 'none', borderRadius: '0 0 8px 8px' }}>
+
+          {/* Tab bar with step dots */}
+          <div style={{ backgroundColor: '#2d2d2d', borderBottom: '1px solid #3c3c3c', display: 'flex', alignItems: 'stretch', justifyContent: 'space-between' }}>
+            <div className="flex items-center gap-2 px-4 py-2 text-xs" style={{ color: '#cccccc', borderBottom: '1px solid #007acc', backgroundColor: '#1e1e1e', fontFamily: 'monospace' }}>
+              <EverSenseLogo height={16} width={94} />
+              {filename}
+            </div>
+            <div className="flex items-center gap-1.5 pr-4">
+              {STEPS.map((_, i) => (
+                <div
+                  key={i}
+                  className="w-2 h-2 rounded-full transition-colors"
+                  style={{ backgroundColor: i <= stepIdx ? '#007acc' : '#3c3c3c' }}
+                />
+              ))}
+            </div>
+          </div>
+
+          {/* Content */}
+          <div className="p-6 space-y-5">
+            <div className="flex flex-col items-center gap-2 mb-2">
+              <EverSenseLogo width={280} height={66} />
+            </div>
+            {children}
+          </div>
+        </div>
+
+        {/* Status bar */}
+        <div className="flex items-center justify-between px-3 text-xs" style={{ backgroundColor: '#007acc', color: '#ffffff', height: '22px', fontFamily: 'monospace' }}>
+          <span>⎇ main</span>
+          <span>Step {stepIdx + 1} of {STEPS.length}</span>
+        </div>
+      </div>
+    </div>
+  );
 }
 
-interface Organization {
-  name: string;
-  slug?: string;
-}
-
-interface UserProfile {
-  firstName: string;
-  lastName: string;
-  jobTitle: string;
-  company: string;
-}
+// ─── Page component ────────────────────────────────────────────────────────────
 
 export function Onboarding() {
   const navigate = useNavigate();
   const { data: session } = useSession();
-  const [currentStep, setCurrentStep] = useState(0);
+  const [stepIdx, setStepIdx] = useState(0);
+  const [jobTitle, setJobTitle] = useState('');
   const [loading, setLoading] = useState(false);
 
-  // Form data
-  const [organization, setOrganization] = useState<Organization>({ name: '' });
-  const [userProfile, setUserProfile] = useState<UserProfile>({
-    firstName: '',
-    lastName: '',
-    jobTitle: '',
-    company: ''
-  });
-  const [inviteEmails, setInviteEmails] = useState<string[]>(['']);
-
-  const steps: OnboardingStep[] = [
-    {
-      id: 'welcome',
-      title: 'Welcome to EverSense Ai',
-      description: 'Let\'s get you set up with your workspace',
-      icon: <CheckCircle className="w-6 h-6" />,
-      completed: false
-    },
-    {
-      id: 'organization',
-      title: 'Create Organization',
-      description: 'Set up your workspace and organization',
-      icon: <Building2 className="w-6 h-6" />,
-      completed: false
-    },
-    {
-      id: 'profile',
-      title: 'Complete Profile',
-      description: 'Tell us a bit about yourself',
-      icon: <UserCheck className="w-6 h-6" />,
-      completed: false
-    },
-    {
-      id: 'team',
-      title: 'Invite Team',
-      description: 'Invite team members to collaborate',
-      icon: <Users className="w-6 h-6" />,
-      completed: false
-    }
-  ];
-
-  const progress = ((currentStep + 1) / steps.length) * 100;
-
-  // Check wizard status and set current step
   useEffect(() => {
     if (session?.user) {
-      checkWizardStatus();
+      checkStatus();
     }
   }, [session]);
 
-  const checkWizardStatus = async () => {
+  const checkStatus = async () => {
     try {
-      const response = await fetch('/api/wizard/status', {
-        credentials: 'include'
-      });
-      const result = await response.json();
-      
-      if (result.success) {
-        const { needsOnboarding, nextStep } = result.data;
-        
-        if (!needsOnboarding) {
-          // User has completed onboarding, redirect to dashboard
+      const res = await fetch('/api/wizard/status', { credentials: 'include' });
+      const data = await res.json();
+      if (data.success) {
+        if (!data.data.needsOnboarding) {
           navigate('/dashboard', { replace: true });
           return;
         }
-
-        if (nextStep && steps.some(s => s.id === nextStep)) {
-          const stepIndex = steps.findIndex(s => s.id === nextStep);
-          setCurrentStep(stepIndex);
-        }
+        const idx = STEPS.findIndex(s => s.id === data.data.nextStep);
+        if (idx >= 0) setStepIdx(idx);
       }
-    } catch (error) {
-      console.error('Error checking wizard status:', error);
-    }
+    } catch { /* keep default step */ }
   };
 
-  const completeWizardStep = async (stepId: string) => {
+  const completeStep = async (stepId: string) => {
     try {
-      const response = await fetch('/api/wizard/complete-step', {
+      const res = await fetch('/api/wizard/complete-step', {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
+        headers: { 'Content-Type': 'application/json' },
         credentials: 'include',
-        body: JSON.stringify({ step: stepId })
+        body: JSON.stringify({ step: stepId }),
       });
-
-      const result = await response.json();
-      if (result.success) {
-        console.log(`Wizard step '${stepId}' completed successfully`);
-        return true;
-      } else {
-        console.error('Failed to complete wizard step:', result.error);
-        return false;
-      }
-    } catch (error) {
-      console.error('Error completing wizard step:', error);
-      return false;
-    }
+      return (await res.json()).success ?? false;
+    } catch { return false; }
   };
 
-  const nextStep = async () => {
-    // Complete current step in wizard system
-    const currentStepId = steps[currentStep].id;
-    const stepCompleted = await completeWizardStep(currentStepId);
-    
-    if (stepCompleted) {
-      if (currentStep < steps.length - 1) {
-        setCurrentStep(currentStep + 1);
-      }
-    }
-  };
+  const btnStyle = (disabled: boolean) => ({
+    backgroundColor: disabled ? '#0a4d7a' : '#0e639c',
+    color: '#ffffff',
+    border: '1px solid #1177bb',
+    borderRadius: '4px',
+    cursor: disabled ? 'not-allowed' : 'pointer',
+    fontFamily: 'monospace',
+  });
 
-  const prevStep = () => {
-    if (currentStep > 0) {
-      setCurrentStep(currentStep - 1);
-    }
-  };
-
-  const handleCreateOrganization = async () => {
-    if (!organization.name.trim()) return;
-
-    setLoading(true);
-    try {
-      const response = await fetch('/api/organizations', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        credentials: 'include',
-        body: JSON.stringify({
-          name: organization.name,
-          slug: organization.slug
-        })
-      });
-
-      if (response.ok) {
-        const stepCompleted = await completeWizardStep('organization');
-        if (stepCompleted) {
-          nextStep();
-        }
-      } else {
-        const error = await response.json();
-        alert(error.error || 'Failed to create organization');
-      }
-    } catch (error) {
-      console.error('Error creating organization:', error);
-      alert('Failed to create organization');
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  const handleCompleteOnboarding = async () => {
-    setLoading(true);
-    try {
-      // Mark onboarding as complete and redirect
-      navigate('/dashboard', { replace: true });
-    } catch (error) {
-      console.error('Error completing onboarding:', error);
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  const handleInviteTeam = async () => {
-    const validEmails = inviteEmails.filter(email => email.trim() && email.includes('@'));
-    
-    if (validEmails.length > 0) {
+  // ── Welcome step ─────────────────────────────────────────────────────────────
+  if (STEPS[stepIdx].id === 'welcome') {
+    const handleContinue = async () => {
       setLoading(true);
-      try {
-        // Send invitations using the API
-        console.log('Sending invitations to:', validEmails);
-        
-        // Get the current user's organization ID (assuming first org for now)
-        const orgResponse = await fetch(`/api/organizations?userId=${session?.user?.id}`);
-        if (orgResponse.ok) {
-          const orgData = await orgResponse.json();
-          const organizationId = orgData.organizations?.[0]?.id;
-          
-          if (organizationId) {
-            // Send invites for each email
-            for (const email of validEmails) {
-              const inviteResponse = await fetch(`/api/invites`, {
-                method: 'POST',
-                headers: {
-                  'Content-Type': 'application/json',
-                },
-                body: JSON.stringify({
-                  email: email.trim(),
-                  role: 'STAFF',
-                  organizationId: organizationId,
-                  message: 'Join our team on EverSense Ai!'
-                }),
-              });
-              
-              if (inviteResponse.ok) {
-                console.log(`✅ Invite sent to ${email}`);
-              } else {
-                console.error(`❌ Failed to send invite to ${email}`);
-              }
-            }
-          }
-        }
-        nextStep();
-      } catch (error) {
-        console.error('Error sending invitations:', error);
-      } finally {
-        setLoading(false);
-      }
-    } else {
-      nextStep(); // Skip if no emails provided
-    }
-  };
+      await completeStep('welcome');
+      setLoading(false);
+      setStepIdx(1);
+    };
 
-  const addEmailField = () => {
-    setInviteEmails([...inviteEmails, '']);
-  };
-
-  const updateEmail = (index: number, email: string) => {
-    const newEmails = [...inviteEmails];
-    newEmails[index] = email;
-    setInviteEmails(newEmails);
-  };
-
-  const removeEmail = (index: number) => {
-    if (inviteEmails.length > 1) {
-      setInviteEmails(inviteEmails.filter((_, i) => i !== index));
-    }
-  };
-
-  const renderStep = () => {
-    const step = steps[currentStep];
-
-    switch (step.id) {
-      case 'welcome':
-        return (
-          <div className="text-center space-y-6">
-            <div className="w-20 h-20 bg-gradient-to-br from-primary/20 to-accent/20 rounded-full flex items-center justify-center mx-auto shadow-glow">
-              <CheckCircle className="w-10 h-10 text-primary" />
-            </div>
-            <div>
-              <h2 className="text-2xl font-bold gradient-text">Welcome to EverSense Ai!</h2>
-              <p className="text-muted-foreground mt-2">
-                Hi {session?.user?.name || 'there'}! Let's set up your workspace to get you started with task management and team collaboration.
-              </p>
-            </div>
-            <div className="glass-surface p-4 rounded-lg border border-border">
-              <p className="text-sm text-foreground">
-                This quick setup will take about 2-3 minutes and will help you get the most out of EverSense Ai.
-              </p>
-            </div>
-            <Button onClick={nextStep} className="w-full bg-gradient-primary hover:bg-gradient-primary/90 text-white shadow-glow transition-all duration-300">
-              Let's Get Started
-              <ArrowRight className="ml-2 w-4 h-4" />
-            </Button>
+    return (
+      <Shell stepIdx={0}>
+        <div className="text-center space-y-5">
+          <div className="text-xs" style={{ color: '#858585', fontFamily: 'monospace' }}>
+            // account ready
           </div>
-        );
 
-      case 'organization':
-        return (
-          <div className="space-y-6">
-            <div className="text-center">
-              <div className="w-20 h-20 bg-gradient-to-br from-primary/20 to-accent/20 rounded-full flex items-center justify-center mx-auto shadow-glow">
-                <Building2 className="w-10 h-10 text-primary" />
-              </div>
-              <h2 className="text-2xl font-bold gradient-text mt-4">Create Your Organization</h2>
-              <p className="text-muted-foreground mt-2">
-                Your organization is your workspace where you'll manage tasks, projects, and collaborate with your team.
-              </p>
-            </div>
-            
-            <div className="space-y-4">
-              <div>
-                <label htmlFor="orgName" className="block text-sm font-medium text-foreground mb-1">
-                  Organization Name *
-                </label>
-                <Input
-                  id="orgName"
-                  type="text"
-                  placeholder="Enter your organization name"
-                  value={organization.name}
-                  onChange={(e) => setOrganization({ ...organization, name: e.target.value })}
-                  className="w-full glass-surface"
-                />
-              </div>
-              
-              <div>
-                <label htmlFor="orgSlug" className="block text-sm font-medium text-foreground mb-1">
-                  URL Slug (optional)
-                </label>
-                <Input
-                  id="orgSlug"
-                  type="text"
-                  placeholder="your-organization"
-                  value={organization.slug || ''}
-                  onChange={(e) => setOrganization({ ...organization, slug: e.target.value })}
-                  className="w-full glass-surface"
-                />
-                <p className="text-xs text-gray-500 mt-1">
-                  This will be used in your organization URL
-                </p>
-              </div>
-            </div>
+          <CheckCircle className="mx-auto" style={{ color: '#4ec9b0', width: 40, height: 40 }} />
 
-            <div className="flex space-x-3">
-              <Button variant="outline" onClick={prevStep} className="flex-1 glass-surface border-border hover:bg-surface-elevated">
-                <ArrowLeft className="mr-2 w-4 h-4" />
-                Back
-              </Button>
-              <Button 
-                onClick={handleCreateOrganization} 
-                className="flex-1 bg-gradient-primary hover:bg-gradient-primary/90 text-white shadow-glow transition-all duration-300"
-                disabled={!organization.name.trim() || loading}
-              >
-                {loading ? 'Creating...' : 'Create Organization'}
-                {!loading && <ArrowRight className="ml-2 w-4 h-4" />}
-              </Button>
-            </div>
+          <div>
+            <p className="text-sm font-medium" style={{ color: '#cccccc', fontFamily: 'monospace' }}>
+              Welcome, {session?.user?.name || 'there'}!
+            </p>
+            <p className="text-xs mt-2" style={{ color: '#858585', fontFamily: 'monospace' }}>
+              // your account is set up. one quick step before you start.
+            </p>
           </div>
-        );
 
-      case 'profile':
-        return (
-          <div className="space-y-6">
-            <div className="text-center">
-              <div className="w-20 h-20 bg-gradient-to-br from-primary/20 to-accent/20 shadow-glow rounded-full flex items-center justify-center mx-auto">
-                <UserCheck className="w-10 h-10 text-primary" />
-              </div>
-              <h2 className="text-2xl font-bold gradient-text mt-4">Complete Your Profile</h2>
-              <p className="text-muted-foreground mt-2">
-                Help your team know who you are by completing your profile information.
-              </p>
-            </div>
+          <button
+            onClick={handleContinue}
+            disabled={loading}
+            className="w-full py-2 text-sm font-medium transition-all duration-200 flex items-center justify-center gap-2"
+            style={btnStyle(loading)}
+            onMouseEnter={e => { if (!loading) (e.currentTarget.style.backgroundColor = '#1177bb'); }}
+            onMouseLeave={e => { if (!loading) (e.currentTarget.style.backgroundColor = '#0e639c'); }}
+          >
+            {loading ? '▶ Loading...' : <>▶ Continue <ArrowRight className="w-4 h-4" /></>}
+          </button>
+        </div>
+      </Shell>
+    );
+  }
 
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              <div>
-                <label htmlFor="firstName" className="block text-sm font-medium text-foreground mb-1">
-                  First Name
-                </label>
-                <Input
-                  id="firstName"
-                  type="text"
-                  placeholder="John"
-                  value={userProfile.firstName}
-                  onChange={(e) => setUserProfile({ ...userProfile, firstName: e.target.value })}
-                />
-              </div>
-              <div>
-                <label htmlFor="lastName" className="block text-sm font-medium text-foreground mb-1">
-                  Last Name
-                </label>
-                <Input
-                  id="lastName"
-                  type="text"
-                  placeholder="Doe"
-                  value={userProfile.lastName}
-                  onChange={(e) => setUserProfile({ ...userProfile, lastName: e.target.value })}
-                />
-              </div>
-              <div>
-                <label htmlFor="jobTitle" className="block text-sm font-medium text-foreground mb-1">
-                  Job Title
-                </label>
-                <Input
-                  id="jobTitle"
-                  type="text"
-                  placeholder="Product Manager"
-                  value={userProfile.jobTitle}
-                  onChange={(e) => setUserProfile({ ...userProfile, jobTitle: e.target.value })}
-                />
-              </div>
-              <div>
-                <label htmlFor="company" className="block text-sm font-medium text-foreground mb-1">
-                  Company
-                </label>
-                <Input
-                  id="company"
-                  type="text"
-                  placeholder="Acme Corp"
-                  value={userProfile.company}
-                  onChange={(e) => setUserProfile({ ...userProfile, company: e.target.value })}
-                />
-              </div>
-            </div>
-
-            <div className="flex space-x-3">
-              <Button variant="outline" onClick={prevStep} className="flex-1">
-                <ArrowLeft className="mr-2 w-4 h-4" />
-                Back
-              </Button>
-              <Button onClick={nextStep} className="flex-1 bg-gradient-primary hover:bg-gradient-primary/90 text-white shadow-glow transition-all duration-300">
-                Continue
-                <ArrowRight className="ml-2 w-4 h-4" />
-              </Button>
-            </div>
-          </div>
-        );
-
-      case 'team':
-        return (
-          <div className="space-y-6">
-            <div className="text-center">
-              <div className="w-20 h-20 bg-gradient-to-br from-primary/20 to-accent/20 shadow-glow rounded-full flex items-center justify-center mx-auto">
-                <Users className="w-10 h-10 text-primary" />
-              </div>
-              <h2 className="text-2xl font-bold gradient-text mt-4">Invite Your Team</h2>
-              <p className="text-muted-foreground mt-2">
-                Invite team members to collaborate on tasks and projects. You can always do this later from settings.
-              </p>
-            </div>
-
-            <div className="space-y-3">
-              <label className="block text-sm font-medium text-foreground">
-                Team Member Email Addresses
-              </label>
-              {inviteEmails.map((email, index) => (
-                <div key={index} className="flex space-x-2">
-                  <Input
-                    type="email"
-                    placeholder="colleague@company.com"
-                    value={email}
-                    onChange={(e) => updateEmail(index, e.target.value)}
-                    className="flex-1"
-                  />
-                  {inviteEmails.length > 1 && (
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      onClick={() => removeEmail(index)}
-                    >
-                      Remove
-                    </Button>
-                  )}
-                </div>
-              ))}
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={addEmailField}
-                className="w-full glass-surface"
-              >
-                Add Another Email
-              </Button>
-            </div>
-
-            <div className="flex space-x-3">
-              <Button variant="outline" onClick={prevStep} className="flex-1">
-                <ArrowLeft className="mr-2 w-4 h-4" />
-                Back
-              </Button>
-              <Button onClick={handleInviteTeam} className="flex-1 bg-gradient-primary hover:bg-gradient-primary/90 text-white shadow-glow transition-all duration-300" disabled={loading}>
-                {loading ? 'Sending...' : inviteEmails.some(e => e.trim()) ? 'Send Invites' : 'Skip for Now'}
-                <ArrowRight className="ml-2 w-4 h-4" />
-              </Button>
-            </div>
-          </div>
-        );
-
-      default:
-        return (
-          <div className="text-center space-y-6">
-            <div className="w-20 h-20 bg-green-100 rounded-full flex items-center justify-center mx-auto">
-              <CheckCircle className="w-10 h-10 text-green-600" />
-            </div>
-            <div>
-              <h2 className="text-2xl font-bold gradient-text">You're All Set!</h2>
-              <p className="text-muted-foreground mt-2">
-                Welcome to EverSense Ai! Your workspace is ready and you can start managing tasks and collaborating with your team.
-              </p>
-            </div>
-            <Button onClick={handleCompleteOnboarding} className="w-full glass-surface" disabled={loading}>
-              {loading ? 'Setting up...' : 'Go to Dashboard'}
-            </Button>
-          </div>
-        );
-    }
+  // ── Profile step ─────────────────────────────────────────────────────────────
+  const handleFinish = async () => {
+    setLoading(true);
+    await completeStep('profile');
+    setLoading(false);
+    navigate('/dashboard', { replace: true });
   };
 
   return (
-    <div className="min-h-screen bg-background flex items-center justify-center p-4 relative overflow-hidden">
-      {/* Background Effects */}
-      <div className="absolute inset-0 bg-gradient-to-br from-primary/5 via-background to-success/5"></div>
-      <div className="absolute inset-0">
-        <div className="absolute top-1/4 left-1/4 w-96 h-96 bg-primary/10 rounded-full blur-3xl animate-pulse"></div>
-        <div className="absolute bottom-1/4 right-1/4 w-96 h-96 bg-success/10 rounded-full blur-3xl animate-pulse delay-1000"></div>
-      </div>
-      
-      <div className="w-full max-w-2xl relative z-10">
-        {/* Logo & Brand */}
-        <div className="text-center mb-8">
-          <div className="flex items-center justify-center mb-6">
-            <EverSenseLogo width={280} height={55} />
-          </div>
-          <div className="space-y-2">
-            <h1 className="text-3xl font-bold gradient-text">EverSense Ai</h1>
-            <p className="text-sm text-muted-foreground flex items-center justify-center gap-2">
-              <Building2 className="h-4 w-4" />
-              AI-Powered Task Management
-            </p>
-          </div>
+    <Shell stepIdx={1}>
+      <div className="space-y-5">
+        <div className="text-xs" style={{ color: '#858585', fontFamily: 'monospace' }}>
+          // tell us your role (optional)
         </div>
 
-        <Card className="glass shadow-elevation">
-          <CardHeader className="pb-4">
-            <div className="flex items-center justify-between">
-              <div>
-                <CardTitle className="text-lg font-semibold gradient-text">
-                  Setup Progress
-                </CardTitle>
-                <CardDescription className="text-muted-foreground">
-                  Step {currentStep + 1} of {steps.length}
-                </CardDescription>
-              </div>
-              <div className="text-right">
-                <div className="text-sm font-medium text-foreground">
-                  {Math.round(progress)}% Complete
-                </div>
-              </div>
-            </div>
-            <Progress value={progress} className="w-full bg-surface-elevated" />
-          </CardHeader>
-          
-          <CardContent className="pt-6">
-            {renderStep()}
-          </CardContent>
-        </Card>
-
-        {/* Step indicators */}
-        <div className="mt-6 flex justify-center space-x-2">
-          {steps.map((step, index) => (
-            <div
-              key={step.id}
-              className={`w-3 h-3 rounded-full ${
-                index <= currentStep ? 'bg-primary' : 'bg-gray-200'
-              }`}
-            />
-          ))}
+        <div className="space-y-1">
+          <label htmlFor="jobTitle" className="text-xs font-medium" style={{ color: '#9cdcfe', fontFamily: 'monospace' }}>
+            // job title
+          </label>
+          <input
+            type="text"
+            id="jobTitle"
+            placeholder="e.g. Project Manager"
+            value={jobTitle}
+            onChange={e => setJobTitle(e.target.value)}
+            className="w-full px-3 py-2 text-sm outline-none transition-colors"
+            style={inputStyle}
+            onFocus={e => (e.target.style.borderColor = '#007acc')}
+            onBlur={e => (e.target.style.borderColor = '#3c3c3c')}
+          />
         </div>
+
+        <button
+          onClick={handleFinish}
+          disabled={loading}
+          className="w-full py-2 text-sm font-medium transition-all duration-200"
+          style={btnStyle(loading)}
+          onMouseEnter={e => { if (!loading) (e.currentTarget.style.backgroundColor = '#1177bb'); }}
+          onMouseLeave={e => { if (!loading) (e.currentTarget.style.backgroundColor = '#0e639c'); }}
+        >
+          {loading ? '▶ Saving...' : '▶ Go to Dashboard'}
+        </button>
+
+        <button
+          onClick={handleFinish}
+          disabled={loading}
+          className="w-full text-xs text-center py-1"
+          style={{ color: '#858585', fontFamily: 'monospace', background: 'none', border: 'none', cursor: loading ? 'not-allowed' : 'pointer' }}
+          onMouseEnter={e => { if (!loading) (e.currentTarget.style.color = '#cccccc'); }}
+          onMouseLeave={e => { if (!loading) (e.currentTarget.style.color = '#858585'); }}
+        >
+          // skip for now
+        </button>
       </div>
-    </div>
+    </Shell>
   );
 }

@@ -3,7 +3,7 @@ import { prisma } from './prisma.js';
 /**
  * Available wizard steps in order
  */
-export const WIZARD_STEPS = ['welcome', 'organization', 'profile', 'team'];
+export const WIZARD_STEPS = ['welcome', 'profile'];
 
 /**
  * Check if user has completed a specific wizard step

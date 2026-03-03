@@ -693,8 +693,8 @@ export function Projects() {
                               className="absolute right-0 top-full mt-1 z-20 rounded-xl overflow-hidden py-1 min-w-[150px]"
                               style={{ background: VS.bg1, border: `1px solid ${VS.border}`, boxShadow: '0 8px 24px rgba(0,0,0,0.5)' }}
                             >
-                              {/* Generate Tasks — staff/admin only */}
-                              {userRole !== 'CLIENT' && (
+                              {/* Generate Tasks — owner/admin only */}
+                              {(userRole === 'OWNER' || userRole === 'ADMIN') && (
                                 <button
                                   onClick={() => { setOpenMenuId(null); handleGenerateTasks(project); }}
                                   className="flex items-center gap-2 w-full px-3 py-2 text-xs hover:bg-white/5 transition-colors"

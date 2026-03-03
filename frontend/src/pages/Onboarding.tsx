@@ -186,8 +186,8 @@ export function Onboarding() {
   const handleFinish = async () => {
     setLoading(true);
     await completeStep('profile');
-    setLoading(false);
-    navigate('/dashboard', { replace: true });
+    // Full reload so App.tsx re-checks onboarding status with the updated DB values
+    window.location.href = '/dashboard';
   };
 
   return (

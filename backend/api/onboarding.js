@@ -33,7 +33,7 @@ router.get('/status', requireAuth, async (req, res) => {
     }
 
     const completedSteps = user.completedWizards ? user.completedWizards.split(',').filter(Boolean) : [];
-    const requiredSteps = ['welcome', 'organization', 'profile', 'team'];
+    const requiredSteps = ['welcome', 'profile'];
 
     // Check if all required steps are completed
     const allStepsCompleted = requiredSteps.every(step => completedSteps.includes(step));

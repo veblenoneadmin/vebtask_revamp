@@ -48,17 +48,27 @@ router.post('/reset-password', async (req, res) => {
     try {
       const resetUrl = `${process.env.BETTER_AUTH_URL || 'https://vebtask.com'}/reset-password?token=${resetToken}`;
 
-      const resendRes = await fetch('https://api.resend.com/emails', {
-        method: 'POST',
-        headers: {
-          'Authorization': `Bearer ${process.env.SMTP_PASS}`,
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          from: process.env.SMTP_FROM || 'onboarding@resend.dev',
-          to: [email],
-          subject: 'Reset your VebTask password',
-          html: `<!DOCTYPE html>
+      const apiKey = (process.env.SMTP_PASS || '').trim();
+      // Strip surrounding quotes Railway sometimes adds e.g. "VebTask <x@y.com>" → VebTask <x@y.com>
+      const fromAddr = (process.env.SMTP_FROM || 'onboarding@resend.dev').trim().replace(/^["']|["']$/g, '');
+
+      console.log(`📧 Sending reset email to ${email} from ${fromAddr}`);
+      console.log(`🔑 Resend API key configured: ${apiKey ? 'yes (' + apiKey.substring(0, 8) + '...)' : 'NO — SMTP_PASS not set'}`);
+
+      if (!apiKey) {
+        console.error('❌ SMTP_PASS (Resend API key) is not set in environment variables');
+      } else {
+        const resendRes = await fetch('https://api.resend.com/emails', {
+          method: 'POST',
+          headers: {
+            'Authorization': `Bearer ${apiKey}`,
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({
+            from: fromAddr,
+            to: [email],
+            subject: 'Reset your VebTask password',
+            html: `<!DOCTYPE html>
 <html>
 <head><meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0"></head>
 <body style="margin:0;padding:0;background:#f8fafc;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;">
@@ -86,18 +96,18 @@ router.post('/reset-password', async (req, res) => {
   </td></tr></table>
 </body>
 </html>`,
-        }),
-      });
+          }),
+        });
 
-      if (!resendRes.ok) {
-        const errBody = await resendRes.json().catch(() => ({}));
-        console.error('❌ Resend API error:', resendRes.status, errBody);
-      } else {
-        console.log(`✅ Password reset email sent to ${email}`);
+        const resendBody = await resendRes.json().catch(() => ({}));
+        if (!resendRes.ok) {
+          console.error('❌ Resend API error:', resendRes.status, JSON.stringify(resendBody));
+        } else {
+          console.log(`✅ Password reset email sent to ${email} — Resend ID: ${resendBody.id}`);
+        }
       }
     } catch (emailError) {
-      console.error('❌ Failed to send reset email:', emailError);
-      // Don't fail the request if email fails
+      console.error('❌ Failed to send reset email:', emailError.message);
     }
 
     res.json({ 

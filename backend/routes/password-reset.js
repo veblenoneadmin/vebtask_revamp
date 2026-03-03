@@ -3,7 +3,6 @@ import express from 'express';
 import { prisma } from '../lib/prisma.js';
 import crypto from 'crypto';
 import bcrypt from 'bcryptjs';
-import nodemailer from 'nodemailer';
 
 const router = express.Router();
 
@@ -45,87 +44,60 @@ router.post('/reset-password', async (req, res) => {
       }
     });
 
-    // Send reset email
+    // Send reset email via Resend HTTP API (avoids Railway SMTP port blocking)
     try {
-      const transporter = nodemailer.createTransporter({
-        host: process.env.SMTP_HOST || 'smtp.gmail.com',
-        port: parseInt(process.env.SMTP_PORT || '587'),
-        secure: false,
-        auth: {
-          user: process.env.SMTP_USER,
-          pass: process.env.SMTP_PASS,
-        },
-      });
-
       const resetUrl = `${process.env.BETTER_AUTH_URL || 'https://vebtask.com'}/reset-password?token=${resetToken}`;
 
-      const mailOptions = {
-        from: process.env.SMTP_FROM || process.env.SMTP_USER,
-        to: email,
-        subject: 'Reset your VebTask password',
-        html: `
-<!DOCTYPE html>
+      const resendRes = await fetch('https://api.resend.com/emails', {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${process.env.SMTP_PASS}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          from: process.env.SMTP_FROM || 'onboarding@resend.dev',
+          to: [email],
+          subject: 'Reset your VebTask password',
+          html: `<!DOCTYPE html>
 <html>
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Reset Your Password - VebTask</title>
-</head>
-<body style="margin: 0; padding: 0; background-color: #f8fafc; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;">
-    <table role="presentation" style="width: 100%; border-collapse: collapse; background-color: #f8fafc;">
-        <tr>
-            <td align="center" style="padding: 40px 20px;">
-                <table role="presentation" style="width: 100%; max-width: 600px; background-color: #ffffff; border-radius: 8px; box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);">
-                    <!-- Header -->
-                    <tr>
-                        <td style="padding: 40px 40px 20px; text-align: center; border-bottom: 1px solid #e2e8f0;">
-                            <img src="https://vebtask.com/veblen-logo.png" alt="VebTask" style="height: 40px; width: auto;" />
-                            <h1 style="margin: 20px 0 0; color: #1e293b; font-size: 24px; font-weight: 600;">Password Reset Request</h1>
-                        </td>
-                    </tr>
-                    <!-- Body -->
-                    <tr>
-                        <td style="padding: 40px;">
-                            <p style="margin: 0 0 20px; color: #334155; font-size: 16px; line-height: 1.6;">Hi ${user.name || 'there'},</p>
-                            
-                            <p style="margin: 0 0 20px; color: #334155; font-size: 16px; line-height: 1.6;">We received a request to reset your VebTask password. If you didn't make this request, you can safely ignore this email.</p>
-                            
-                            <!-- CTA Button -->
-                            <div style="text-align: center; margin: 40px 0;">
-                                <a href="${resetUrl}" style="display: inline-block; background-color: #6366f1; color: #ffffff; padding: 16px 32px; text-decoration: none; border-radius: 8px; font-weight: 600; font-size: 16px;">Reset Password</a>
-                            </div>
-                            
-                            <p style="margin: 20px 0; color: #64748b; font-size: 14px; line-height: 1.6;">If the button above doesn't work, copy and paste this link into your browser:</p>
-                            <p style="margin: 0 0 20px; color: #6366f1; font-size: 14px; word-break: break-all;">${resetUrl}</p>
-                            
-                            <hr style="margin: 30px 0; border: none; border-top: 1px solid #e2e8f0;" />
-                            
-                            <div style="background-color: #fef3c7; border-left: 4px solid #f59e0b; padding: 16px; border-radius: 4px;">
-                                <p style="margin: 0; color: #92400e; font-size: 14px; line-height: 1.6;"><strong>Security Notice:</strong> This reset link will expire in 15 minutes for your security. If you didn't request this reset, please ignore this email or contact support.</p>
-                            </div>
-                        </td>
-                    </tr>
-                    <!-- Footer -->
-                    <tr>
-                        <td style="padding: 20px 40px 40px; text-align: center; border-top: 1px solid #e2e8f0;">
-                            <p style="margin: 0 0 10px; color: #64748b; font-size: 12px;">Best regards,<br>The VebTask Team</p>
-                            <p style="margin: 0; color: #94a3b8; font-size: 12px;">Veblen Group | Secure Task Management</p>
-                        </td>
-                    </tr>
-                </table>
-            </td>
-        </tr>
+<head><meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0"></head>
+<body style="margin:0;padding:0;background:#f8fafc;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;">
+  <table style="width:100%;background:#f8fafc;" role="presentation"><tr><td align="center" style="padding:40px 20px;">
+    <table style="width:100%;max-width:600px;background:#fff;border-radius:8px;box-shadow:0 4px 6px rgba(0,0,0,0.1);" role="presentation">
+      <tr><td style="padding:40px 40px 20px;text-align:center;border-bottom:1px solid #e2e8f0;">
+        <h1 style="margin:0;color:#1e293b;font-size:24px;font-weight:600;">Password Reset Request</h1>
+      </td></tr>
+      <tr><td style="padding:40px;">
+        <p style="margin:0 0 20px;color:#334155;font-size:16px;line-height:1.6;">Hi ${user.name || 'there'},</p>
+        <p style="margin:0 0 20px;color:#334155;font-size:16px;line-height:1.6;">We received a request to reset your VebTask password. If you didn't make this request, you can safely ignore this email.</p>
+        <div style="text-align:center;margin:40px 0;">
+          <a href="${resetUrl}" style="display:inline-block;background:#007acc;color:#fff;padding:16px 32px;text-decoration:none;border-radius:6px;font-weight:600;font-size:16px;">Reset Password</a>
+        </div>
+        <p style="margin:20px 0;color:#64748b;font-size:14px;">If the button doesn't work, copy this link:</p>
+        <p style="margin:0 0 20px;color:#007acc;font-size:14px;word-break:break-all;">${resetUrl}</p>
+        <div style="background:#fef3c7;border-left:4px solid #f59e0b;padding:16px;border-radius:4px;">
+          <p style="margin:0;color:#92400e;font-size:14px;"><strong>Security Notice:</strong> This link expires in 15 minutes.</p>
+        </div>
+      </td></tr>
+      <tr><td style="padding:20px 40px 40px;text-align:center;border-top:1px solid #e2e8f0;">
+        <p style="margin:0;color:#94a3b8;font-size:12px;">VebTask — Secure Task Management</p>
+      </td></tr>
     </table>
+  </td></tr></table>
 </body>
-</html>
-        `
-      };
+</html>`,
+        }),
+      });
 
-      await transporter.sendMail(mailOptions);
-      console.log(`✅ Password reset email sent to ${email}`);
+      if (!resendRes.ok) {
+        const errBody = await resendRes.json().catch(() => ({}));
+        console.error('❌ Resend API error:', resendRes.status, errBody);
+      } else {
+        console.log(`✅ Password reset email sent to ${email}`);
+      }
     } catch (emailError) {
       console.error('❌ Failed to send reset email:', emailError);
-      // Don't fail the request if email fails - still return success
+      // Don't fail the request if email fails
     }
 
     res.json({ 

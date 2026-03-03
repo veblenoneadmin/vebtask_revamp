@@ -1,15 +1,16 @@
 import nodemailer from 'nodemailer';
 
 // Configure SMTP transporter
+// Port 465 = SSL (secure: true), port 587 = STARTTLS (secure: false)
+const smtpPort = Number(process.env.SMTP_PORT || 587);
 export const transporter = nodemailer.createTransport({
   host: process.env.SMTP_HOST,
-  port: Number(process.env.SMTP_PORT || 587),
-  secure: false, // Use STARTTLS
+  port: smtpPort,
+  secure: smtpPort === 465,
   auth: {
     user: process.env.SMTP_USER,
     pass: process.env.SMTP_PASS,
   },
-  // Additional options for better deliverability
   tls: {
     rejectUnauthorized: false
   }

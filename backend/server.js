@@ -359,7 +359,7 @@ app.use('/api/reports', reportsRoutes);
 app.use('/api/user-reports', userReportsRoutes);
 app.use('/api/onboarding', onboardingRoutes);
 app.use('/api/admin', adminRoutes);
-app.use('/api/auth', passwordResetRoutes);
+app.use('/api/password-reset', passwordResetRoutes);
 app.use('/api/invitations', invitationRoutes);
 app.use('/api/skills', skillsRoutes);
 app.use('/api/attendance', attendanceRoutes);

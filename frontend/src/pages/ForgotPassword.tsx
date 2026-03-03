@@ -1,11 +1,8 @@
 import { useState } from 'react';
 import type { FormEvent } from 'react';
 import { Link } from 'react-router-dom';
-import { Mail, ArrowRight, Sparkles, MailCheck, ArrowLeft } from 'lucide-react';
+import { ArrowLeft, MailCheck } from 'lucide-react';
 import { EverSenseLogo } from '../components/EverSenseLogo';
-import { Card, CardContent, CardHeader } from '../components/ui/card';
-import { Button } from '../components/ui/button';
-import { Input } from '../components/ui/input';
 
 export function ForgotPassword() {
   const [email, setEmail] = useState('');
@@ -20,12 +17,9 @@ export function ForgotPassword() {
     setError('');
 
     try {
-      // Call the password reset API
-      const response = await fetch('/api/auth/reset-password', {
+      const response = await fetch('/api/password-reset/reset-password', {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
+        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ email }),
       });
 
@@ -37,157 +31,187 @@ export function ForgotPassword() {
       } else {
         setError(result.message || 'Failed to send reset email');
       }
-    } catch (err) {
+    } catch {
       setError('An error occurred. Please try again.');
-      console.error('Password reset error:', err);
     } finally {
       setLoading(false);
     }
   };
 
   return (
-    <div className="min-h-screen bg-background flex items-center justify-center p-4 relative overflow-hidden">
-      {/* Background Effects */}
-      <div className="absolute inset-0 bg-gradient-to-br from-primary/5 via-background to-accent/5"></div>
-      <div className="absolute inset-0">
-        <div className="absolute top-1/4 left-1/4 w-96 h-96 bg-primary/10 rounded-full blur-3xl animate-pulse"></div>
-        <div className="absolute bottom-1/4 right-1/4 w-96 h-96 bg-accent/10 rounded-full blur-3xl animate-pulse delay-1000"></div>
+    <div
+      className="min-h-screen flex items-center justify-center p-4 relative overflow-hidden"
+      style={{ backgroundColor: '#1e1e1e' }}
+    >
+      {/* Pulsing background orbs */}
+      <div className="absolute inset-0" style={{ background: 'radial-gradient(ellipse at 20% 50%, rgba(0,122,204,0.06) 0%, transparent 60%), radial-gradient(ellipse at 80% 20%, rgba(0,122,204,0.04) 0%, transparent 50%)' }} />
+      <div className="absolute inset-0 pointer-events-none">
+        <div className="absolute rounded-full blur-3xl animate-pulse" style={{ top: '20%', left: '15%', width: '380px', height: '380px', background: 'rgba(0,122,204,0.08)' }} />
+        <div className="absolute rounded-full blur-3xl animate-pulse" style={{ bottom: '20%', right: '15%', width: '340px', height: '340px', background: 'rgba(0,122,204,0.06)', animationDelay: '1s' }} />
       </div>
-      
-      {/* Main Content */}
-      <div className="w-full max-w-md relative z-10">
-        {/* Logo & Brand */}
-        <div className="text-center mb-8">
-          <div className="flex items-center justify-center mb-6">
-            <EverSenseLogo height={56} width={328} />
+
+      {/* VS Code window panel */}
+      <div className="w-full max-w-sm relative z-10" style={{ filter: 'drop-shadow(0 8px 32px rgba(0,0,0,0.6))' }}>
+
+        {/* Title bar */}
+        <div
+          className="flex items-center justify-between px-4"
+          style={{ backgroundColor: '#323233', borderRadius: '8px 8px 0 0', height: '32px', borderBottom: '1px solid #3c3c3c' }}
+        >
+          <div className="flex items-center gap-1.5">
+            <span className="w-3 h-3 rounded-full" style={{ backgroundColor: '#ff5f57' }} />
+            <span className="w-3 h-3 rounded-full" style={{ backgroundColor: '#febc2e' }} />
+            <span className="w-3 h-3 rounded-full" style={{ backgroundColor: '#28c840' }} />
           </div>
-          <div className="space-y-2">
-            <h1 className="text-3xl font-bold gradient-text">EverSense Ai</h1>
-            <p className="text-sm text-muted-foreground flex items-center justify-center gap-2">
-              <Sparkles className="h-4 w-4" />
-              AI-Powered Task Management
-            </p>
+          <span className="text-xs" style={{ color: '#858585', fontFamily: 'monospace' }}>
+            EverSense Ai — forgot-password.ts
+          </span>
+          <div className="w-12" />
+        </div>
+
+        {/* Editor panel */}
+        <div style={{ backgroundColor: '#252526', border: '1px solid #3c3c3c', borderTop: 'none', borderRadius: '0 0 8px 8px' }}>
+
+          {/* Tab bar */}
+          <div style={{ backgroundColor: '#2d2d2d', borderBottom: '1px solid #3c3c3c', display: 'flex', alignItems: 'stretch' }}>
+            <div
+              className="flex items-center gap-2 px-4 py-2 text-xs"
+              style={{ color: '#cccccc', borderBottom: '1px solid #007acc', backgroundColor: '#1e1e1e', fontFamily: 'monospace' }}
+            >
+              <EverSenseLogo height={16} width={94} />
+              forgot-password.ts
+            </div>
+          </div>
+
+          {/* Content */}
+          <div className="p-6 space-y-5">
+
+            {/* Logo + Heading */}
+            <div className="flex flex-col items-center gap-2 mb-2">
+              <EverSenseLogo width={336} height={80} />
+              <div className="text-sm font-medium" style={{ color: '#858585' }}>
+                {emailSent ? 'Check your inbox' : 'Reset your password'}
+              </div>
+            </div>
+
+            {!emailSent ? (
+              <form onSubmit={handleSubmit} className="space-y-4">
+                {/* Email */}
+                <div className="space-y-1">
+                  <label htmlFor="email" className="text-xs font-medium" style={{ color: '#9cdcfe', fontFamily: 'monospace' }}>
+                    // email address
+                  </label>
+                  <input
+                    type="email"
+                    id="email"
+                    placeholder="user@company.com"
+                    value={email}
+                    onChange={(e) => setEmail(e.target.value)}
+                    required
+                    className="w-full px-3 py-2 text-sm outline-none transition-colors"
+                    style={{
+                      backgroundColor: '#3c3c3c',
+                      border: '1px solid #3c3c3c',
+                      borderRadius: '4px',
+                      color: '#cccccc',
+                      fontFamily: 'monospace',
+                    }}
+                    onFocus={e => (e.target.style.borderColor = '#007acc')}
+                    onBlur={e => (e.target.style.borderColor = '#3c3c3c')}
+                  />
+                </div>
+
+                {/* Error */}
+                {error && (
+                  <div
+                    className="px-3 py-2 text-xs rounded"
+                    style={{ backgroundColor: 'rgba(244,71,71,0.1)', border: '1px solid rgba(244,71,71,0.3)', color: '#f47171', fontFamily: 'monospace' }}
+                  >
+                    ✗ {error}
+                  </div>
+                )}
+
+                {/* Submit */}
+                <button
+                  type="submit"
+                  disabled={loading}
+                  className="w-full py-2 text-sm font-medium transition-all duration-200"
+                  style={{
+                    backgroundColor: loading ? '#0a4d7a' : '#0e639c',
+                    color: '#ffffff',
+                    border: '1px solid #1177bb',
+                    borderRadius: '4px',
+                    cursor: loading ? 'not-allowed' : 'pointer',
+                    fontFamily: 'monospace',
+                  }}
+                  onMouseEnter={e => { if (!loading) (e.currentTarget.style.backgroundColor = '#1177bb'); }}
+                  onMouseLeave={e => { if (!loading) (e.currentTarget.style.backgroundColor = '#0e639c'); }}
+                >
+                  {loading ? '▶ Sending...' : '▶ Send Reset Email'}
+                </button>
+
+                {/* Back to login */}
+                <div className="text-center">
+                  <Link
+                    to="/login"
+                    className="inline-flex items-center gap-1 text-xs transition-colors"
+                    style={{ color: '#007acc', fontFamily: 'monospace' }}
+                  >
+                    <ArrowLeft className="h-3 w-3" />
+                    Back to Sign In
+                  </Link>
+                </div>
+              </form>
+            ) : (
+              <div className="space-y-4">
+                {/* Success state */}
+                <div
+                  className="px-3 py-3 text-xs rounded flex items-start gap-2"
+                  style={{ backgroundColor: 'rgba(78,201,176,0.1)', border: '1px solid rgba(78,201,176,0.3)', color: '#4ec9b0', fontFamily: 'monospace' }}
+                >
+                  <MailCheck className="h-4 w-4 shrink-0 mt-0.5" />
+                  <div>
+                    <div className="font-medium mb-1">✓ Reset email sent</div>
+                    <div style={{ color: '#858585' }}>to {userEmail}</div>
+                  </div>
+                </div>
+
+                <div className="text-xs space-y-1" style={{ color: '#858585', fontFamily: 'monospace' }}>
+                  <div>// Check your inbox (and spam folder)</div>
+                  <div>// Link expires in 15 minutes</div>
+                  <div>// Click the link to set a new password</div>
+                </div>
+
+                <Link
+                  to="/login"
+                  className="flex items-center justify-center gap-1 w-full py-2 text-sm font-medium transition-all duration-200"
+                  style={{
+                    backgroundColor: '#0e639c',
+                    color: '#ffffff',
+                    border: '1px solid #1177bb',
+                    borderRadius: '4px',
+                    fontFamily: 'monospace',
+                    textDecoration: 'none',
+                  }}
+                  onMouseEnter={e => (e.currentTarget.style.backgroundColor = '#1177bb')}
+                  onMouseLeave={e => (e.currentTarget.style.backgroundColor = '#0e639c')}
+                >
+                  <ArrowLeft className="h-3 w-3" />
+                  Back to Sign In
+                </Link>
+              </div>
+            )}
+
           </div>
         </div>
 
-        {/* Forgot Password Card */}
-        <Card className="glass shadow-elevation">
-          {!emailSent ? (
-            <>
-              <CardHeader className="space-y-1 pb-4">
-                <h2 className="text-2xl font-semibold text-center">Forgot your password? 🔑</h2>
-                <p className="text-sm text-muted-foreground text-center">
-                  No worries! Enter your email and we'll send you a reset link.
-                </p>
-              </CardHeader>
-              <CardContent className="space-y-4">
-                <form onSubmit={handleSubmit} className="space-y-4">
-                  {/* Email Input */}
-                  <div className="space-y-2">
-                    <label htmlFor="email" className="text-sm font-medium text-foreground">
-                      Email Address
-                    </label>
-                    <div className="relative">
-                      <Mail className="absolute left-3 top-3 h-4 w-4 text-white/80 z-10" />
-                      <Input
-                        type="email"
-                        id="email"
-                        placeholder="Enter your email address"
-                        value={email}
-                        onChange={(e) => setEmail(e.target.value)}
-                        className="pl-10 glass-surface"
-                        required
-                      />
-                    </div>
-                  </div>
-
-                  {/* Error Message */}
-                  {error && (
-                    <div className="p-3 rounded-lg bg-error/10 border border-error/20 text-error text-sm">
-                      {error}
-                    </div>
-                  )}
-
-                  {/* Submit Button */}
-                  <Button 
-                    type="submit" 
-                    disabled={loading}
-                    className="w-full bg-gradient-primary hover:bg-gradient-primary/90 text-white shadow-glow transition-all duration-300"
-                  >
-                    {loading ? 'Sending reset email...' : 'Send Reset Email'}
-                    <ArrowRight className="ml-2 h-4 w-4" />
-                  </Button>
-                </form>
-
-                {/* Back to Login */}
-                <div className="text-center pt-4 border-t border-border">
-                  <Link 
-                    to="/login" 
-                    className="inline-flex items-center gap-2 text-primary hover:text-primary/80 transition-colors"
-                  >
-                    <ArrowLeft className="h-4 w-4" />
-                    Back to Sign In
-                  </Link>
-                </div>
-              </CardContent>
-            </>
-          ) : (
-            <>
-              <CardHeader className="space-y-1 pb-4">
-                <div className="flex items-center justify-center mb-4">
-                  <div className="p-4 bg-success/10 rounded-full">
-                    <MailCheck className="h-8 w-8 text-success" />
-                  </div>
-                </div>
-                <h2 className="text-2xl font-semibold text-center">Check Your Email! 📧</h2>
-                <p className="text-sm text-muted-foreground text-center">
-                  We've sent a password reset link to your email
-                </p>
-              </CardHeader>
-              <CardContent className="space-y-4">
-                <div className="text-center space-y-4">
-                  <div className="p-4 rounded-lg bg-success/10 border border-success/20">
-                    <p className="text-sm text-foreground mb-2">
-                      <strong>Reset email sent to:</strong>
-                    </p>
-                    <p className="text-success font-medium">{userEmail}</p>
-                  </div>
-                  
-                  <div className="space-y-3 text-sm text-muted-foreground">
-                    <p className="font-medium text-foreground">What's next?</p>
-                    <ol className="text-xs text-muted-foreground space-y-1 text-left bg-muted/30 p-4 rounded-lg">
-                      <li>1. Check your email (including spam/junk folder)</li>
-                      <li>2. Click the "Reset Password" link in the email</li>
-                      <li>3. Create a new password</li>
-                      <li>4. Sign in with your new password</li>
-                    </ol>
-                  </div>
-
-                  <div className="text-xs text-muted-foreground p-3 bg-amber-500/10 border border-amber-500/20 rounded-lg">
-                    <strong>Note:</strong> The reset link will expire in 15 minutes for security.
-                  </div>
-                </div>
-
-                {/* Back to Login */}
-                <div className="text-center pt-4 border-t border-border">
-                  <Link 
-                    to="/login" 
-                    className="inline-flex items-center gap-2 text-primary hover:text-primary/80 transition-colors font-medium"
-                  >
-                    <ArrowLeft className="h-4 w-4" />
-                    Back to Sign In
-                  </Link>
-                </div>
-              </CardContent>
-            </>
-          )}
-        </Card>
-
-        {/* Footer */}
-        <div className="text-center mt-8">
-          <p className="text-xs text-muted-foreground">
-            © 2024 EverSense Ai. Secure authentication powered by better-auth.
-          </p>
+        {/* Status bar */}
+        <div
+          className="flex items-center justify-between px-3 text-xs"
+          style={{ backgroundColor: '#007acc', color: '#ffffff', height: '22px', borderRadius: '0 0 8px 8px', fontFamily: 'monospace' }}
+        >
+          <span>⎇ main</span>
+          <span>EverSense Ai v1.0</span>
         </div>
       </div>
     </div>

@@ -712,8 +712,8 @@ export function Projects() {
                                 <Eye className="h-3 w-3" /> View Overview
                                 <ChevronRight className="h-3 w-3 ml-auto" />
                               </button>
-                              {/* Edit & Delete — staff/admin only */}
-                              {userRole !== 'CLIENT' && (
+                              {/* Edit & Delete — owner/admin only */}
+                              {(userRole === 'OWNER' || userRole === 'ADMIN') && (
                                 <>
                                   <div style={{ height: 1, background: VS.border, margin: '2px 0' }} />
                                   <button

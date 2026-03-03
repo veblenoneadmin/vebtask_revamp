@@ -3,6 +3,7 @@ import express from 'express';
 import { prisma } from '../lib/prisma.js';
 import crypto from 'crypto';
 import bcrypt from 'bcryptjs';
+import { transporter } from '../lib/mailer.js';
 
 const router = express.Router();
 
@@ -44,32 +45,18 @@ router.post('/reset-password', async (req, res) => {
       }
     });
 
-    // Send reset email via SendGrid HTTP API (no DNS/domain verification needed)
+    // Send reset email via nodemailer (uses SMTP_HOST/PORT/USER/PASS env vars)
     try {
       const resetUrl = `${process.env.BETTER_AUTH_URL || 'https://vebtask.com'}/reset-password?token=${resetToken}`;
+      const fromAddr = (process.env.SMTP_FROM || process.env.SMTP_USER || '').trim().replace(/^["']|["']$/g, '');
 
-      const apiKey = (process.env.SENDGRID_API_KEY || '').trim();
-      const fromAddr = (process.env.SMTP_FROM || '').trim().replace(/^["']|["']$/g, '');
+      console.log(`📧 Sending reset email to ${email} from ${fromAddr}`);
 
-      console.log(`📧 Sending reset email to ${email} from ${fromAddr || '(not set)'}`);
-      console.log(`🔑 SendGrid API key configured: ${apiKey ? 'yes (' + apiKey.substring(0, 8) + '...)' : 'NO — SENDGRID_API_KEY not set'}`);
-
-      if (!apiKey || !fromAddr) {
-        console.error('❌ SENDGRID_API_KEY or SMTP_FROM is not set');
-      } else {
-        const sgRes = await fetch('https://api.sendgrid.com/v3/mail/send', {
-          method: 'POST',
-          headers: {
-            'Authorization': `Bearer ${apiKey}`,
-            'Content-Type': 'application/json',
-          },
-          body: JSON.stringify({
-            personalizations: [{ to: [{ email }] }],
-            from: { email: fromAddr, name: 'VebTask' },
-            subject: 'Reset your VebTask password',
-            content: [{
-              type: 'text/html',
-              value: `<!DOCTYPE html>
+      await transporter.sendMail({
+        from: fromAddr,
+        to: email,
+        subject: 'Reset your VebTask password',
+        html: `<!DOCTYPE html>
 <html>
 <head><meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0"></head>
 <body style="margin:0;padding:0;background:#f8fafc;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;">
@@ -96,18 +83,10 @@ router.post('/reset-password', async (req, res) => {
     </table>
   </td></tr></table>
 </body>
-</html>`
-            }],
-          }),
-        });
+</html>`,
+      });
 
-        if (!sgRes.ok) {
-          const errText = await sgRes.text().catch(() => '');
-          console.error('❌ SendGrid API error:', sgRes.status, errText);
-        } else {
-          console.log(`✅ Password reset email sent to ${email}`);
-        }
-      }
+      console.log(`✅ Password reset email sent to ${email}`);
     } catch (emailError) {
       console.error('❌ Failed to send reset email:', emailError.message);
     }

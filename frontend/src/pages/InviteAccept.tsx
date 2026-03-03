@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { useSearchParams, useNavigate, Link } from 'react-router-dom';
-import { CheckCircle, ArrowRight, UserPlus, Building2, LogIn } from 'lucide-react';
+import { CheckCircle, ArrowRight, UserPlus, Building2, LogIn, Eye, EyeOff } from 'lucide-react';
 import { EverSenseLogo } from '../components/EverSenseLogo';
 import { useSessionContext } from '../contexts/SessionContext';
 
@@ -25,6 +25,19 @@ const ROLE_LABEL: Record<string, string> = {
   CLIENT: 'Client',
 };
 
+const inp: React.CSSProperties = {
+  width: '100%',
+  padding: '7px 10px',
+  backgroundColor: '#3c3c3c',
+  border: '1px solid #555',
+  borderRadius: 4,
+  color: '#cccccc',
+  fontSize: 13,
+  fontFamily: 'monospace',
+  outline: 'none',
+  boxSizing: 'border-box',
+};
+
 export function InviteAccept() {
   const [searchParams] = useSearchParams();
   const navigate = useNavigate();
@@ -35,6 +48,14 @@ export function InviteAccept() {
   const [accepting, setAccepting] = useState(false);
   const [error, setError] = useState('');
   const [success, setSuccess] = useState(false);
+
+  // Create-account form state
+  const [name, setName] = useState('');
+  const [password, setPassword] = useState('');
+  const [confirmPassword, setConfirmPassword] = useState('');
+  const [showPw, setShowPw] = useState(false);
+  const [showConfirmPw, setShowConfirmPw] = useState(false);
+  const [mode, setMode] = useState<'create' | 'signin'>('create');
 
   const token = searchParams.get('token');
 
@@ -63,6 +84,7 @@ export function InviteAccept() {
       .finally(() => setLoading(false));
   }, [token]);
 
+  // Accept invite (for already-logged-in users)
   const handleAccept = async () => {
     setAccepting(true);
     setError('');
@@ -79,6 +101,67 @@ export function InviteAccept() {
       } else {
         setError(data.error || data.message || 'Failed to accept invite.');
       }
+    } catch {
+      setError('An error occurred. Please try again.');
+    } finally {
+      setAccepting(false);
+    }
+  };
+
+  // Create account + accept invite (for new users)
+  const handleCreateAndAccept = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setError('');
+
+    if (!name.trim()) return setError('Please enter your name.');
+    if (password.length < 8) return setError('Password must be at least 8 characters.');
+    if (password !== confirmPassword) return setError('Passwords do not match.');
+
+    setAccepting(true);
+    try {
+      // Step 1: Create account via Better Auth
+      const signupRes = await fetch('/api/auth/sign-up/email', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
+        body: JSON.stringify({
+          email: invite!.email,
+          password,
+          name: name.trim(),
+        }),
+      });
+
+      const signupData = await signupRes.json();
+      if (!signupRes.ok) {
+        const msg = signupData.message || signupData.error || 'Failed to create account.';
+        // If email already exists, prompt to sign in
+        if (msg.toLowerCase().includes('already') || msg.toLowerCase().includes('exists')) {
+          setError('An account with this email already exists. Please sign in instead.');
+          setMode('signin');
+        } else {
+          setError(msg);
+        }
+        return;
+      }
+
+      // Step 2: Accept the invite
+      const acceptRes = await fetch('/api/invites/accept', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
+        body: JSON.stringify({ token }),
+      });
+
+      if (!acceptRes.ok) {
+        const d = await acceptRes.json();
+        setError(d.error || 'Account created but failed to join organization. Please try signing in.');
+        return;
+      }
+
+      // Step 3: Redirect (full reload to pick up new session)
+      setSuccess(true);
+      setTimeout(() => { window.location.href = '/dashboard'; }, 2000);
+
     } catch {
       setError('An error occurred. Please try again.');
     } finally {
@@ -155,17 +238,9 @@ export function InviteAccept() {
             <CheckCircle className="h-10 w-10" style={{ color: '#4ec9b0' }} />
           </div>
           <div>
-            <p className="text-sm font-medium" style={{ color: '#cccccc', fontFamily: 'monospace' }}>✓ Invite accepted</p>
+            <p className="text-sm font-medium" style={{ color: '#cccccc', fontFamily: 'monospace' }}>✓ Welcome to {invite?.organization.name}!</p>
             <p className="text-xs mt-1" style={{ color: '#858585', fontFamily: 'monospace' }}>// redirecting to dashboard...</p>
           </div>
-          <Link
-            to="/dashboard"
-            className="inline-flex items-center gap-1 text-xs"
-            style={{ color: '#007acc', fontFamily: 'monospace' }}
-          >
-            Go to Dashboard
-            <ArrowRight className="h-3 w-3" />
-          </Link>
         </div>
       </Shell>
     );
@@ -193,14 +268,15 @@ export function InviteAccept() {
     );
   }
 
-  // Valid invite — user not logged in
+  // Valid invite — user NOT logged in → show create account / sign in
   if (!session) {
     const loginUrl = `/login?redirect=${encodeURIComponent(`/invite?token=${token}`)}`;
+
     return (
       <Shell>
         <div className="space-y-4">
-          {/* Invite info */}
-          <div className="px-3 py-3 rounded space-y-2" style={{ backgroundColor: 'rgba(0,122,204,0.08)', border: '1px solid rgba(0,122,204,0.25)' }}>
+          {/* Org info */}
+          <div className="px-3 py-3 rounded space-y-1.5" style={{ backgroundColor: 'rgba(0,122,204,0.08)', border: '1px solid rgba(0,122,204,0.25)' }}>
             <div className="flex items-center gap-2">
               <Building2 className="h-4 w-4 shrink-0" style={{ color: '#007acc' }} />
               <span className="text-sm font-medium" style={{ color: '#cccccc', fontFamily: 'monospace' }}>
@@ -212,38 +288,148 @@ export function InviteAccept() {
               {invite.invitedBy && (
                 <div>// invited by: <span style={{ color: '#9cdcfe' }}>{invite.invitedBy.name}</span></div>
               )}
-              <div>// for: <span style={{ color: '#ce9178' }}>{invite.email}</span></div>
+              <div>// email: <span style={{ color: '#ce9178' }}>{invite.email}</span></div>
             </div>
           </div>
 
-          <div className="text-xs" style={{ color: '#858585', fontFamily: 'monospace' }}>
-            // Sign in to accept this invitation
+          {/* Mode tabs */}
+          <div className="flex rounded overflow-hidden" style={{ border: '1px solid #3c3c3c' }}>
+            {(['create', 'signin'] as const).map(m => (
+              <button
+                key={m}
+                onClick={() => { setMode(m); setError(''); }}
+                className="flex-1 py-1.5 text-xs font-medium transition-colors"
+                style={{
+                  backgroundColor: mode === m ? '#007acc' : '#2d2d2d',
+                  color: mode === m ? '#fff' : '#858585',
+                  border: 'none',
+                  fontFamily: 'monospace',
+                  cursor: 'pointer',
+                }}
+              >
+                {m === 'create' ? '+ Create Account' : '→ Sign In'}
+              </button>
+            ))}
           </div>
 
-          <Link
-            to={loginUrl}
-            className="flex items-center justify-center gap-2 w-full py-2 text-sm font-medium transition-all duration-200"
-            style={{
-              backgroundColor: '#0e639c',
-              color: '#ffffff',
-              border: '1px solid #1177bb',
-              borderRadius: '4px',
-              fontFamily: 'monospace',
-              textDecoration: 'none',
-            }}
-            onMouseEnter={e => (e.currentTarget.style.backgroundColor = '#1177bb')}
-            onMouseLeave={e => (e.currentTarget.style.backgroundColor = '#0e639c')}
-          >
-            <LogIn className="h-4 w-4" />
-            Sign In to Accept
-          </Link>
+          {/* Create account form */}
+          {mode === 'create' && (
+            <form onSubmit={handleCreateAndAccept} className="space-y-3">
+              <div>
+                <label className="block text-xs mb-1" style={{ color: '#858585', fontFamily: 'monospace' }}>Email</label>
+                <input
+                  type="email"
+                  value={invite.email}
+                  readOnly
+                  style={{ ...inp, color: '#6a9955', cursor: 'not-allowed', opacity: 0.8 }}
+                />
+              </div>
+              <div>
+                <label className="block text-xs mb-1" style={{ color: '#858585', fontFamily: 'monospace' }}>Your Name</label>
+                <input
+                  type="text"
+                  placeholder="Full name"
+                  value={name}
+                  onChange={e => setName(e.target.value)}
+                  required
+                  style={inp}
+                  autoFocus
+                />
+              </div>
+              <div>
+                <label className="block text-xs mb-1" style={{ color: '#858585', fontFamily: 'monospace' }}>Password</label>
+                <div style={{ position: 'relative' }}>
+                  <input
+                    type={showPw ? 'text' : 'password'}
+                    placeholder="Min 8 characters"
+                    value={password}
+                    onChange={e => setPassword(e.target.value)}
+                    required
+                    style={{ ...inp, paddingRight: 36 }}
+                  />
+                  <button
+                    type="button"
+                    onClick={() => setShowPw(p => !p)}
+                    style={{ position: 'absolute', right: 8, top: '50%', transform: 'translateY(-50%)', background: 'none', border: 'none', color: '#858585', cursor: 'pointer', padding: 0 }}
+                  >
+                    {showPw ? <EyeOff size={14} /> : <Eye size={14} />}
+                  </button>
+                </div>
+              </div>
+              <div>
+                <label className="block text-xs mb-1" style={{ color: '#858585', fontFamily: 'monospace' }}>Confirm Password</label>
+                <div style={{ position: 'relative' }}>
+                  <input
+                    type={showConfirmPw ? 'text' : 'password'}
+                    placeholder="Re-enter password"
+                    value={confirmPassword}
+                    onChange={e => setConfirmPassword(e.target.value)}
+                    required
+                    style={{ ...inp, paddingRight: 36 }}
+                  />
+                  <button
+                    type="button"
+                    onClick={() => setShowConfirmPw(p => !p)}
+                    style={{ position: 'absolute', right: 8, top: '50%', transform: 'translateY(-50%)', background: 'none', border: 'none', color: '#858585', cursor: 'pointer', padding: 0 }}
+                  >
+                    {showConfirmPw ? <EyeOff size={14} /> : <Eye size={14} />}
+                  </button>
+                </div>
+              </div>
 
-          <div className="text-center text-xs" style={{ color: '#858585', fontFamily: 'monospace' }}>
-            // No account?{' '}
-            <Link to={`/register?redirect=${encodeURIComponent(`/invite?token=${token}`)}`} style={{ color: '#007acc' }}>
-              Create one
-            </Link>
-          </div>
+              {error && (
+                <div className="px-3 py-2 text-xs rounded" style={{ backgroundColor: 'rgba(244,71,71,0.1)', border: '1px solid rgba(244,71,71,0.3)', color: '#f47171', fontFamily: 'monospace' }}>
+                  ✗ {error}
+                </div>
+              )}
+
+              <button
+                type="submit"
+                disabled={accepting}
+                className="w-full py-2 text-sm font-medium flex items-center justify-center gap-2 transition-all duration-200"
+                style={{
+                  backgroundColor: accepting ? '#0a4d7a' : '#0e639c',
+                  color: '#ffffff',
+                  border: '1px solid #1177bb',
+                  borderRadius: '4px',
+                  cursor: accepting ? 'not-allowed' : 'pointer',
+                  fontFamily: 'monospace',
+                }}
+              >
+                <UserPlus className="h-4 w-4" />
+                {accepting ? '▶ Creating account...' : '▶ Create Account & Join'}
+              </button>
+            </form>
+          )}
+
+          {/* Sign in option */}
+          {mode === 'signin' && (
+            <div className="space-y-3">
+              <p className="text-xs" style={{ color: '#858585', fontFamily: 'monospace' }}>
+                // Sign in with your existing account to accept this invitation.
+              </p>
+              {error && (
+                <div className="px-3 py-2 text-xs rounded" style={{ backgroundColor: 'rgba(244,71,71,0.1)', border: '1px solid rgba(244,71,71,0.3)', color: '#f47171', fontFamily: 'monospace' }}>
+                  ✗ {error}
+                </div>
+              )}
+              <Link
+                to={loginUrl}
+                className="flex items-center justify-center gap-2 w-full py-2 text-sm font-medium"
+                style={{
+                  backgroundColor: '#0e639c',
+                  color: '#ffffff',
+                  border: '1px solid #1177bb',
+                  borderRadius: '4px',
+                  fontFamily: 'monospace',
+                  textDecoration: 'none',
+                }}
+              >
+                <LogIn className="h-4 w-4" />
+                Sign In to Accept
+              </Link>
+            </div>
+          )}
         </div>
       </Shell>
     );

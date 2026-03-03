@@ -345,7 +345,8 @@ app.use('/api/organizations', organizationRoutes);
 app.use('/api/organizations', memberRoutes);
 
 // Invite system routes
-app.use('/api', inviteRoutes);
+app.use('/api/invites', inviteRoutes);
+app.use('/api/organizations', inviteRoutes);
 
 // Wizard/onboarding routes
 app.use('/api/wizard', wizardRoutes);

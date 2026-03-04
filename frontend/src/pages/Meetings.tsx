@@ -2,7 +2,7 @@ import { useState, useEffect } from 'react';
 import { useApiClient } from '../lib/api-client';
 import {
   Video, Users, Clock, Calendar, ChevronDown, ChevronUp,
-  Search, Wifi, WifiOff, FileText, Tag,
+  Search, Wifi, WifiOff, FileText, Tag, RefreshCw,
 } from 'lucide-react';
 
 const VS = {
@@ -66,24 +66,40 @@ export function Meetings() {
 
   const [transcripts, setTranscripts]   = useState<Transcript[]>([]);
   const [loading, setLoading]           = useState(true);
+  const [syncing, setSyncing]           = useState(false);
+  const [syncMsg, setSyncMsg]           = useState('');
   const [search, setSearch]             = useState('');
   const [expanded, setExpanded]         = useState<string | null>(null);
   const [connected, setConnected]       = useState(false);
 
-  useEffect(() => {
-    const load = async () => {
-      try {
-        const [tData, sData] = await Promise.all([
-          apiClient.fetch('/api/fireflies/transcripts'),
-          apiClient.fetch('/api/fireflies/status'),
-        ]);
-        setTranscripts(tData.transcripts ?? []);
-        setConnected(sData.connected ?? false);
-      } catch { /* ignore */ }
-      finally { setLoading(false); }
-    };
-    load();
-  }, []);
+  const loadTranscripts = async () => {
+    try {
+      const [tData, sData] = await Promise.all([
+        apiClient.fetch('/api/fireflies/transcripts'),
+        apiClient.fetch('/api/fireflies/status'),
+      ]);
+      setTranscripts(tData.transcripts ?? []);
+      setConnected(sData.connected ?? false);
+    } catch { /* ignore */ }
+    finally { setLoading(false); }
+  };
+
+  useEffect(() => { loadTranscripts(); }, []);
+
+  const handleSync = async () => {
+    setSyncing(true);
+    setSyncMsg('');
+    try {
+      const data = await apiClient.fetch('/api/fireflies/sync', { method: 'POST' });
+      setSyncMsg(data.newCount > 0 ? `✓ ${data.newCount} new meeting(s) synced` : '✓ Already up to date');
+      await loadTranscripts();
+    } catch (err: any) {
+      setSyncMsg(`Error: ${err.message}`);
+    } finally {
+      setSyncing(false);
+      setTimeout(() => setSyncMsg(''), 4000);
+    }
+  };
 
   const filtered = transcripts.filter(t => {
     if (!search) return true;
@@ -110,22 +126,44 @@ export function Meetings() {
   return (
     <div className="space-y-6">
       {/* Header */}
-      <div className="flex items-center justify-between">
+      <div className="flex items-center justify-between gap-4 flex-wrap">
         <div>
           <h1 className="text-xl font-semibold" style={{ color: VS.text0 }}>Meeting Summaries</h1>
           <p className="text-[12px] mt-0.5" style={{ color: VS.text2 }}>
             AI-generated summaries from Fireflies.ai
           </p>
         </div>
-        <div
-          className="flex items-center gap-2 px-3 py-1.5 rounded-full text-[12px] font-medium"
-          style={connected
-            ? { background: 'rgba(78,201,176,0.12)', color: VS.teal, border: `1px solid rgba(78,201,176,0.25)` }
-            : { background: 'rgba(144,144,144,0.1)', color: VS.text2, border: `1px solid ${VS.border}` }
-          }
-        >
-          {connected ? <Wifi className="h-3.5 w-3.5" /> : <WifiOff className="h-3.5 w-3.5" />}
-          {connected ? 'Fireflies Connected' : 'Fireflies Not Connected'}
+        <div className="flex items-center gap-3 flex-wrap">
+          {/* Sync Now button */}
+          {connected && (
+            <div className="flex items-center gap-2">
+              {syncMsg && (
+                <span className="text-[12px]" style={{ color: syncMsg.startsWith('Error') ? VS.red : VS.teal }}>
+                  {syncMsg}
+                </span>
+              )}
+              <button
+                onClick={handleSync}
+                disabled={syncing}
+                className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-[12px] font-medium transition-opacity disabled:opacity-50"
+                style={{ background: VS.bg2, border: `1px solid ${VS.border}`, color: VS.text1 }}
+              >
+                <RefreshCw className={`h-3.5 w-3.5 ${syncing ? 'animate-spin' : ''}`} />
+                {syncing ? 'Syncing…' : 'Sync Now'}
+              </button>
+            </div>
+          )}
+          {/* Connection badge */}
+          <div
+            className="flex items-center gap-2 px-3 py-1.5 rounded-full text-[12px] font-medium"
+            style={connected
+              ? { background: 'rgba(78,201,176,0.12)', color: VS.teal, border: `1px solid rgba(78,201,176,0.25)` }
+              : { background: 'rgba(144,144,144,0.1)', color: VS.text2, border: `1px solid ${VS.border}` }
+            }
+          >
+            {connected ? <Wifi className="h-3.5 w-3.5" /> : <WifiOff className="h-3.5 w-3.5" />}
+            {connected ? 'Fireflies Connected' : 'Fireflies Not Connected'}
+          </div>
         </div>
       </div>
 

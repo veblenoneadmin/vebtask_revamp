@@ -116,10 +116,12 @@ async function processTranscript(transcript) {
     return true;
   }
 
-  const ph    = lcEmails.map(() => '?').join(',');
-  const users = await prisma.$queryRawUnsafe(
-    `SELECT id, email FROM User WHERE LOWER(email) IN (${ph})`, ...lcEmails
-  );
+  // Use Prisma ORM to avoid case-sensitive table name issues (User vs user on MySQL)
+  // lcEmails are already lowercase; MySQL utf8mb4_unicode_ci is case-insensitive so this matches
+  const users = await prisma.user.findMany({
+    where: { email: { in: lcEmails } },
+    select: { id: true, email: true },
+  }).catch(() => []);
 
   if (!users.length) {
     console.log(`[Fireflies] Stored "${title}" — no matching users for: ${lcEmails.join(', ')}`);
@@ -221,8 +223,12 @@ export async function startFirefliesPolling() {
       const transcripts = await fetchLatestTranscripts();
       let newCount = 0;
       for (const t of transcripts) {
-        const isNew = await processTranscript(t);
-        if (isNew) newCount++;
+        try {
+          const isNew = await processTranscript(t);
+          if (isNew) newCount++;
+        } catch (e) {
+          console.error('[Fireflies] Poll: error processing transcript:', t.id, e.message);
+        }
       }
       if (newCount) console.log(`[Fireflies] Poll complete — ${newCount} new transcript(s)`);
       else console.log('[Fireflies] Poll complete — no new transcripts');
@@ -235,5 +241,28 @@ export async function startFirefliesPolling() {
   await poll();
   setInterval(poll, 30 * 60 * 1000);
 }
+
+// ── POST /api/fireflies/sync — manual sync trigger ────────────────────────────
+router.post('/sync', requireAuth, async (req, res) => {
+  if (!process.env.FIREFLIES_API_KEY) {
+    return res.status(503).json({ success: false, error: 'FIREFLIES_API_KEY not configured' });
+  }
+  try {
+    const transcripts = await fetchLatestTranscripts();
+    let newCount = 0;
+    for (const t of transcripts) {
+      try {
+        const isNew = await processTranscript(t);
+        if (isNew) newCount++;
+      } catch (e) {
+        console.error('[Fireflies] Sync: error processing transcript:', t.id, e.message);
+      }
+    }
+    res.json({ success: true, total: transcripts.length, newCount });
+  } catch (err) {
+    console.error('[Fireflies] Manual sync error:', err.message);
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
 
 export default router;

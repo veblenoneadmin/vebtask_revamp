@@ -313,6 +313,20 @@ export function Tasks() {
     timerInterval.current = setInterval(() => setTick(t => t + 1), 1000);
   };
 
+  const handleMoveToInProgress = async (taskId: string) => {
+    const task = tasks.find(t => t.id === taskId);
+    if (!task || task.status === 'in_progress') return;
+    setTasks(prev => prev.map(t => t.id === taskId ? { ...t, status: 'in_progress' } : t));
+    try {
+      await apiClient.fetch(`/api/tasks/${taskId}/status`, {
+        method: 'PATCH',
+        body: JSON.stringify({ status: 'in_progress' }),
+      });
+    } catch {
+      setTasks(prev => prev.map(t => t.id === taskId ? { ...t, status: task.status } : t));
+    }
+  };
+
   const handleStopTimer = async (taskId: string) => {
     if (timerInterval.current) { clearInterval(timerInterval.current); timerInterval.current = null; }
 
@@ -945,7 +959,7 @@ export function Tasks() {
                             className="absolute inset-0 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity duration-200 z-10 pointer-events-none"
                           >
                             <span
-                              onClick={e => { e.stopPropagation(); timerTaskId === task.id ? handleStopTimer(task.id) : handleStartTimer(task.id); }}
+                              onClick={e => { e.stopPropagation(); if (timerTaskId === task.id) { handleStopTimer(task.id); } else { handleMoveToInProgress(task.id); handleStartTimer(task.id); } }}
                               onDoubleClick={e => e.stopPropagation()}
                               className="flex items-center justify-center h-10 w-10 rounded-full backdrop-blur-sm transition-transform duration-150 hover:scale-110 pointer-events-auto cursor-pointer"
                               style={{

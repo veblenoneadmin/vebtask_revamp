@@ -11,6 +11,7 @@ import {
   hasReachedUserLimit,
   isSystemAdmin 
 } from '../config/internal.js';
+import { createNotification } from './notifications.js';
 
 const router = express.Router();
 
@@ -303,6 +304,30 @@ router.get('/accept/:token', async (req, res) => {
         where: { id: invitation.id },
         data: { status: 'accepted', acceptedAt: new Date() }
       });
+
+      // Notify inviter + all org admins/owners
+      try {
+        const joinerName = existingUser.name || existingUser.email;
+        const notifySet = new Set();
+        if (invitation.invitedById) notifySet.add(invitation.invitedById);
+        const admins = await prisma.membership.findMany({
+          where: { orgId: invitation.orgId, role: { in: ['OWNER', 'ADMIN'] } },
+          select: { userId: true },
+        });
+        admins.forEach(a => notifySet.add(a.userId));
+        for (const uid of notifySet) {
+          if (uid !== existingUser.id) {
+            createNotification({
+              userId: uid,
+              orgId: invitation.orgId,
+              title: `New Member Joined`,
+              body: `${joinerName} accepted the invitation and joined as ${invitation.role}.`,
+              link: '/admin',
+              type: 'member',
+            });
+          }
+        }
+      } catch (_) {}
 
       res.json({
         success: true,

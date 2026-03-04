@@ -2,7 +2,7 @@ import React, { useState, useEffect, useRef } from 'react';
 import { Outlet, useLocation } from 'react-router-dom';
 import { useSession, signOut } from '../../lib/auth-client';
 import Sidebar from './Sidebar';
-import { LogOut, ChevronDown, Bell, CheckCheck, X } from 'lucide-react';
+import { LogOut, ChevronDown, Bell, CheckCheck, X, CheckSquare, AlertTriangle, Clock, CalendarDays, Users, Video, Info } from 'lucide-react';
 
 // ── VS Code Dark+ tokens ──────────────────────────────────────────────────────
 const VS = {
@@ -192,6 +192,19 @@ const MainLayout: React.FC = () => {
   const email = session?.user?.email ?? '';
   const displayName = session?.user?.name || email.split('@')[0] || 'User';
 
+  const notifTypeMeta: Record<string, { icon: React.ElementType; color: string }> = {
+    task:     { icon: CheckSquare,  color: VS.accent },
+    comment:  { icon: CheckSquare,  color: '#c586c0' },
+    due_soon: { icon: Clock,        color: '#dcdcaa' },
+    overdue:  { icon: AlertTriangle,color: '#f44747' },
+    project:  { icon: Info,         color: '#4ec9b0' },
+    calendar: { icon: CalendarDays, color: '#4ec9b0' },
+    meeting:  { icon: Video,        color: '#569cd6' },
+    member:   { icon: Users,        color: '#6a9955' },
+    reminder: { icon: Clock,        color: '#ce9178' },
+    info:     { icon: Info,         color: VS.text2  },
+  };
+
   return (
     <div className="min-h-screen" style={{ background: VS.bg0 }}>
       <Sidebar />
@@ -302,30 +315,39 @@ const MainLayout: React.FC = () => {
                         <p className="text-[12px]">No notifications yet</p>
                       </div>
                     ) : (
-                      notifications.map(n => (
-                        <button
-                          key={n.id}
-                          onClick={() => handleNotifClick(n)}
-                          className="w-full text-left flex items-start gap-3 px-4 py-3 transition-colors duration-100"
-                          style={{
-                            background: n.isRead ? 'transparent' : `${VS.accent}0f`,
-                            borderBottom: `1px solid ${VS.border}`,
-                          }}
-                          onMouseEnter={e => (e.currentTarget as HTMLElement).style.background = VS.bg2}
-                          onMouseLeave={e => (e.currentTarget as HTMLElement).style.background = n.isRead ? 'transparent' : `${VS.accent}0f`}
-                        >
-                          {/* Unread dot */}
-                          <span
-                            className="mt-1.5 h-1.5 w-1.5 shrink-0 rounded-full"
-                            style={{ background: n.isRead ? 'transparent' : VS.accent }}
-                          />
-                          <div className="flex-1 min-w-0">
-                            <p className="text-[12px] font-medium leading-snug truncate" style={{ color: n.isRead ? VS.text1 : VS.text0 }}>{n.title}</p>
-                            {n.body && <p className="text-[11px] mt-0.5 line-clamp-2" style={{ color: VS.text2 }}>{n.body}</p>}
-                            <p className="text-[10px] mt-1" style={{ color: VS.text2 }}>{timeAgo(n.createdAt)}</p>
-                          </div>
-                        </button>
-                      ))
+                      notifications.map(n => {
+                        const meta = notifTypeMeta[n.type] ?? notifTypeMeta.info;
+                        const TypeIcon = meta.icon;
+                        return (
+                          <button
+                            key={n.id}
+                            onClick={() => handleNotifClick(n)}
+                            className="w-full text-left flex items-start gap-3 px-4 py-3 transition-colors duration-100"
+                            style={{
+                              background: n.isRead ? 'transparent' : `${VS.accent}0f`,
+                              borderBottom: `1px solid ${VS.border}`,
+                            }}
+                            onMouseEnter={e => (e.currentTarget as HTMLElement).style.background = VS.bg2}
+                            onMouseLeave={e => (e.currentTarget as HTMLElement).style.background = n.isRead ? 'transparent' : `${VS.accent}0f`}
+                          >
+                            {/* Type icon */}
+                            <div
+                              className="mt-0.5 h-6 w-6 shrink-0 rounded-md flex items-center justify-center"
+                              style={{ background: `${meta.color}20` }}
+                            >
+                              <TypeIcon className="h-3.5 w-3.5" style={{ color: meta.color }} />
+                            </div>
+                            <div className="flex-1 min-w-0">
+                              <div className="flex items-center gap-1.5">
+                                <p className="text-[12px] font-medium leading-snug truncate" style={{ color: n.isRead ? VS.text1 : VS.text0 }}>{n.title}</p>
+                                {!n.isRead && <span className="h-1.5 w-1.5 shrink-0 rounded-full" style={{ background: VS.accent }} />}
+                              </div>
+                              {n.body && <p className="text-[11px] mt-0.5 line-clamp-2" style={{ color: VS.text2 }}>{n.body}</p>}
+                              <p className="text-[10px] mt-1" style={{ color: VS.text2 }}>{timeAgo(n.createdAt)}</p>
+                            </div>
+                          </button>
+                        );
+                      })
                     )}
                   </div>
                 </div>

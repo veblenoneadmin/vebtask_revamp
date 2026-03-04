@@ -30,7 +30,8 @@ import calendarRoutes from './api/calendar.js';
 import kpiReportRoutes from './api/kpi-report.js';
 import notificationsRoutes from './api/notifications.js';
 import firefliesRoutes, { startFirefliesPolling } from './api/fireflies.js';
-import { 
+import { startNotificationScheduler } from './services/notificationScheduler.js';
+import {
   blockPublicRegistration, 
   addInternalBranding, 
   validateInvitationOnSignup,
@@ -2950,6 +2951,7 @@ async function startServer() {
   await ensureTaskTablesSchema();
   await ensureTaskAssigneesSchema();
   startFirefliesPolling().catch(e => console.warn('[Fireflies] Polling init error:', e.message));
+  startNotificationScheduler();
 
   app.listen(PORT, '0.0.0.0', () => {
     console.log(`✅ Server running on port ${PORT}`);

@@ -3,6 +3,7 @@ import express from 'express';
 import { randomUUID } from 'crypto';
 import { prisma } from '../lib/prisma.js';
 import { requireAuth, withOrgScope } from '../lib/rbac.js';
+import { createNotification } from './notifications.js';
 
 const router = express.Router();
 
@@ -191,6 +192,26 @@ router.post('/events', requireAuth, withOrgScope, async (req, res) => {
 
     await replaceAttendees(id, attendeeIds, req.orgId);
 
+    // Notify attendees (excluding creator)
+    if (attendeeIds.length > 0) {
+      try {
+        const creator = await prisma.user.findUnique({ where: { id: req.user.id }, select: { name: true } });
+        const startStr = new Date(startAt).toLocaleString('en-AU', { weekday: 'short', day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' });
+        for (const attendeeId of attendeeIds) {
+          if (attendeeId !== req.user.id) {
+            createNotification({
+              userId: attendeeId,
+              orgId: req.orgId,
+              title: `Calendar Invite: ${title}`,
+              body: `${creator?.name || 'Someone'} invited you to "${title}" on ${startStr}${location ? ` at ${location}` : ''}.`,
+              link: '/calendar',
+              type: 'calendar',
+            });
+          }
+        }
+      } catch (_) {}
+    }
+
     const rows = await prisma.$queryRawUnsafe('SELECT * FROM calendar_events WHERE id = ?', id);
     res.status(201).json({ event: shapeEvent(rows[0], []) });
   } catch (err) {
@@ -234,6 +255,23 @@ router.put('/events/:id', requireAuth, withOrgScope, async (req, res) => {
 
     if (Array.isArray(attendeeIds)) {
       await replaceAttendees(id, attendeeIds, req.orgId);
+      // Notify attendees of the update (excluding updater)
+      try {
+        const updater = await prisma.user.findUnique({ where: { id: req.user.id }, select: { name: true } });
+        const startStr = newStart.toLocaleString('en-AU', { weekday: 'short', day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' });
+        for (const attendeeId of attendeeIds) {
+          if (attendeeId !== req.user.id) {
+            createNotification({
+              userId: attendeeId,
+              orgId: req.orgId,
+              title: `Event Updated: ${newTitle}`,
+              body: `${updater?.name || 'Someone'} updated the event on ${startStr}.`,
+              link: '/calendar',
+              type: 'calendar',
+            });
+          }
+        }
+      } catch (_) {}
     }
 
     const updated = await prisma.$queryRawUnsafe('SELECT * FROM calendar_events WHERE id = ?', id);

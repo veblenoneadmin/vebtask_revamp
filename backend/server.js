@@ -2949,13 +2949,28 @@ async function ensureTaskAssigneesSchema() {
 async function ensureAccountScopeText() {
   if (!process.env.DATABASE_URL) return;
   try {
-    await prisma.$executeRawUnsafe(
-      "ALTER TABLE `account` MODIFY COLUMN `scope` TEXT NULL"
+    // Use information_schema to find the exact table name (handles case sensitivity)
+    const cols = await prisma.$queryRawUnsafe(
+      `SELECT table_name as tbl, column_type as ctype
+       FROM information_schema.columns
+       WHERE table_schema = DATABASE()
+         AND LOWER(table_name) = 'account'
+         AND LOWER(column_name) = 'scope'`
     );
-    console.log('  ✅ account.scope widened to TEXT');
+    if (!cols.length) {
+      console.warn('  ⚠️  account.scope: column not found in information_schema');
+      return;
+    }
+    const tbl   = cols[0].tbl   || cols[0].TABLE_NAME;
+    const ctype = (cols[0].ctype || cols[0].COLUMN_TYPE || '').toLowerCase();
+    if (ctype === 'text' || ctype.startsWith('mediumtext') || ctype.startsWith('longtext')) {
+      console.log('  ✅ account.scope already TEXT — no alter needed');
+      return;
+    }
+    await prisma.$executeRawUnsafe(`ALTER TABLE \`${tbl}\` MODIFY COLUMN \`scope\` TEXT NULL`);
+    console.log(`  ✅ account.scope widened to TEXT on table \`${tbl}\``);
   } catch (e) {
-    // Harmless if already TEXT
-    if (!e.message?.includes('already')) console.warn('  ⚠️  account.scope alter:', e.message);
+    console.warn('  ⚠️  account.scope alter failed:', e.message);
   }
 }
 

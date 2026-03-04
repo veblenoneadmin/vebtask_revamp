@@ -2949,35 +2949,35 @@ async function ensureTaskAssigneesSchema() {
 async function ensureAccountScopeText() {
   if (!process.env.DATABASE_URL) return;
   try {
-    // Step 1: Use SHOW TABLES to find the exact table name (handles any casing)
-    const allTables = await prisma.$queryRawUnsafe('SHOW TABLES');
-    const tableNames = allTables.map(r => Object.values(r)[0]);
-    const accountTable = tableNames.find(t => typeof t === 'string' && t.toLowerCase() === 'account');
+    // Step 1: Use INFORMATION_SCHEMA to find the exact table name (case-insensitive)
+    const rows = await prisma.$queryRawUnsafe(
+      `SELECT TABLE_NAME, DATA_TYPE FROM INFORMATION_SCHEMA.COLUMNS
+       WHERE TABLE_SCHEMA = DATABASE()
+         AND LOWER(TABLE_NAME) = 'account'
+         AND COLUMN_NAME = 'scope'
+       LIMIT 1`
+    );
 
-    if (!accountTable) {
-      console.warn('  ⚠️  ensureAccountScopeText: no account table found. Tables:', tableNames.join(', '));
+    if (!rows.length) {
+      console.warn('  ⚠️  ensureAccountScopeText: account.scope column not found via INFORMATION_SCHEMA');
       return;
     }
 
-    // Step 2: Check current column type with SHOW COLUMNS
-    const cols = await prisma.$queryRawUnsafe(`SHOW COLUMNS FROM \`${accountTable}\` LIKE 'scope'`);
-    if (!cols.length) {
-      console.warn(`  ⚠️  ensureAccountScopeText: no scope column in \`${accountTable}\``);
+    const accountTable = rows[0].TABLE_NAME || rows[0].table_name;
+    const colType = (rows[0].DATA_TYPE || rows[0].data_type || '').toLowerCase();
+    console.log(`  🔍 ensureAccountScopeText: found \`${accountTable}\`.scope type = ${colType}`);
+
+    if (colType === 'text' || colType === 'mediumtext' || colType === 'longtext') {
+      console.log(`  ✅ ${accountTable}.scope is already ${colType} — no alter needed`);
       return;
     }
 
-    const colType = (cols[0].Type || cols[0].type || '').toLowerCase();
-    if (colType === 'text' || colType.startsWith('mediumtext') || colType.startsWith('longtext')) {
-      console.log(`  ✅ ${accountTable}.scope is already TEXT — no alter needed`);
-      return;
-    }
-
-    // Step 3: Widen the column
+    // Step 2: Widen the column
     console.log(`  🔄 ${accountTable}.scope is ${colType} — widening to TEXT...`);
     await prisma.$executeRawUnsafe(`ALTER TABLE \`${accountTable}\` MODIFY COLUMN \`scope\` TEXT NULL`);
     console.log(`  ✅ ${accountTable}.scope widened to TEXT`);
   } catch (e) {
-    console.warn('  ⚠️  ensureAccountScopeText failed:', e.message);
+    console.warn('  ⚠️  ensureAccountScopeText failed:', e.message, e.stack?.split('\n')[1] || '');
   }
 }
 

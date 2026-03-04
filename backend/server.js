@@ -2948,30 +2948,22 @@ async function ensureTaskAssigneesSchema() {
 // Widen Account.scope column to TEXT so long Google scope strings fit
 async function ensureAccountScopeText() {
   if (!process.env.DATABASE_URL) return;
-  try {
-    // Use information_schema to find the exact table name (handles case sensitivity)
-    const cols = await prisma.$queryRawUnsafe(
-      `SELECT table_name as tbl, column_type as ctype
-       FROM information_schema.columns
-       WHERE table_schema = DATABASE()
-         AND LOWER(table_name) = 'account'
-         AND LOWER(column_name) = 'scope'`
-    );
-    if (!cols.length) {
-      console.warn('  ⚠️  account.scope: column not found in information_schema');
+  // Try both casings — Better Auth may have created the table as 'account' or 'Account'
+  for (const tbl of ['account', 'Account']) {
+    try {
+      await prisma.$executeRawUnsafe(`ALTER TABLE \`${tbl}\` MODIFY COLUMN \`scope\` TEXT NULL`);
+      console.log(`  ✅ ${tbl}.scope widened to TEXT`);
+      return; // success — stop here
+    } catch (e) {
+      if (e.message?.includes("doesn't exist") || e.message?.includes("Unknown table")) {
+        continue; // wrong casing, try the other one
+      }
+      // Any other error (e.g. column already TEXT which MySQL silently allows, or permission issues)
+      console.warn(`  ⚠️  ${tbl}.scope alter:`, e.message);
       return;
     }
-    const tbl   = cols[0].tbl   || cols[0].TABLE_NAME;
-    const ctype = (cols[0].ctype || cols[0].COLUMN_TYPE || '').toLowerCase();
-    if (ctype === 'text' || ctype.startsWith('mediumtext') || ctype.startsWith('longtext')) {
-      console.log('  ✅ account.scope already TEXT — no alter needed');
-      return;
-    }
-    await prisma.$executeRawUnsafe(`ALTER TABLE \`${tbl}\` MODIFY COLUMN \`scope\` TEXT NULL`);
-    console.log(`  ✅ account.scope widened to TEXT on table \`${tbl}\``);
-  } catch (e) {
-    console.warn('  ⚠️  account.scope alter failed:', e.message);
   }
+  console.warn('  ⚠️  Could not find account table to widen scope column');
 }
 
 // Run migrations and start server

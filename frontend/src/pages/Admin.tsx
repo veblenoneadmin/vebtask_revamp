@@ -422,7 +422,7 @@ export function Admin() {
 
               {/* Actions */}
               <div className="flex items-center gap-2">
-                {!isOwner && (
+                {!isOwner && !isProtectedAdmin && (
                   <button
                     onClick={() => { setEditingUser(user); setEditingRole(role as any); }}
                     className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-[12px] font-medium transition-colors hover:bg-white/5"

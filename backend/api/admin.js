@@ -312,6 +312,9 @@ router.patch('/users/:userId/role', requireAuth, withOrgScope, requireRole('ADMI
     if (membership.role === 'OWNER') {
       return res.status(403).json({ error: 'Cannot change owner role', code: 'CANNOT_CHANGE_OWNER' });
     }
+    if (membership.user?.email === 'admin@eversense.ai') {
+      return res.status(403).json({ error: 'Cannot change this protected account\'s role', code: 'PROTECTED_ACCOUNT' });
+    }
 
     const updatedMembership = await prisma.membership.update({
       where: { userId_orgId: { userId, orgId: req.orgId } },

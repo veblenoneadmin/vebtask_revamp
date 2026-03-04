@@ -4,6 +4,12 @@ import { randomUUID } from 'crypto';
 import { prisma } from '../lib/prisma.js';
 import { requireAuth, withOrgScope } from '../lib/rbac.js';
 import { createNotification } from './notifications.js';
+import {
+  hasGoogleCalendarAccess,
+  createGoogleCalendarEvent,
+  updateGoogleCalendarEvent,
+  deleteGoogleCalendarEvent,
+} from '../lib/google-calendar.js';
 
 const router = express.Router();
 
@@ -25,6 +31,9 @@ async function ensureTables() {
       '  `meetLink` VARCHAR(500) NULL,' +
       '  `createdById` VARCHAR(36) NOT NULL,' +
       '  `orgId` VARCHAR(191) NOT NULL,' +
+      '  `googleEventId` VARCHAR(500) NULL,' +
+      '  `googleCalendarId` VARCHAR(500) NULL,' +
+      '  `syncedToGoogle` TINYINT(1) NOT NULL DEFAULT 0,' +
       '  `createdAt` DATETIME(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3),' +
       '  `updatedAt` DATETIME(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3) ON UPDATE CURRENT_TIMESTAMP(3),' +
       '  PRIMARY KEY (`id`),' +
@@ -33,6 +42,15 @@ async function ensureTables() {
       '  KEY `ce_createdById_idx` (`createdById`)' +
       ') DEFAULT CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci'
     );
+    // Add Google columns to pre-existing tables (idempotent)
+    const alterCols = [
+      'ALTER TABLE `calendar_events` ADD COLUMN `googleEventId` VARCHAR(500) NULL',
+      'ALTER TABLE `calendar_events` ADD COLUMN `googleCalendarId` VARCHAR(500) NULL',
+      'ALTER TABLE `calendar_events` ADD COLUMN `syncedToGoogle` TINYINT(1) NOT NULL DEFAULT 0',
+    ];
+    for (const sql of alterCols) {
+      await prisma.$executeRawUnsafe(sql).catch(() => {}); // ignore "Duplicate column"
+    }
     await prisma.$executeRawUnsafe(
       'CREATE TABLE IF NOT EXISTS `calendar_event_attendees` (' +
       '  `id` VARCHAR(191) NOT NULL,' +
@@ -78,14 +96,27 @@ function shapeEvent(row, attendeeUserMap) {
     allDay: !!row.allDay,
     color:  row.color || '#007acc',
     extendedProps: {
-      description: row.description,
-      location:    row.location,
-      meetLink:    row.meetLink,
-      createdById: row.createdById,
-      attendees:   attendeeUserMap,
+      description:      row.description,
+      location:         row.location,
+      meetLink:         row.meetLink,
+      createdById:      row.createdById,
+      syncedToGoogle:   !!row.syncedToGoogle,
+      googleEventId:    row.googleEventId || null,
+      googleCalendarId: row.googleCalendarId || null,
+      attendees:        attendeeUserMap,
     },
   };
 }
+
+// ── GET /api/calendar/status ──────────────────────────────────────────────────
+router.get('/status', requireAuth, async (req, res) => {
+  try {
+    const googleConnected = await hasGoogleCalendarAccess(req.user.id);
+    res.json({ googleConnected });
+  } catch {
+    res.json({ googleConnected: false });
+  }
+});
 
 // ── GET /api/calendar/members ─────────────────────────────────────────────────
 router.get('/members', requireAuth, withOrgScope, async (req, res) => {
@@ -171,6 +202,7 @@ router.post('/events', requireAuth, withOrgScope, async (req, res) => {
       startAt, endAt, allDay = false,
       color = '#007acc', attendeeIds = [],
       meetLink = null,
+      syncToGoogle = false,
     } = req.body;
 
     if (!title || !startAt || !endAt) {
@@ -181,13 +213,45 @@ router.post('/events', requireAuth, withOrgScope, async (req, res) => {
     const start = new Date(startAt);
     const end   = new Date(endAt);
 
+    // Google Calendar sync (optional)
+    let finalMeetLink = meetLink || null;
+    let googleEventId = null;
+    let googleCalendarId = null;
+    let syncedToGoogle = 0;
+
+    if (syncToGoogle) {
+      // Fetch attendee emails for Google Calendar
+      let attendeeEmails = [];
+      if (attendeeIds.length > 0) {
+        const users = await prisma.user.findMany({
+          where: { id: { in: attendeeIds } },
+          select: { email: true },
+        });
+        attendeeEmails = users.map(u => u.email);
+      }
+
+      const googleResult = await createGoogleCalendarEvent(req.user.id, {
+        title, description, location, color,
+        startAt, endAt, allDay,
+        attendeeEmails,
+      });
+
+      if (!googleResult.error) {
+        googleEventId    = googleResult.googleEventId;
+        googleCalendarId = googleResult.googleCalendarId;
+        finalMeetLink    = googleResult.meetLink || finalMeetLink;
+        syncedToGoogle   = 1;
+      }
+    }
+
     await prisma.$executeRawUnsafe(
       'INSERT INTO calendar_events ' +
-      '(id, title, description, location, startAt, endAt, allDay, color, meetLink, createdById, orgId, createdAt, updatedAt) ' +
-      'VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NOW(3), NOW(3))',
+      '(id, title, description, location, startAt, endAt, allDay, color, meetLink, createdById, orgId, googleEventId, googleCalendarId, syncedToGoogle, createdAt, updatedAt) ' +
+      'VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NOW(3), NOW(3))',
       id, title, description || null, location || null,
       toMySQL(start), toMySQL(end), allDay ? 1 : 0, color,
-      meetLink || null, req.user.id, req.orgId
+      finalMeetLink, req.user.id, req.orgId,
+      googleEventId, googleCalendarId, syncedToGoogle
     );
 
     await replaceAttendees(id, attendeeIds, req.orgId);
@@ -245,7 +309,24 @@ router.put('/events/:id', requireAuth, withOrgScope, async (req, res) => {
     const newEnd    = endAt       ? new Date(endAt)   : existing.endAt;
     const newAllDay = allDay      !== undefined ? (allDay ? 1 : 0) : existing.allDay;
     const newColor  = color       !== undefined ? color       : existing.color;
-    const newMeet   = meetLink    !== undefined ? (meetLink || null) : existing.meetLink;
+    let   newMeet   = meetLink    !== undefined ? (meetLink || null) : existing.meetLink;
+
+    // Re-sync to Google Calendar if already synced
+    if (existing.syncedToGoogle && existing.googleEventId) {
+      const googleResult = await updateGoogleCalendarEvent(
+        req.user.id,
+        existing.googleEventId,
+        existing.googleCalendarId,
+        {
+          title: newTitle, description: newDesc, location: newLoc,
+          color: newColor, startAt: newStart.toISOString(),
+          endAt: newEnd.toISOString(), allDay: !!newAllDay,
+        }
+      );
+      if (googleResult.error) {
+        console.warn('[Calendar] Google sync update failed:', googleResult.error);
+      }
+    }
 
     await prisma.$executeRawUnsafe(
       'UPDATE calendar_events SET title=?, description=?, location=?, startAt=?, endAt=?, allDay=?, color=?, meetLink=?, updatedAt=NOW(3) WHERE id=?',
@@ -292,6 +373,16 @@ router.delete('/events/:id', requireAuth, withOrgScope, async (req, res) => {
       'SELECT * FROM calendar_events WHERE id = ? AND orgId = ?', id, req.orgId
     );
     if (rows.length === 0) return res.status(404).json({ error: 'Event not found' });
+    const existing = rows[0];
+
+    // Delete from Google Calendar if synced
+    if (existing.syncedToGoogle && existing.googleEventId) {
+      deleteGoogleCalendarEvent(
+        req.user.id,
+        existing.googleEventId,
+        existing.googleCalendarId
+      ).catch(e => console.warn('[Calendar] Google delete failed:', e.message));
+    }
 
     await prisma.$executeRawUnsafe('DELETE FROM calendar_event_attendees WHERE eventId = ?', id);
     await prisma.$executeRawUnsafe('DELETE FROM calendar_events WHERE id = ?', id);

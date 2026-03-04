@@ -10,7 +10,7 @@ import { useApiClient } from '../lib/api-client';
 import { useOrganization } from '../contexts/OrganizationContext';
 import {
   Plus, X, Video, Users, Calendar as CalendarIcon,
-  Check, ExternalLink, Search, ChevronDown,
+  Check, ExternalLink, Search, ChevronDown, MapPin,
 } from 'lucide-react';
 import './Calendar.css';
 
@@ -29,20 +29,25 @@ interface OrgMember { id: string; name: string | null; email: string; image: str
 
 interface CalEventExtended {
   description: string | null;
+  location: string | null;
   meetLink: string | null;
   createdById: string;
+  syncedToGoogle: boolean;
+  googleEventId: string | null;
   attendees: OrgMember[];
 }
 
 interface EventFormData {
   title: string;
   description: string;
+  location: string;
   startAt: string;
   endAt: string;
   allDay: boolean;
   color: string;
   attendeeIds: string[];
   meetLink: string;
+  syncToGoogle: boolean;
 }
 
 const EVENT_COLORS = [
@@ -60,11 +65,11 @@ function defaultForm(): EventFormData {
   const now = new Date();
   const end = new Date(now.getTime() + 3600000);
   return {
-    title: '', description: '',
+    title: '', description: '', location: '',
     startAt: toLocalInput(now),
     endAt:   toLocalInput(end),
     allDay: false, color: '#007acc',
-    attendeeIds: [], meetLink: '',
+    attendeeIds: [], meetLink: '', syncToGoogle: false,
   };
 }
 
@@ -80,6 +85,7 @@ export function Calendar() {
   const calRef = useRef<InstanceType<typeof FullCalendar>>(null);
 
   const [members, setMembers] = useState<OrgMember[]>([]);
+  const [googleConnected, setGoogleConnected] = useState(false);
   const [showModal, setShowModal] = useState(false);
   const [editingEventId, setEditingEventId] = useState<string | null>(null);
   const [form, setForm] = useState<EventFormData>(defaultForm());
@@ -90,6 +96,7 @@ export function Calendar() {
   useEffect(() => {
     if (!currentOrg) return;
     api.fetch('/api/calendar/members').then((d: { members: OrgMember[] }) => setMembers(d.members)).catch(() => {});
+    api.fetch('/api/calendar/status').then((d: { googleConnected: boolean }) => setGoogleConnected(d.googleConnected ?? false)).catch(() => {});
   }, [currentOrg]);
 
   // FullCalendar event source function
@@ -121,14 +128,16 @@ export function Calendar() {
     const ext = info.event.extendedProps as CalEventExtended;
     setEditingEventId(info.event.id);
     setForm({
-      title:       info.event.title,
-      description: ext.description || '',
-      startAt:     toLocalInput(info.event.start || new Date()),
-      endAt:       toLocalInput(info.event.end || new Date()),
-      allDay:      info.event.allDay,
-      color:       (info.event.backgroundColor || '#007acc'),
-      attendeeIds: ext.attendees.map(a => a.id),
-      meetLink:    ext.meetLink || '',
+      title:        info.event.title,
+      description:  ext.description || '',
+      location:     ext.location || '',
+      startAt:      toLocalInput(info.event.start || new Date()),
+      endAt:        toLocalInput(info.event.end || new Date()),
+      allDay:       info.event.allDay,
+      color:        (info.event.backgroundColor || '#007acc'),
+      attendeeIds:  ext.attendees.map(a => a.id),
+      meetLink:     ext.meetLink || '',
+      syncToGoogle: ext.syncedToGoogle || false,
     });
     setError(null);
     setShowModal(true);
@@ -192,17 +201,34 @@ export function Calendar() {
           <CalendarIcon size={20} color={VS.accent} />
           <h1 style={{ color: VS.text0, fontSize: 20, fontWeight: 600, margin: 0 }}>Calendar</h1>
         </div>
-        <button
-          onClick={() => openCreateModal()}
-          style={{
+        <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+          {/* Google Calendar status badge */}
+          <div style={{
             display: 'flex', alignItems: 'center', gap: 6,
-            background: VS.accent, color: '#fff', border: 'none',
-            borderRadius: 6, padding: '7px 14px', fontSize: 13,
-            fontWeight: 500, cursor: 'pointer',
-          }}
-        >
-          <Plus size={14} /> New Event
-        </button>
+            padding: '5px 12px', borderRadius: 20, fontSize: 12, fontWeight: 500,
+            ...(googleConnected
+              ? { background: 'rgba(78,201,176,0.12)', color: VS.teal, border: `1px solid rgba(78,201,176,0.25)` }
+              : { background: 'rgba(144,144,144,0.08)', color: VS.text2, border: `1px solid ${VS.border}` }
+            ),
+          }}>
+            <div style={{
+              width: 7, height: 7, borderRadius: '50%',
+              background: googleConnected ? VS.teal : VS.text2,
+            }} />
+            {googleConnected ? 'Google Calendar Connected' : 'Google Calendar Not Connected'}
+          </div>
+          <button
+            onClick={() => openCreateModal()}
+            style={{
+              display: 'flex', alignItems: 'center', gap: 6,
+              background: VS.accent, color: '#fff', border: 'none',
+              borderRadius: 6, padding: '7px 14px', fontSize: 13,
+              fontWeight: 500, cursor: 'pointer',
+            }}
+          >
+            <Plus size={14} /> New Event
+          </button>
+        </div>
       </div>
 
       {/* Calendar */}
@@ -240,6 +266,7 @@ export function Calendar() {
           setForm={setForm}
           members={members}
           isEdit={!!editingEventId}
+          googleConnected={googleConnected}
           saving={saving}
           deleting={deleting}
           error={error}
@@ -258,6 +285,7 @@ interface EventModalProps {
   setForm: React.Dispatch<React.SetStateAction<EventFormData>>;
   members: OrgMember[];
   isEdit: boolean;
+  googleConnected: boolean;
   saving: boolean;
   deleting: boolean;
   error: string | null;
@@ -267,7 +295,7 @@ interface EventModalProps {
 }
 
 function EventModal({
-  form, setForm, members, isEdit,
+  form, setForm, members, isEdit, googleConnected,
   saving, deleting, error, onSave, onDelete, onClose,
 }: EventModalProps) {
   const [memberSearch, setMemberSearch] = useState('');
@@ -401,6 +429,20 @@ function EventModal({
             />
           </div>
 
+          {/* Location */}
+          <div>
+            <label style={labelStyle}>
+              <MapPin size={11} style={{ marginRight: 4, display: 'inline' }} />
+              Location
+            </label>
+            <input
+              value={form.location}
+              onChange={e => setForm(f => ({ ...f, location: e.target.value }))}
+              placeholder="Add a location"
+              style={inputStyle}
+            />
+          </div>
+
           {/* Meeting Link */}
           <div>
             <label style={labelStyle}>
@@ -431,6 +473,38 @@ function EventModal({
               )}
             </div>
           </div>
+
+          {/* Google Calendar sync toggle */}
+          {googleConnected && !isEdit && (
+            <div style={{
+              display: 'flex', alignItems: 'flex-start', gap: 12,
+              background: 'rgba(78,201,176,0.06)', border: `1px solid rgba(78,201,176,0.2)`,
+              borderRadius: 8, padding: '12px 14px',
+            }}>
+              <input
+                type="checkbox" id="syncToGoogle"
+                checked={form.syncToGoogle}
+                onChange={e => setForm(f => ({ ...f, syncToGoogle: e.target.checked }))}
+                style={{ accentColor: VS.teal, cursor: 'pointer', marginTop: 2, flexShrink: 0 }}
+              />
+              <label htmlFor="syncToGoogle" style={{ cursor: 'pointer' }}>
+                <div style={{ color: VS.teal, fontSize: 13, fontWeight: 500 }}>Sync to Google Calendar</div>
+                {form.syncToGoogle && (
+                  <div style={{ color: VS.text2, fontSize: 12, marginTop: 3 }}>
+                    A Google Meet link will be created automatically.
+                  </div>
+                )}
+              </label>
+            </div>
+          )}
+          {isEdit && form.syncToGoogle && (
+            <div style={{
+              display: 'flex', alignItems: 'center', gap: 6,
+              fontSize: 12, color: VS.teal,
+            }}>
+              <Check size={12} /> Synced to Google Calendar
+            </div>
+          )}
 
           {/* Color */}
           <div>

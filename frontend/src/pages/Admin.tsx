@@ -85,6 +85,8 @@ export function Admin() {
   // Remove member
   const [removingId, setRemovingId] = useState<string | null>(null);
   const [syncing, setSyncing] = useState(false);
+  const [deletingAllUsers, setDeletingAllUsers] = useState(false);
+  const [resettingTimeLogs, setResettingTimeLogs] = useState(false);
 
   // Add user form
   const [showAddUser, setShowAddUser]       = useState(false);
@@ -188,6 +190,27 @@ export function Admin() {
     } finally {
       setSyncing(false);
     }
+  };
+
+  const handleDeleteAllUsers = async () => {
+    if (!confirm('Remove ALL members (non-owners) from this organization? This cannot be undone.')) return;
+    setDeletingAllUsers(true);
+    try {
+      const data = await apiClient.fetch('/api/admin/users/bulk-delete', { method: 'POST' });
+      fetchData();
+      showToast(data.message || 'All members removed.');
+    } catch (err: any) { showToast(err.message || 'Failed to delete all users', false); }
+    finally { setDeletingAllUsers(false); }
+  };
+
+  const handleResetTimeLogs = async () => {
+    if (!confirm('Delete ALL time logs for this organization? This will permanently erase all time tracking data and cannot be undone.')) return;
+    setResettingTimeLogs(true);
+    try {
+      const data = await apiClient.fetch('/api/admin/timelogs/reset', { method: 'POST' });
+      showToast(data.message || 'All time logs reset.');
+    } catch (err: any) { showToast(err.message || 'Failed to reset time logs', false); }
+    finally { setResettingTimeLogs(false); }
   };
 
   const handleAddUser = async (e: React.FormEvent) => {
@@ -659,6 +682,37 @@ export function Admin() {
           </div>
         </div>
       )}
+
+      {/* ── Danger Zone ── */}
+      <div
+        className="rounded-xl p-5"
+        style={{ background: 'rgba(244,71,71,0.04)', border: `1px solid ${VS.red}33` }}
+      >
+        <h2 className="text-[14px] font-bold mb-1" style={{ color: VS.red }}>Danger Zone</h2>
+        <p className="text-[12px] mb-4" style={{ color: VS.text2 }}>
+          These actions are permanent and cannot be undone. Proceed with extreme caution.
+        </p>
+        <div className="flex flex-wrap gap-3">
+          <button
+            onClick={handleDeleteAllUsers}
+            disabled={deletingAllUsers}
+            className="flex items-center gap-2 px-4 py-2 rounded-lg text-[13px] font-semibold disabled:opacity-40 transition-all hover:opacity-90"
+            style={{ background: 'rgba(244,71,71,0.14)', border: `1px solid ${VS.red}55`, color: VS.red }}
+          >
+            <Trash2 className="h-4 w-4" />
+            {deletingAllUsers ? 'Removing...' : 'Delete All Users'}
+          </button>
+          <button
+            onClick={handleResetTimeLogs}
+            disabled={resettingTimeLogs}
+            className="flex items-center gap-2 px-4 py-2 rounded-lg text-[13px] font-semibold disabled:opacity-40 transition-all hover:opacity-90"
+            style={{ background: 'rgba(244,71,71,0.14)', border: `1px solid ${VS.red}55`, color: VS.red }}
+          >
+            <Clock className="h-4 w-4" />
+            {resettingTimeLogs ? 'Resetting...' : 'Reset All Time Logs'}
+          </button>
+        </div>
+      </div>
 
       {/* ── Add User Modal ── */}
       {showAddUser && (

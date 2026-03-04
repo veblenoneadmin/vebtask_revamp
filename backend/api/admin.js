@@ -462,6 +462,51 @@ router.get('/system/status', requireAuth, withOrgScope, requireAdmin, async (req
 });
 
 /**
+ * POST /api/admin/users/bulk-delete
+ * Remove all non-owner members from the organization (caller is also preserved)
+ */
+router.post('/users/bulk-delete', requireAuth, withOrgScope, requireRole('ADMIN'), async (req, res) => {
+  try {
+    if (!(await checkDatabaseConnection(res))) return;
+
+    const result = await prisma.membership.deleteMany({
+      where: {
+        orgId: req.orgId,
+        role: { not: 'OWNER' },
+        userId: { not: req.user.id },
+      },
+    });
+
+    console.log(`🗑️  Bulk deleted ${result.count} members from org ${req.orgId}`);
+    res.json({ success: true, message: `Removed ${result.count} member(s) from the organization`, count: result.count });
+  } catch (error) {
+    return handleDatabaseError(error, res, 'bulk delete users');
+  }
+});
+
+/**
+ * POST /api/admin/timelogs/reset
+ * Delete ALL time logs for the organization and zero out actualHours on tasks
+ */
+router.post('/timelogs/reset', requireAuth, withOrgScope, requireRole('ADMIN'), async (req, res) => {
+  try {
+    if (!(await checkDatabaseConnection(res))) return;
+
+    const result = await prisma.timeLog.deleteMany({ where: { orgId: req.orgId } });
+
+    await prisma.macroTask.updateMany({
+      where: { orgId: req.orgId },
+      data: { actualHours: 0 },
+    });
+
+    console.log(`🗑️  Reset ${result.count} time logs for org ${req.orgId}`);
+    res.json({ success: true, message: `Reset ${result.count} time log(s)`, count: result.count });
+  } catch (error) {
+    return handleDatabaseError(error, res, 'reset time logs');
+  }
+});
+
+/**
  * POST /api/admin/sync-admins
  */
 router.post('/sync-admins', requireAuth, withOrgScope, requireRole('ADMIN'), async (req, res) => {

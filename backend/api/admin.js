@@ -399,8 +399,8 @@ router.delete('/users/:userId', requireAuth, withOrgScope, requireRole('ADMIN'),
       return res.status(404).json({ error: 'User not found in this organization', code: 'USER_NOT_FOUND' });
     }
 
-    // Nobody can delete an OWNER
-    if (membership.role === 'OWNER') {
+    // Only admin@eversense.ai can remove OWNERs
+    if (membership.role === 'OWNER' && !isSuperAdmin) {
       return res.status(403).json({ error: 'Cannot remove organization owner', code: 'CANNOT_REMOVE_OWNER' });
     }
 

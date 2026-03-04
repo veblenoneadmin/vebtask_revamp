@@ -365,7 +365,7 @@ export function Admin() {
           const isOwner = role === 'OWNER';
           const isProtectedAdmin = user.email === 'admin@eversense.ai';
           // Caller can delete if: target not OWNER, not protected, and (caller is super admin/owner OR target is STAFF)
-          const canDelete = !isOwner && !isProtectedAdmin && (canUseDangerZone || role === 'STAFF');
+          const canDelete = !isProtectedAdmin && (isSuperAdmin || (!isOwner && (canUseDangerZone || role === 'STAFF')));
           return (
             <div
               key={user.id}

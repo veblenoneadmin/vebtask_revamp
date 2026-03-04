@@ -65,6 +65,10 @@ export function Settings() {
     marketingEmails: false
   });
 
+  // Profile save state
+  const [profileSaving, setProfileSaving] = useState(false);
+  const [profileMsg, setProfileMsg] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
+
   // Password change state
   const [passwordForm, setPasswordForm] = useState({ current: '', newPass: '', confirm: '' });
   const [showCurrent, setShowCurrent] = useState(false);
@@ -100,8 +104,22 @@ export function Settings() {
     { id: 'security', label: 'Security', icon: Shield }
   ];
 
-  const handleSave = (section: string) => {
-    console.log(`Saving ${section}...`);
+  const handleSaveProfile = async () => {
+    setProfileSaving(true);
+    setProfileMsg(null);
+    try {
+      const fullName = [profile.firstName.trim(), profile.lastName.trim()].filter(Boolean).join(' ');
+      const res = await authClient.updateUser({ name: fullName });
+      if (res.error) {
+        setProfileMsg({ type: 'error', text: res.error.message || 'Failed to save changes.' });
+      } else {
+        setProfileMsg({ type: 'success', text: 'Profile updated successfully.' });
+      }
+    } catch (err: unknown) {
+      setProfileMsg({ type: 'error', text: err instanceof Error ? err.message : 'Failed to save changes.' });
+    } finally {
+      setProfileSaving(false);
+    }
   };
 
   const handleChangePassword = async () => {
@@ -395,9 +413,14 @@ export function Settings() {
           </div>
         </div>
 
-        <button onClick={() => handleSave('profile')} style={saveButtonStyle}>
+        {profileMsg && (
+          <p style={{ fontSize: 13, marginBottom: 12, color: profileMsg.type === 'success' ? VS.teal : VS.red }}>
+            {profileMsg.text}
+          </p>
+        )}
+        <button onClick={handleSaveProfile} disabled={profileSaving} style={{ ...saveButtonStyle, opacity: profileSaving ? 0.6 : 1 }}>
           <Save style={{ width: 14, height: 14 }} />
-          Save Changes
+          {profileSaving ? 'Saving...' : 'Save Changes'}
         </button>
       </div>
     </div>

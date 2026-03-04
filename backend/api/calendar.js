@@ -42,14 +42,14 @@ async function ensureTables() {
       '  KEY `ce_createdById_idx` (`createdById`)' +
       ') DEFAULT CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci'
     );
-    // Add Google columns to pre-existing tables (idempotent)
+    // Add Google columns to pre-existing tables (IF NOT EXISTS avoids duplicate-column errors)
     const alterCols = [
-      'ALTER TABLE `calendar_events` ADD COLUMN `googleEventId` VARCHAR(500) NULL',
-      'ALTER TABLE `calendar_events` ADD COLUMN `googleCalendarId` VARCHAR(500) NULL',
-      'ALTER TABLE `calendar_events` ADD COLUMN `syncedToGoogle` TINYINT(1) NOT NULL DEFAULT 0',
+      'ALTER TABLE `calendar_events` ADD COLUMN IF NOT EXISTS `googleEventId` VARCHAR(500) NULL',
+      'ALTER TABLE `calendar_events` ADD COLUMN IF NOT EXISTS `googleCalendarId` VARCHAR(500) NULL',
+      'ALTER TABLE `calendar_events` ADD COLUMN IF NOT EXISTS `syncedToGoogle` TINYINT(1) NOT NULL DEFAULT 0',
     ];
     for (const sql of alterCols) {
-      await prisma.$executeRawUnsafe(sql).catch(() => {}); // ignore "Duplicate column"
+      await prisma.$executeRawUnsafe(sql);
     }
     await prisma.$executeRawUnsafe(
       'CREATE TABLE IF NOT EXISTS `calendar_event_attendees` (' +

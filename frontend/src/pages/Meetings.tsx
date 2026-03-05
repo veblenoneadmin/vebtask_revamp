@@ -306,6 +306,15 @@ export function Meetings() {
                     className="px-5 pb-5 space-y-4"
                     style={{ borderTop: `1px solid ${VS.border}` }}
                   >
+                    {/* No summary yet notice */}
+                    {!t.overview && !t.action_items && !t.keywords && !t.outline && (
+                      <div className="pt-4 flex items-center gap-2 text-[13px]" style={{ color: VS.text2 }}>
+                        <RefreshCw className="h-3.5 w-3.5 shrink-0" />
+                        Summary not ready yet — Fireflies is still processing. Click{' '}
+                        <span style={{ color: VS.teal }}>Sync Now</span> in a few minutes to check again.
+                      </div>
+                    )}
+
                     {/* Participants */}
                     {t.participants.length > 0 && (
                       <div className="pt-4">

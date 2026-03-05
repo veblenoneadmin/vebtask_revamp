@@ -51,13 +51,19 @@ async function ensureTables() {
     tablesReady = true;
     console.log('  ✅ fireflies_transcripts table ready');
   } catch (_e) { /* tables likely exist */ }
-  // Add notes column to existing tables (ignore error if already present)
+  // Add notes column only if it doesn't already exist (prevents Prisma dup-column error log)
   try {
-    await prisma.$executeRawUnsafe(
-      'ALTER TABLE fireflies_transcripts ADD COLUMN `notes` TEXT NULL AFTER `overview`'
+    const cols = await prisma.$queryRawUnsafe(
+      `SELECT COUNT(*) AS cnt FROM information_schema.columns
+       WHERE table_schema = DATABASE() AND table_name = 'fireflies_transcripts' AND column_name = 'notes'`
     );
-    console.log('  ✅ fireflies_transcripts.notes column added');
-  } catch (_e) { /* column already exists */ }
+    if (!Number(cols[0]?.cnt)) {
+      await prisma.$executeRawUnsafe(
+        'ALTER TABLE fireflies_transcripts ADD COLUMN `notes` TEXT NULL AFTER `overview`'
+      );
+      console.log('  ✅ fireflies_transcripts.notes column added');
+    }
+  } catch (_e) { /* silently skip */ }
 }
 
 // ── Helpers ───────────────────────────────────────────────────────────────────

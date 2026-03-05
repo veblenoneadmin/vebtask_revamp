@@ -99,9 +99,25 @@ function buildNotifBody(transcript) {
 
 // ── Core: store transcript + send notifications ───────────────────────────────
 // Returns true if this was a new transcript, false if already stored.
+// Build full participant list from both participants (emails) and meeting_attendees (names+emails)
+function mergeParticipants(participants = [], meeting_attendees = []) {
+  const emailSet = new Set(participants.map(e => String(e).toLowerCase().trim()).filter(Boolean));
+  const extras = (meeting_attendees || [])
+    .map(a => {
+      if (a.email && !emailSet.has(a.email.toLowerCase().trim())) return a.email;
+      if (!a.email && (a.displayName || a.name)) return a.displayName || a.name;
+      return null;
+    })
+    .filter(Boolean);
+  return [...participants, ...extras];
+}
+
 async function processTranscript(transcript) {
-  const { id, title, date, duration, participants = [], summary } = transcript;
+  const { id, title, date, duration, participants = [], meeting_attendees = [], summary } = transcript;
   if (!id) return false;
+
+  // Full list: participant emails + any extra attendee names from meeting_attendees
+  const allParticipants = mergeParticipants(participants, meeting_attendees);
 
   await ensureTables();
 
@@ -156,7 +172,7 @@ async function processTranscript(transcript) {
     title?.trim() || 'Untitled Meeting',
     parsedDate,
     duration || null,
-    JSON.stringify(participants.map(e => String(e).trim()).filter(Boolean)),
+    JSON.stringify(allParticipants.map(e => String(e).trim()).filter(Boolean)),
     resolvedOverview,
     summary?.notes        || null,
     summary?.action_items || null,
@@ -164,8 +180,12 @@ async function processTranscript(transcript) {
     summary?.outline      || null,
   );
 
-  // Match participants to EverSense users
-  const lcEmails = participants.map(e => String(e).toLowerCase().trim()).filter(Boolean);
+  // Match participants to EverSense users — use emails from both sources
+  const allEmails = [
+    ...participants,
+    ...(meeting_attendees || []).filter(a => a.email).map(a => a.email),
+  ];
+  const lcEmails = allEmails.map(e => String(e).toLowerCase().trim()).filter(Boolean);
   if (!lcEmails.length) {
     console.log(`[Fireflies] Stored transcript "${title}" — no participants to notify`);
     return true;
@@ -217,7 +237,8 @@ router.post('/transcripts/:id/refresh', requireAuth, async (req, res) => {
     if (!transcript) return res.status(404).json({ success: false, error: 'Transcript not found in Fireflies' });
 
     const resolvedOverview = pickSummaryOverview(transcript.summary);
-    const { id, title, date, duration, participants = [], summary } = transcript;
+    const { id, title, date, duration, participants = [], meeting_attendees = [], summary } = transcript;
+    const allParticipants = mergeParticipants(participants, meeting_attendees);
 
     // Check if already stored
     const existing = await prisma.$queryRawUnsafe(
@@ -225,9 +246,10 @@ router.post('/transcripts/:id/refresh', requireAuth, async (req, res) => {
     );
 
     if (existing.length) {
-      // Force update summary fields
+      // Force update summary fields + participants
       await prisma.$executeRawUnsafe(
-        'UPDATE fireflies_transcripts SET overview=?, notes=?, action_items=?, keywords=?, outline=? WHERE id=?',
+        'UPDATE fireflies_transcripts SET participants=?, overview=?, notes=?, action_items=?, keywords=?, outline=? WHERE id=?',
+        JSON.stringify(allParticipants.map(e => String(e).trim()).filter(Boolean)),
         resolvedOverview,
         summary?.notes        || null,
         summary?.action_items || null,
@@ -248,7 +270,7 @@ router.post('/transcripts/:id/refresh', requireAuth, async (req, res) => {
         title?.trim() || 'Untitled Meeting',
         parsedDate,
         duration || null,
-        JSON.stringify(participants.map(e => String(e).trim()).filter(Boolean)),
+        JSON.stringify(allParticipants.map(e => String(e).trim()).filter(Boolean)),
         resolvedOverview,
         summary?.notes        || null,
         summary?.action_items || null,

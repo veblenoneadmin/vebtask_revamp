@@ -22,6 +22,10 @@ const TRANSCRIPT_QUERY = `
       date
       duration
       participants
+      meeting_attendees {
+        displayName
+        email
+      }
       ${SUMMARY_FIELDS}
     }
   }
@@ -35,6 +39,10 @@ const LATEST_TRANSCRIPTS_QUERY = `
       date
       duration
       participants
+      meeting_attendees {
+        displayName
+        email
+      }
       ${SUMMARY_FIELDS}
     }
   }

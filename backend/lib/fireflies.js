@@ -7,6 +7,7 @@ const FIREFLIES_API = 'https://api.fireflies.ai/graphql';
 const SUMMARY_FIELDS = `
   summary {
     overview
+    notes
     action_items
     keywords
     outline

@@ -38,6 +38,7 @@ async function ensureTables() {
       '  `duration` INT NULL,' +
       '  `participants` TEXT NULL,' +
       '  `overview` TEXT NULL,' +
+      '  `notes` TEXT NULL,' +
       '  `action_items` TEXT NULL,' +
       '  `keywords` VARCHAR(1000) NULL,' +
       '  `outline` TEXT NULL,' +
@@ -50,6 +51,13 @@ async function ensureTables() {
     tablesReady = true;
     console.log('  ✅ fireflies_transcripts table ready');
   } catch (_e) { /* tables likely exist */ }
+  // Add notes column to existing tables (ignore error if already present)
+  try {
+    await prisma.$executeRawUnsafe(
+      'ALTER TABLE fireflies_transcripts ADD COLUMN `notes` TEXT NULL AFTER `overview`'
+    );
+    console.log('  ✅ fireflies_transcripts.notes column added');
+  } catch (_e) { /* column already exists */ }
 }
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
@@ -59,7 +67,7 @@ function tryParseJSON(str, fallback = []) {
 
 function pickSummaryOverview(summary) {
   if (!summary) return null;
-  return summary.overview || null;
+  return summary.overview || summary.notes || null;
 }
 
 function buildNotifBody(transcript) {
@@ -101,12 +109,13 @@ async function processTranscript(transcript) {
   }
 
   const resolvedOverview = pickSummaryOverview(summary);
-  const hasSummary = !!(resolvedOverview || summary?.action_items || summary?.keywords || summary?.outline);
+  const hasSummary = !!(resolvedOverview || summary?.notes || summary?.action_items || summary?.keywords || summary?.outline);
 
   // Log what Fireflies returned so Railway logs confirm the data
   console.log(`[Fireflies] "${title}" summary:`, JSON.stringify({
     summary_object: !!summary,
     overview:     summary?.overview     ? summary.overview.slice(0, 80)     : null,
+    notes:        summary?.notes        ? summary.notes.slice(0, 80)        : null,
     action_items: summary?.action_items ? '(present)'                       : null,
     keywords:     summary?.keywords     ? summary.keywords.slice(0, 80)     : null,
     outline:      summary?.outline      ? '(present)'                       : null,
@@ -117,11 +126,12 @@ async function processTranscript(transcript) {
     // Already stored — if it had no summary before but now has one, update it
     if (!existing[0].overview && hasSummary) {
       await prisma.$executeRawUnsafe(
-        'UPDATE fireflies_transcripts SET overview=?, action_items=?, keywords=?, outline=? WHERE id=?',
+        'UPDATE fireflies_transcripts SET overview=?, notes=?, action_items=?, keywords=?, outline=? WHERE id=?',
         resolvedOverview,
+        summary?.notes        || null,
         summary?.action_items || null,
-        summary?.keywords || null,
-        summary?.outline || null,
+        summary?.keywords     || null,
+        summary?.outline      || null,
         id,
       );
       console.log(`[Fireflies] Updated summary for: "${title}"`);
@@ -132,13 +142,14 @@ async function processTranscript(transcript) {
 
   // New transcript — store it
   await prisma.$executeRawUnsafe(
-    'INSERT INTO fireflies_transcripts (id, title, date, duration, participants, overview, action_items, keywords, outline, createdAt) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, NOW())',
+    'INSERT INTO fireflies_transcripts (id, title, date, duration, participants, overview, notes, action_items, keywords, outline, createdAt) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NOW())',
     id,
     title?.trim() || 'Untitled Meeting',
     parsedDate,
     duration || null,
     JSON.stringify(participants.map(e => String(e).trim()).filter(Boolean)),
     resolvedOverview,
+    summary?.notes        || null,
     summary?.action_items || null,
     summary?.keywords     || null,
     summary?.outline      || null,
@@ -207,11 +218,12 @@ router.post('/transcripts/:id/refresh', requireAuth, async (req, res) => {
     if (existing.length) {
       // Force update summary fields
       await prisma.$executeRawUnsafe(
-        'UPDATE fireflies_transcripts SET overview=?, action_items=?, keywords=?, outline=? WHERE id=?',
+        'UPDATE fireflies_transcripts SET overview=?, notes=?, action_items=?, keywords=?, outline=? WHERE id=?',
         resolvedOverview,
+        summary?.notes        || null,
         summary?.action_items || null,
-        summary?.keywords || null,
-        summary?.outline || null,
+        summary?.keywords     || null,
+        summary?.outline      || null,
         id,
       );
     } else {
@@ -222,13 +234,14 @@ router.post('/transcripts/:id/refresh', requireAuth, async (req, res) => {
         parsedDate = isNaN(d.getTime()) ? null : d;
       }
       await prisma.$executeRawUnsafe(
-        'INSERT INTO fireflies_transcripts (id, title, date, duration, participants, overview, action_items, keywords, outline, createdAt) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, NOW())',
+        'INSERT INTO fireflies_transcripts (id, title, date, duration, participants, overview, notes, action_items, keywords, outline, createdAt) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NOW())',
         id,
         title?.trim() || 'Untitled Meeting',
         parsedDate,
         duration || null,
         JSON.stringify(participants.map(e => String(e).trim()).filter(Boolean)),
         resolvedOverview,
+        summary?.notes        || null,
         summary?.action_items || null,
         summary?.keywords     || null,
         summary?.outline      || null,
@@ -240,6 +253,7 @@ router.post('/transcripts/:id/refresh', requireAuth, async (req, res) => {
       action: existing.length ? 'updated' : 'inserted',
       summary_received: !!transcript.summary,
       overview:     transcript.summary?.overview     ? transcript.summary.overview.slice(0, 80)     : null,
+      notes:        transcript.summary?.notes        ? transcript.summary.notes.slice(0, 80)        : null,
       action_items: transcript.summary?.action_items ? transcript.summary.action_items.slice(0, 80) : null,
       keywords:     transcript.summary?.keywords     ? transcript.summary.keywords.slice(0, 80)     : null,
       outline:      transcript.summary?.outline      ? transcript.summary.outline.slice(0, 80)      : null,
@@ -288,7 +302,7 @@ router.get('/transcripts', requireAuth, withOrgScope, async (req, res) => {
   try {
     await ensureTables();
     const rows = await prisma.$queryRawUnsafe(
-      'SELECT id, title, date, duration, participants, overview, action_items, keywords, outline, createdAt ' +
+      'SELECT id, title, date, duration, participants, overview, notes, action_items, keywords, outline, createdAt ' +
       'FROM fireflies_transcripts ORDER BY date DESC, createdAt DESC LIMIT 50'
     );
     const transcripts = rows.map(r => ({

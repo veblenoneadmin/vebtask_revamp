@@ -103,16 +103,14 @@ async function processTranscript(transcript) {
   const resolvedOverview = pickSummaryOverview(summary);
   const hasSummary = !!(resolvedOverview || summary?.action_items || summary?.keywords || summary?.outline);
 
-  // Log what Fireflies returned so Railway logs can confirm the data
-  console.log(`[Fireflies] Transcript "${title}" — summary fields:`, JSON.stringify({
-    overview: summary?.overview?.slice(0, 60) || null,
-    gist: summary?.gist?.slice(0, 60) || null,
-    bullet_gist: summary?.bullet_gist?.slice(0, 60) || null,
-    short_summary: summary?.short_summary?.slice(0, 60) || null,
-    shorthand_bullet: summary?.shorthand_bullet?.slice(0, 60) || null,
-    action_items: summary?.action_items ? '(present)' : null,
-    keywords: summary?.keywords?.slice(0, 60) || null,
-    resolved: resolvedOverview?.slice(0, 60) || null,
+  // Log what Fireflies returned so Railway logs confirm the data
+  console.log(`[Fireflies] "${title}" summary:`, JSON.stringify({
+    summary_object: !!summary,
+    overview:     summary?.overview     ? summary.overview.slice(0, 80)     : null,
+    action_items: summary?.action_items ? '(present)'                       : null,
+    keywords:     summary?.keywords     ? summary.keywords.slice(0, 80)     : null,
+    outline:      summary?.outline      ? '(present)'                       : null,
+    hasSummary,
   }));
 
   if (existing.length) {
@@ -237,7 +235,15 @@ router.post('/transcripts/:id/refresh', requireAuth, async (req, res) => {
       );
     }
 
-    console.log(`[Fireflies] Force-refreshed transcript: ${id} (${existing.length ? 'updated' : 'inserted'})`);
+    // Log exactly what Fireflies returned so Railway logs show whether summary fields are populated
+    console.log(`[Fireflies] Refresh result for "${title}":`, JSON.stringify({
+      action: existing.length ? 'updated' : 'inserted',
+      summary_received: !!transcript.summary,
+      overview:     transcript.summary?.overview     ? transcript.summary.overview.slice(0, 80)     : null,
+      action_items: transcript.summary?.action_items ? transcript.summary.action_items.slice(0, 80) : null,
+      keywords:     transcript.summary?.keywords     ? transcript.summary.keywords.slice(0, 80)     : null,
+      outline:      transcript.summary?.outline      ? transcript.summary.outline.slice(0, 80)      : null,
+    }));
     res.json({ success: true, hasSummary: !!resolvedOverview, wasNew: !existing.length });
   } catch (err) {
     console.error('[Fireflies] Refresh error:', err.message);

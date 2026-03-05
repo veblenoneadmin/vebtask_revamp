@@ -65,6 +65,14 @@ function tryParseJSON(str, fallback = []) {
   try { return JSON.parse(str); } catch { return fallback; }
 }
 
+// Fireflies keywords can come back as an array ["kw1","kw2"] or a plain string.
+// MySQL VARCHAR can't accept arrays — always normalise to a comma-separated string.
+function normaliseKeywords(kw) {
+  if (!kw) return null;
+  if (Array.isArray(kw)) return kw.join(', ');
+  return String(kw);
+}
+
 function pickSummaryOverview(summary) {
   if (!summary) return null;
   return summary.overview || summary.notes || null;
@@ -84,7 +92,8 @@ function buildNotifBody(transcript) {
   if (durationMin)      lines.push(`Duration: ${durationMin} min`);
   if (overviewText)     { lines.push(''); lines.push('Summary:'); lines.push(overviewText); }
   if (summary?.action_items) { lines.push(''); lines.push('Action Items:'); lines.push(summary.action_items); }
-  if (summary?.keywords)     { lines.push(''); lines.push(`Keywords: ${summary.keywords}`); }
+  const kw = normaliseKeywords(summary?.keywords);
+  if (kw)                    { lines.push(''); lines.push(`Keywords: ${kw}`); }
   return lines.join('\n');
 }
 
@@ -117,7 +126,7 @@ async function processTranscript(transcript) {
     overview:     summary?.overview     ? summary.overview.slice(0, 80)     : null,
     notes:        summary?.notes        ? summary.notes.slice(0, 80)        : null,
     action_items: summary?.action_items ? '(present)'                       : null,
-    keywords:     summary?.keywords     ? summary.keywords.slice(0, 80)     : null,
+    keywords:     normaliseKeywords(summary?.keywords) || null,
     outline:      summary?.outline      ? '(present)'                       : null,
     hasSummary,
   }));
@@ -130,7 +139,7 @@ async function processTranscript(transcript) {
         resolvedOverview,
         summary?.notes        || null,
         summary?.action_items || null,
-        summary?.keywords     || null,
+        normaliseKeywords(summary?.keywords),
         summary?.outline      || null,
         id,
       );
@@ -151,7 +160,7 @@ async function processTranscript(transcript) {
     resolvedOverview,
     summary?.notes        || null,
     summary?.action_items || null,
-    summary?.keywords     || null,
+    normaliseKeywords(summary?.keywords),
     summary?.outline      || null,
   );
 
@@ -222,7 +231,7 @@ router.post('/transcripts/:id/refresh', requireAuth, async (req, res) => {
         resolvedOverview,
         summary?.notes        || null,
         summary?.action_items || null,
-        summary?.keywords     || null,
+        normaliseKeywords(summary?.keywords),
         summary?.outline      || null,
         id,
       );
@@ -243,7 +252,7 @@ router.post('/transcripts/:id/refresh', requireAuth, async (req, res) => {
         resolvedOverview,
         summary?.notes        || null,
         summary?.action_items || null,
-        summary?.keywords     || null,
+        normaliseKeywords(summary?.keywords),
         summary?.outline      || null,
       );
     }
@@ -255,7 +264,7 @@ router.post('/transcripts/:id/refresh', requireAuth, async (req, res) => {
       overview:     transcript.summary?.overview     ? transcript.summary.overview.slice(0, 80)     : null,
       notes:        transcript.summary?.notes        ? transcript.summary.notes.slice(0, 80)        : null,
       action_items: transcript.summary?.action_items ? transcript.summary.action_items.slice(0, 80) : null,
-      keywords:     transcript.summary?.keywords     ? transcript.summary.keywords.slice(0, 80)     : null,
+      keywords:     normaliseKeywords(transcript.summary?.keywords) || null,
       outline:      transcript.summary?.outline      ? transcript.summary.outline.slice(0, 80)      : null,
     }));
     res.json({ success: true, hasSummary: !!resolvedOverview, wasNew: !existing.length });

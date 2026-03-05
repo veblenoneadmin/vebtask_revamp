@@ -266,8 +266,11 @@ router.post('/sync', requireAuth, async (req, res) => {
     return res.status(503).json({ success: false, error: 'FIREFLIES_API_KEY not configured' });
   }
   try {
-    const transcripts = await fetchLatestTranscripts();
+    await ensureTables();
     let newCount = 0;
+
+    // 1) Fetch latest 20 from Fireflies and process any new or summary-ready ones
+    const transcripts = await fetchLatestTranscripts();
     for (const t of transcripts) {
       try {
         const isNew = await processTranscript(t);
@@ -276,6 +279,25 @@ router.post('/sync', requireAuth, async (req, res) => {
         console.error('[Fireflies] Sync: error processing transcript:', t.id, e.message);
       }
     }
+
+    // 2) Re-fetch any stored transcripts that are still missing a summary
+    //    (covers meetings that were synced before Fireflies finished processing)
+    const pendingSummaries = await prisma.$queryRawUnsafe(
+      'SELECT id FROM fireflies_transcripts WHERE overview IS NULL LIMIT 20'
+    ).catch(() => []);
+
+    for (const row of pendingSummaries) {
+      try {
+        const transcript = await fetchTranscript(row.id);
+        if (transcript) {
+          const isNew = await processTranscript(transcript);
+          if (isNew) newCount++;
+        }
+      } catch (e) {
+        console.error('[Fireflies] Sync: error re-fetching pending transcript:', row.id, e.message);
+      }
+    }
+
     res.json({ success: true, total: transcripts.length, newCount });
   } catch (err) {
     console.error('[Fireflies] Manual sync error:', err.message);

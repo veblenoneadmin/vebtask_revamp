@@ -2,6 +2,21 @@
 
 const FIREFLIES_API = 'https://api.fireflies.ai/graphql';
 
+// Fetch all known summary variants — different Fireflies plans populate
+// different fields (some accounts have 'overview', others only 'gist' etc.)
+const SUMMARY_FIELDS = `
+  summary {
+    overview
+    gist
+    bullet_gist
+    short_summary
+    shorthand_bullet
+    action_items
+    keywords
+    outline
+  }
+`;
+
 const TRANSCRIPT_QUERY = `
   query Transcript($id: String!) {
     transcript(id: $id) {
@@ -10,12 +25,7 @@ const TRANSCRIPT_QUERY = `
       date
       duration
       participants
-      summary {
-        overview
-        action_items
-        keywords
-        outline
-      }
+      ${SUMMARY_FIELDS}
     }
   }
 `;
@@ -28,12 +38,7 @@ const LATEST_TRANSCRIPTS_QUERY = `
       date
       duration
       participants
-      summary {
-        overview
-        action_items
-        keywords
-        outline
-      }
+      ${SUMMARY_FIELDS}
     }
   }
 `;

@@ -68,6 +68,7 @@ export function Meetings() {
   const [loading, setLoading]           = useState(true);
   const [syncing, setSyncing]           = useState(false);
   const [syncMsg, setSyncMsg]           = useState('');
+  const [refreshingId, setRefreshingId] = useState<string | null>(null);
   const [search, setSearch]             = useState('');
   const [expanded, setExpanded]         = useState<string | null>(null);
   const [connected, setConnected]       = useState(false);
@@ -99,6 +100,15 @@ export function Meetings() {
       setSyncing(false);
       setTimeout(() => setSyncMsg(''), 4000);
     }
+  };
+
+  const handleRefresh = async (id: string) => {
+    setRefreshingId(id);
+    try {
+      await apiClient.fetch(`/api/fireflies/transcripts/${id}/refresh`, { method: 'POST' });
+      await loadTranscripts();
+    } catch { /* ignore */ }
+    finally { setRefreshingId(null); }
   };
 
   const filtered = transcripts.filter(t => {
@@ -308,10 +318,20 @@ export function Meetings() {
                   >
                     {/* No summary yet notice */}
                     {!t.overview && !t.action_items && !t.keywords && !t.outline && (
-                      <div className="pt-4 flex items-center gap-2 text-[13px]" style={{ color: VS.text2 }}>
-                        <RefreshCw className="h-3.5 w-3.5 shrink-0" />
-                        Summary not ready yet — Fireflies is still processing. Click{' '}
-                        <span style={{ color: VS.teal }}>Sync Now</span> in a few minutes to check again.
+                      <div className="pt-4 flex items-center gap-3 flex-wrap">
+                        <span className="flex items-center gap-2 text-[13px]" style={{ color: VS.text2 }}>
+                          <RefreshCw className="h-3.5 w-3.5 shrink-0" />
+                          Summary not available yet.
+                        </span>
+                        <button
+                          onClick={e => { e.stopPropagation(); handleRefresh(t.id); }}
+                          disabled={refreshingId === t.id}
+                          className="flex items-center gap-1.5 px-3 py-1 rounded-lg text-[12px] font-medium transition-opacity disabled:opacity-50"
+                          style={{ background: `${VS.accent}18`, color: VS.blue, border: `1px solid ${VS.accent}30` }}
+                        >
+                          <RefreshCw className={`h-3 w-3 ${refreshingId === t.id ? 'animate-spin' : ''}`} />
+                          {refreshingId === t.id ? 'Refreshing…' : 'Refresh from Fireflies'}
+                        </button>
                       </div>
                     )}
 

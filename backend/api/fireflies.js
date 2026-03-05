@@ -57,6 +57,13 @@ function tryParseJSON(str, fallback = []) {
   try { return JSON.parse(str); } catch { return fallback; }
 }
 
+// Fireflies plans differ in which summary sub-fields are populated.
+// Pick the first non-empty value across all known variants.
+function pickSummaryOverview(summary) {
+  if (!summary) return null;
+  return summary.overview || summary.gist || summary.short_summary || summary.bullet_gist || summary.shorthand_bullet || null;
+}
+
 function buildNotifBody(transcript) {
   const { date, duration, summary } = transcript;
   const dateStr = date
@@ -65,12 +72,13 @@ function buildNotifBody(transcript) {
       })
     : null;
   const durationMin = duration ? Math.round(duration / 60) : null;
+  const overviewText = pickSummaryOverview(summary);
   const lines = [];
-  if (dateStr)     lines.push(`Date: ${dateStr}`);
-  if (durationMin) lines.push(`Duration: ${durationMin} min`);
-  if (summary?.overview) { lines.push(''); lines.push('Summary:'); lines.push(summary.overview); }
+  if (dateStr)          lines.push(`Date: ${dateStr}`);
+  if (durationMin)      lines.push(`Duration: ${durationMin} min`);
+  if (overviewText)     { lines.push(''); lines.push('Summary:'); lines.push(overviewText); }
   if (summary?.action_items) { lines.push(''); lines.push('Action Items:'); lines.push(summary.action_items); }
-  if (summary?.keywords) { lines.push(''); lines.push(`Keywords: ${summary.keywords}`); }
+  if (summary?.keywords)     { lines.push(''); lines.push(`Keywords: ${summary.keywords}`); }
   return lines.join('\n');
 }
 
@@ -94,17 +102,30 @@ async function processTranscript(transcript) {
     parsedDate = isNaN(d.getTime()) ? null : d;
   }
 
-  const hasSummary = !!(summary?.overview || summary?.action_items || summary?.keywords || summary?.outline);
+  const resolvedOverview = pickSummaryOverview(summary);
+  const hasSummary = !!(resolvedOverview || summary?.action_items || summary?.keywords || summary?.outline);
+
+  // Log what Fireflies returned so Railway logs can confirm the data
+  console.log(`[Fireflies] Transcript "${title}" — summary fields:`, JSON.stringify({
+    overview: summary?.overview?.slice(0, 60) || null,
+    gist: summary?.gist?.slice(0, 60) || null,
+    bullet_gist: summary?.bullet_gist?.slice(0, 60) || null,
+    short_summary: summary?.short_summary?.slice(0, 60) || null,
+    shorthand_bullet: summary?.shorthand_bullet?.slice(0, 60) || null,
+    action_items: summary?.action_items ? '(present)' : null,
+    keywords: summary?.keywords?.slice(0, 60) || null,
+    resolved: resolvedOverview?.slice(0, 60) || null,
+  }));
 
   if (existing.length) {
     // Already stored — if it had no summary before but now has one, update it
     if (!existing[0].overview && hasSummary) {
       await prisma.$executeRawUnsafe(
         'UPDATE fireflies_transcripts SET overview=?, action_items=?, keywords=?, outline=? WHERE id=?',
-        summary.overview || null,
-        summary.action_items || null,
-        summary.keywords || null,
-        summary.outline || null,
+        resolvedOverview,
+        summary?.action_items || null,
+        summary?.keywords || null,
+        summary?.outline || null,
         id,
       );
       console.log(`[Fireflies] Updated summary for: "${title}"`);
@@ -121,10 +142,10 @@ async function processTranscript(transcript) {
     parsedDate,
     duration || null,
     JSON.stringify(participants.map(e => String(e).trim()).filter(Boolean)),
-    summary?.overview   || null,
+    resolvedOverview,
     summary?.action_items || null,
-    summary?.keywords   || null,
-    summary?.outline    || null,
+    summary?.keywords     || null,
+    summary?.outline      || null,
   );
 
   // Match participants to EverSense users
@@ -169,6 +190,34 @@ async function processTranscript(transcript) {
   return true;
 }
 
+// ── POST /api/fireflies/transcripts/:id/refresh — force-refresh one meeting ──
+router.post('/transcripts/:id/refresh', requireAuth, async (req, res) => {
+  if (!process.env.FIREFLIES_API_KEY) {
+    return res.status(503).json({ success: false, error: 'FIREFLIES_API_KEY not configured' });
+  }
+  try {
+    await ensureTables();
+    const transcript = await fetchTranscript(req.params.id);
+    if (!transcript) return res.status(404).json({ success: false, error: 'Transcript not found in Fireflies' });
+
+    // Force update regardless of existing summary state
+    const resolvedOverview = pickSummaryOverview(transcript.summary);
+    await prisma.$executeRawUnsafe(
+      'UPDATE fireflies_transcripts SET overview=?, action_items=?, keywords=?, outline=? WHERE id=?',
+      resolvedOverview,
+      transcript.summary?.action_items || null,
+      transcript.summary?.keywords || null,
+      transcript.summary?.outline || null,
+      req.params.id,
+    );
+    console.log(`[Fireflies] Force-refreshed transcript: ${req.params.id}`);
+    res.json({ success: true, hasSummary: !!resolvedOverview });
+  } catch (err) {
+    console.error('[Fireflies] Refresh error:', err.message);
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
 // ── POST /api/fireflies/webhook ───────────────────────────────────────────────
 router.post('/webhook', async (req, res) => {
   res.json({ received: true }); // respond immediately so Fireflies doesn't retry
@@ -193,7 +242,7 @@ router.get('/transcripts', requireAuth, withOrgScope, async (req, res) => {
   try {
     await ensureTables();
     const rows = await prisma.$queryRawUnsafe(
-      'SELECT id, title, date, duration, participants, overview, action_items, keywords, createdAt ' +
+      'SELECT id, title, date, duration, participants, overview, action_items, keywords, outline, createdAt ' +
       'FROM fireflies_transcripts ORDER BY date DESC, createdAt DESC LIMIT 50'
     );
     const transcripts = rows.map(r => ({

@@ -294,6 +294,7 @@ router.post('/create-lead-account', requireAuth, requireSuperAdminUser, async (r
       data: {
         name: companyName,
         slug,
+        createdById: req.user.id,
         createdAt: new Date(),
         updatedAt: new Date(),
       },

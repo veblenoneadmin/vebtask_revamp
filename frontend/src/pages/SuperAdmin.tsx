@@ -65,7 +65,7 @@ interface Org {
   slug: string;
   createdAt: string;
   memberCount: number;
-  projectCount: number;
+  taskCount: number;
   owner: { id: string; email: string; name: string | null } | null;
 }
 
@@ -538,7 +538,7 @@ export function SuperAdmin() {
               <table className="w-full text-[13px]">
                 <thead>
                   <tr style={{ borderBottom: `1px solid ${VS.border}` }}>
-                    {['Name', 'Slug', 'Owner', 'Members', 'Projects', 'Created'].map(h => (
+                    {['Name', 'Slug', 'Owner', 'Members', 'Tasks', 'Created'].map(h => (
                       <th key={h} className="pb-2 text-left font-medium pr-4" style={{ color: VS.text2 }}>{h}</th>
                     ))}
                     <th className="pb-2 text-right font-medium" style={{ color: VS.text2 }}>Action</th>
@@ -559,7 +559,7 @@ export function SuperAdmin() {
                       <td className="py-2.5 pr-4 font-mono text-[12px]" style={{ color: VS.text2 }}>{o.slug}</td>
                       <td className="py-2.5 pr-4" style={{ color: VS.text1 }}>{o.owner?.email ?? '—'}</td>
                       <td className="py-2.5 pr-4 tabular-nums" style={{ color: VS.text1 }}>{o.memberCount}</td>
-                      <td className="py-2.5 pr-4 tabular-nums" style={{ color: VS.text1 }}>{o.projectCount}</td>
+                      <td className="py-2.5 pr-4 tabular-nums" style={{ color: VS.text1 }}>{o.taskCount}</td>
                       <td className="py-2.5 pr-4" style={{ color: VS.text2 }}>{new Date(o.createdAt).toLocaleDateString()}</td>
                       <td className="py-2.5 text-right">
                         {o.slug !== 'veblen' && (

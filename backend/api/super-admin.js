@@ -185,7 +185,7 @@ router.get('/orgs-detailed', requireAuth, requireSuperAdminUser, async (req, res
         _count: {
           select: {
             memberships: true,
-            projects: true,
+            macroTasks: true,
           },
         },
         memberships: {
@@ -205,7 +205,7 @@ router.get('/orgs-detailed', requireAuth, requireSuperAdminUser, async (req, res
       slug: o.slug,
       createdAt: o.createdAt,
       memberCount: o._count.memberships,
-      projectCount: o._count.projects,
+      taskCount: o._count.macroTasks,
       owner: o.memberships[0]?.user ?? null,
     }));
 

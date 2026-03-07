@@ -345,7 +345,7 @@ router.post('/create-lead-account', requireAuth, requireSuperAdminUser, async (r
 
     // Send invite email
     try {
-      const acceptUrl = `${process.env.VITE_APP_URL || 'http://localhost:5173'}/invite?token=${invitation.token}`;
+      const acceptUrl = `${process.env.APP_URL || process.env.BETTER_AUTH_URL || process.env.VITE_APP_URL || 'http://localhost:5173'}/invite?token=${invitation.token}`;
       await sendInviteEmail(email, {
         orgName: companyName,
         role: 'Owner',

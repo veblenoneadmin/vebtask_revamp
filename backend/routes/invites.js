@@ -319,7 +319,7 @@ router.post('/:orgId/invites', requireAuth, withOrgScope, requireAdmin, async (r
 
     // Send invite email
     try {
-      const acceptUrl = `${process.env.VITE_APP_URL || 'http://localhost:5173'}/invite?token=${token}`;
+      const acceptUrl = `${process.env.APP_URL || process.env.BETTER_AUTH_URL || process.env.VITE_APP_URL || 'http://localhost:5173'}/invite?token=${token}`;
 
       await sendInviteEmail(email, {
         orgName: org.name,
@@ -499,7 +499,7 @@ router.post('/accept', requireAuth, async (req, res) => {
 
     // Send welcome email
     try {
-      const dashboardUrl = `${process.env.VITE_APP_URL || 'http://localhost:5173'}/dashboard`;
+      const dashboardUrl = `${process.env.APP_URL || process.env.BETTER_AUTH_URL || process.env.VITE_APP_URL || 'http://localhost:5173'}/dashboard`;
 
       await sendWelcomeEmail(req.user.email, {
         name: req.user.name,
@@ -690,7 +690,7 @@ router.post('/:orgId/invites/:inviteId/resend', requireAuth, withOrgScope, requi
 
     // Resend invite email
     try {
-      const acceptUrl = `${process.env.VITE_APP_URL || 'http://localhost:5173'}/invite?token=${invite.token}`;
+      const acceptUrl = `${process.env.APP_URL || process.env.BETTER_AUTH_URL || process.env.VITE_APP_URL || 'http://localhost:5173'}/invite?token=${invite.token}`;
       const timeUntilExpiry = Math.max(0, invite.expiresAt.getTime() - Date.now());
 
       // Fetch inviter info separately

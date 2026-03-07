@@ -96,7 +96,7 @@ router.post('/forgot-password', async (req, res) => {
 
     // Send password reset email
     try {
-      const resetUrl = `${process.env.VITE_APP_URL || 'http://localhost:5173'}/reset-password?token=${resetToken}`;
+      const resetUrl = `${process.env.APP_URL || process.env.BETTER_AUTH_URL || process.env.VITE_APP_URL || 'http://localhost:5173'}/reset-password?token=${resetToken}`;
       
       await sendPasswordResetEmail(email, {
         name: user.name,

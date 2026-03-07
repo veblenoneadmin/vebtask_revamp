@@ -249,7 +249,7 @@ router.post('/invite', requireAuth, withOrgScope, requireRole('ADMIN'), async (r
     });
 
     // Send invite email
-    const acceptUrl = `${process.env.BETTER_AUTH_URL || process.env.VITE_APP_URL || 'http://localhost:5173'}/invite?token=${token}`;
+    const acceptUrl = `${process.env.APP_URL || process.env.BETTER_AUTH_URL || process.env.VITE_APP_URL || 'http://localhost:5173'}/invite?token=${token}`;
     console.log(`🔗 Invite link: ${acceptUrl}`);
 
     try {

@@ -30,6 +30,7 @@ import calendarRoutes from './api/calendar.js';
 import kpiReportRoutes from './api/kpi-report.js';
 import notificationsRoutes from './api/notifications.js';
 import firefliesRoutes, { startFirefliesPolling } from './api/fireflies.js';
+import superAdminRoutes from './api/super-admin.js';
 import { startNotificationScheduler } from './services/notificationScheduler.js';
 import {
   blockPublicRegistration, 
@@ -373,6 +374,7 @@ app.use('/api/calendar', calendarRoutes);
 app.use('/api/kpi-report', kpiReportRoutes);
 app.use('/api/notifications', notificationsRoutes);
 app.use('/api/fireflies', firefliesRoutes);
+app.use('/api/super-admin', superAdminRoutes);
 
 // Test routes for debugging (NO AUTH - REMOVE IN PRODUCTION)
 import testProjectsRoutes from './api/test-projects.js';

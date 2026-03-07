@@ -363,12 +363,23 @@ export function Dashboard() {
           </h1>
           <p className="text-[13px] mt-1" style={{ color: VS.text2 }}>{fmtDate()}</p>
         </div>
-        <div
-          className="flex items-center gap-2 px-3 py-1.5 rounded-lg text-[12px] shrink-0"
-          style={{ background: VS.bg2, border: `1px solid ${VS.border}`, color: VS.text2 }}
-        >
-          <Activity className="h-3.5 w-3.5" style={{ color: VS.teal }} />
-          {currentOrg.name}
+        <div className="flex items-center gap-2 flex-wrap">
+          <div
+            className="flex items-center gap-2 px-3 py-1.5 rounded-lg text-[12px] shrink-0"
+            style={{ background: VS.bg2, border: `1px solid ${VS.border}`, color: VS.text2 }}
+          >
+            <Activity className="h-3.5 w-3.5" style={{ color: VS.teal }} />
+            {currentOrg.name}
+          </div>
+          {session?.user?.email === 'admin@eversense.ai' && (
+            <a
+              href="/super-admin"
+              className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-[12px] font-semibold shrink-0 transition-all hover:opacity-80"
+              style={{ background: 'rgba(220,220,170,0.12)', border: '1px solid rgba(220,220,170,0.3)', color: VS.yellow, textDecoration: 'none' }}
+            >
+              ★ Super Admin
+            </a>
+          )}
         </div>
       </div>
 

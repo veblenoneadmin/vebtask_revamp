@@ -19,6 +19,7 @@ import { Admin } from './pages/Admin';
 import { KPIReport } from './pages/KPIReport';
 import { Meetings } from './pages/Meetings';
 import { InviteAccept } from './pages/InviteAccept';
+import { SuperAdmin } from './pages/SuperAdmin';
 import MainLayout from './components/Layout/MainLayout';
 import { ErrorBoundary } from './components/ErrorBoundary';
 import { OrganizationProvider } from './contexts/OrganizationContext';
@@ -71,6 +72,7 @@ function AppContent() {
                 <Route path="kpi-report" element={<KPIReport />} />
                 <Route path="meetings" element={<Meetings />} />
                 <Route path="meetings/:id" element={<Meetings />} />
+                <Route path="super-admin" element={<SuperAdmin />} />
               </Route>
 
               <Route path="/" element={session ? <Navigate to="/dashboard" replace /> : <Navigate to="/login" replace />} />

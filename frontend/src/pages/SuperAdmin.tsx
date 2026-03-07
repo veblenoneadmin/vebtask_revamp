@@ -65,6 +65,10 @@ interface Org {
 interface ErrorEntry {
   level: string; source: string; message: string; detail: string | null; ts: string;
 }
+interface PendingInvite {
+  id: string; email: string; orgId: string; orgName: string; orgSlug: string;
+  expiresAt: string; createdAt: string; token: string;
+}
 
 // ── Small helpers ──────────────────────────────────────────────────────────────
 function StatCard({ label, value, icon: Icon, color, sub }: {
@@ -265,10 +269,11 @@ export function SuperAdmin() {
   const navigate = useNavigate();
 
   const [section, setSection] = useState<Section>('overview');
-  const [stats, setStats]     = useState<Stats | null>(null);
-  const [users, setUsers]     = useState<OrgUser[]>([]);
-  const [orgs, setOrgs]       = useState<Org[]>([]);
-  const [errors, setErrors]   = useState<ErrorEntry[]>([]);
+  const [stats, setStats]         = useState<Stats | null>(null);
+  const [users, setUsers]         = useState<OrgUser[]>([]);
+  const [orgs, setOrgs]           = useState<Org[]>([]);
+  const [errors, setErrors]       = useState<ErrorEntry[]>([]);
+  const [pendingInvites, setPendingInvites] = useState<PendingInvite[]>([]);
   const [loading, setLoading] = useState(true);
   const [toast, setToast]     = useState<{ msg: string; ok: boolean } | null>(null);
 
@@ -285,16 +290,18 @@ export function SuperAdmin() {
   const loadAll = useCallback(async () => {
     setLoading(true);
     try {
-      const [sRes, uRes, oRes, eRes] = await Promise.all([
+      const [sRes, uRes, oRes, eRes, piRes] = await Promise.all([
         saFetch('/api/super-admin/stats'),
         saFetch('/api/super-admin/users'),
         saFetch('/api/super-admin/orgs-detailed'),
         saFetch('/api/super-admin/errors'),
+        saFetch('/api/super-admin/pending-owner-invites'),
       ]);
       if (sRes.totalUsers !== undefined) setStats(sRes);
       if (uRes.users) setUsers(uRes.users);
       if (oRes.orgs) setOrgs(oRes.orgs);
       if (eRes.errors) setErrors(eRes.errors);
+      if (piRes.invites) setPendingInvites(piRes.invites);
     } catch { showToast('Failed to load data', false); }
     finally { setLoading(false); }
   }, [showToast]);
@@ -643,7 +650,7 @@ export function SuperAdmin() {
 
             /* ── LEAD ACCOUNTS ── */
             ) : section === 'leads' ? (
-              <div className="space-y-4">
+              <div className="space-y-6">
                 <div className="flex items-center gap-3 flex-wrap">
                   <p className="text-[13px]" style={{ color: VS.text2 }}>Owner-role accounts across all companies</p>
                   <button onClick={() => setShowAddLead(true)}
@@ -659,55 +666,104 @@ export function SuperAdmin() {
                       placeholder="Search leads…" value={search} onChange={e => setSearch(e.target.value)} />
                   </div>
                 </div>
-                {filteredLeads.length === 0 ? (
-                  <div className="rounded-xl p-10 text-center" style={{ background: VS.bg1, border: `1px solid ${VS.border}` }}>
-                    <Crown className="h-8 w-8 mx-auto mb-2 opacity-30" style={{ color: VS.yellow }} />
-                    <p className="text-[13px]" style={{ color: VS.text2 }}>No lead accounts found</p>
-                  </div>
-                ) : (
-                  <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
-                    {filteredLeads.map(u => {
-                      const ownerMem = u.memberships.find(m => m.role === 'OWNER');
-                      return (
-                        <div key={u.id} className="rounded-xl p-4" style={{ background: VS.bg1, border: `1px solid ${VS.border}` }}>
+
+                {/* Pending invites */}
+                {pendingInvites.filter(i => !search || i.email.toLowerCase().includes(search.toLowerCase()) || i.orgName.toLowerCase().includes(search.toLowerCase())).length > 0 && (
+                  <div>
+                    <h3 className="text-[12px] font-semibold mb-3 uppercase tracking-wider" style={{ color: VS.text2 }}>
+                      Pending Invitations ({pendingInvites.length})
+                    </h3>
+                    <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-3">
+                      {pendingInvites.filter(i => !search || i.email.toLowerCase().includes(search.toLowerCase()) || i.orgName.toLowerCase().includes(search.toLowerCase())).map(inv => (
+                        <div key={inv.id} className="rounded-xl p-4" style={{ background: VS.bg1, border: `1px solid ${VS.orange}44` }}>
                           <div className="flex items-start justify-between gap-2 mb-3">
                             <div className="flex items-center gap-3">
                               <div className="h-9 w-9 rounded-full flex items-center justify-center text-[13px] font-bold shrink-0"
-                                style={{ background: `${VS.yellow}22`, color: VS.yellow }}>
-                                {(u.name || u.email)[0].toUpperCase()}
+                                style={{ background: `${VS.orange}22`, color: VS.orange }}>
+                                {inv.email[0].toUpperCase()}
                               </div>
                               <div className="min-w-0">
-                                <p className="text-[13px] font-semibold truncate" style={{ color: VS.text0 }}>{u.name || '—'}</p>
-                                <p className="text-[11px] truncate" style={{ color: VS.text2 }}>{u.email}</p>
+                                <p className="text-[13px] font-semibold truncate" style={{ color: VS.text0 }}>{inv.email}</p>
+                                <p className="text-[11px] truncate" style={{ color: VS.text2 }}>Invite pending</p>
                               </div>
                             </div>
-                            <span className="px-2 py-0.5 rounded-full text-[10px] font-bold shrink-0" style={{ background: `${VS.yellow}18`, color: VS.yellow }}>Owner</span>
+                            <span className="px-2 py-0.5 rounded-full text-[10px] font-bold shrink-0 whitespace-nowrap" style={{ background: `${VS.orange}18`, color: VS.orange }}>Pending</span>
                           </div>
                           <div className="space-y-1 text-[12px]" style={{ color: VS.text2 }}>
                             <div className="flex justify-between">
                               <span>Company</span>
-                              <span style={{ color: VS.teal }}>{ownerMem?.org.name ?? '—'}</span>
+                              <span style={{ color: VS.teal }}>{inv.orgName}</span>
                             </div>
                             <div className="flex justify-between">
-                              <span>Tasks</span>
-                              <span style={{ color: VS.text1 }}>{u._count.macroTasks}</span>
-                            </div>
-                            <div className="flex justify-between">
-                              <span>Joined</span>
-                              <span style={{ color: VS.text1 }}>{new Date(u.createdAt).toLocaleDateString()}</span>
+                              <span>Expires</span>
+                              <span style={{ color: new Date(inv.expiresAt) < new Date() ? VS.red : VS.text1 }}>
+                                {new Date(inv.expiresAt).toLocaleDateString()}
+                              </span>
                             </div>
                           </div>
-                          {u.email !== SUPER_ADMIN_EMAIL && (
-                            <div className="mt-3 pt-3" style={{ borderTop: `1px solid ${VS.border}` }}>
-                              <button onClick={() => setConfirm({ type: 'user', id: u.id, label: u.email })}
-                                className="flex items-center gap-1.5 text-[12px] opacity-50 hover:opacity-100 transition-all" style={{ color: VS.red }}>
-                                <Trash2 className="h-3 w-3" /> Delete account
-                              </button>
-                            </div>
-                          )}
                         </div>
-                      );
-                    })}
+                      ))}
+                    </div>
+                  </div>
+                )}
+
+                {/* Active owners */}
+                {filteredLeads.length > 0 && (
+                  <div>
+                    <h3 className="text-[12px] font-semibold mb-3 uppercase tracking-wider" style={{ color: VS.text2 }}>
+                      Active Owners ({filteredLeads.length})
+                    </h3>
+                    <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
+                      {filteredLeads.map(u => {
+                        const ownerMem = u.memberships.find(m => m.role === 'OWNER');
+                        return (
+                          <div key={u.id} className="rounded-xl p-4" style={{ background: VS.bg1, border: `1px solid ${VS.border}` }}>
+                            <div className="flex items-start justify-between gap-2 mb-3">
+                              <div className="flex items-center gap-3">
+                                <div className="h-9 w-9 rounded-full flex items-center justify-center text-[13px] font-bold shrink-0"
+                                  style={{ background: `${VS.yellow}22`, color: VS.yellow }}>
+                                  {(u.name || u.email)[0].toUpperCase()}
+                                </div>
+                                <div className="min-w-0">
+                                  <p className="text-[13px] font-semibold truncate" style={{ color: VS.text0 }}>{u.name || '—'}</p>
+                                  <p className="text-[11px] truncate" style={{ color: VS.text2 }}>{u.email}</p>
+                                </div>
+                              </div>
+                              <span className="px-2 py-0.5 rounded-full text-[10px] font-bold shrink-0" style={{ background: `${VS.yellow}18`, color: VS.yellow }}>Owner</span>
+                            </div>
+                            <div className="space-y-1 text-[12px]" style={{ color: VS.text2 }}>
+                              <div className="flex justify-between">
+                                <span>Company</span>
+                                <span style={{ color: VS.teal }}>{ownerMem?.org.name ?? '—'}</span>
+                              </div>
+                              <div className="flex justify-between">
+                                <span>Tasks</span>
+                                <span style={{ color: VS.text1 }}>{u._count.macroTasks}</span>
+                              </div>
+                              <div className="flex justify-between">
+                                <span>Joined</span>
+                                <span style={{ color: VS.text1 }}>{new Date(u.createdAt).toLocaleDateString()}</span>
+                              </div>
+                            </div>
+                            {u.email !== SUPER_ADMIN_EMAIL && (
+                              <div className="mt-3 pt-3" style={{ borderTop: `1px solid ${VS.border}` }}>
+                                <button onClick={() => setConfirm({ type: 'user', id: u.id, label: u.email })}
+                                  className="flex items-center gap-1.5 text-[12px] opacity-50 hover:opacity-100 transition-all" style={{ color: VS.red }}>
+                                  <Trash2 className="h-3 w-3" /> Delete account
+                                </button>
+                              </div>
+                            )}
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </div>
+                )}
+
+                {filteredLeads.length === 0 && pendingInvites.length === 0 && (
+                  <div className="rounded-xl p-10 text-center" style={{ background: VS.bg1, border: `1px solid ${VS.border}` }}>
+                    <Crown className="h-8 w-8 mx-auto mb-2 opacity-30" style={{ color: VS.yellow }} />
+                    <p className="text-[13px]" style={{ color: VS.text2 }}>No lead accounts found</p>
                   </div>
                 )}
               </div>

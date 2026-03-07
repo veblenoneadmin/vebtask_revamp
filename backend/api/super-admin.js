@@ -5,6 +5,7 @@ import express from 'express';
 import { createHmac, timingSafeEqual } from 'crypto';
 import { prisma } from '../lib/prisma.js';
 import { requireAuth } from '../lib/rbac.js';
+import { sendInviteEmail, formatDuration } from '../lib/mailer.js';
 
 const router = express.Router();
 
@@ -225,6 +226,30 @@ router.get('/orgs-detailed', requireAuth, requireSuperAdminUser, async (req, res
   }
 });
 
+// ── GET /api/super-admin/pending-owner-invites ───────────────────────────────
+router.get('/pending-owner-invites', requireAuth, requireSuperAdminUser, async (req, res) => {
+  try {
+    const invites = await prisma.invite.findMany({
+      where: { role: 'OWNER', status: 'PENDING' },
+      include: { org: { select: { id: true, name: true, slug: true } } },
+      orderBy: { createdAt: 'desc' },
+    });
+    res.json({ invites: invites.map(i => ({
+      id: i.id,
+      email: i.email,
+      orgId: i.orgId,
+      orgName: i.org?.name ?? '—',
+      orgSlug: i.org?.slug ?? '—',
+      expiresAt: i.expiresAt,
+      createdAt: i.createdAt,
+      token: i.token,
+    })) });
+  } catch (err) {
+    console.error('[SuperAdmin] pending-owner-invites error:', err);
+    res.status(500).json({ error: 'Failed to fetch pending invites' });
+  }
+});
+
 // ── POST /api/super-admin/invite ──────────────────────────────────────────────
 router.post('/invite', requireAuth, requireSuperAdminUser, async (req, res) => {
   try {
@@ -317,6 +342,21 @@ router.post('/create-lead-account', requireAuth, requireSuperAdminUser, async (r
         expiresAt: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000),
       },
     });
+
+    // Send invite email
+    try {
+      const acceptUrl = `${process.env.VITE_APP_URL || 'http://localhost:5173'}/invite?token=${invitation.token}`;
+      await sendInviteEmail(email, {
+        orgName: companyName,
+        role: 'Owner',
+        invitedBy: 'EverSense Admin',
+        acceptUrl,
+        expiresIn: formatDuration(7 * 24 * 60),
+      });
+      console.log(`[SuperAdmin] Lead invite email sent to ${email}`);
+    } catch (emailErr) {
+      console.error('[SuperAdmin] Failed to send lead invite email:', emailErr.message);
+    }
 
     console.log(`[SuperAdmin] Lead account created: org=${slug} email=${email} token=${invitation.token}`);
     res.json({ success: true, message: 'Organization created and invitation sent', orgId: org.id, slug, token: invitation.token });

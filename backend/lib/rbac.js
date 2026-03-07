@@ -30,46 +30,40 @@ export function requireAuth(req, res, next) {
 }
 
 /**
- * Middleware to extract and validate organization context
+ * Middleware to extract and validate organization context.
+ * If no orgId is supplied in the request, auto-resolves from the user's
+ * first membership — so single-org installs (e.g. Veblen) work transparently.
  */
-export function withOrgScope(req, res, next) {
+export async function withOrgScope(req, res, next) {
   // Try to get orgId from multiple sources
-  let orgId = 
+  let orgId =
     req.headers['x-org-id'] ||
-    req.body.orgId ||
-    req.params.orgId ||
-    req.query.orgId ||
+    req.body?.orgId ||
+    req.params?.orgId ||
+    req.query?.orgId ||
     req.user?.activeOrgId;
 
   // Handle cases where orgId might be an array (duplicate URL parameters)
-  if (Array.isArray(orgId)) {
-    orgId = orgId[0];
+  if (Array.isArray(orgId)) orgId = orgId[0];
+
+  // Auto-resolve: if no orgId provided, look up the user's membership
+  if (!orgId && req.user?.id) {
+    try {
+      const membership = await prisma.membership.findFirst({
+        where:   { userId: req.user.id },
+        orderBy: { createdAt: 'asc' },
+        select:  { orgId: true },
+      });
+      if (membership) orgId = membership.orgId;
+    } catch (_) { /* fall through to 400 below */ }
   }
 
   if (!orgId) {
-    console.log(`🏢 Organization context missing for ${req.method} ${req.path}`, {
-      userId: req.user?.id,
-      availableSources: {
-        header: !!req.headers['x-org-id'],
-        body: !!req.body.orgId,
-        params: !!req.params.orgId,
-        query: !!req.query.orgId,
-        userActive: !!req.user?.activeOrgId
-      }
+    return res.status(400).json({
+      error:   'Organization context required',
+      code:    'MISSING_ORG_CONTEXT',
+      message: 'User has no organization membership. Please complete onboarding.',
     });
-    
-    // EMERGENCY FIX: Auto-provide organization ID for authenticated users
-    if (req.user?.id) {
-      console.log(`🔧 EMERGENCY: Auto-providing orgId for authenticated user ${req.user.email}`);
-      orgId = 'org_1757046595553'; // Use the existing organization
-    } else {
-      return res.status(400).json({ 
-        error: 'Organization context required',
-        code: 'MISSING_ORG_CONTEXT',
-        message: 'Please provide organization ID via header X-Org-Id, URL parameter, or body',
-        details: 'This endpoint requires organization context to determine data scope'
-      });
-    }
   }
 
   req.orgId = orgId;

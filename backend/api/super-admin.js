@@ -251,7 +251,7 @@ router.post('/invite', requireAuth, requireSuperAdminUser, async (req, res) => {
     }
 
     // Create invitation record
-    const invitation = await prisma.invitation.create({
+    const invitation = await prisma.invite.create({
       data: {
         email,
         orgId: org.id,
@@ -309,7 +309,7 @@ router.post('/create-lead-account', requireAuth, requireSuperAdminUser, async (r
       return res.json({ success: true, message: 'Existing user added as owner of new organization', orgId: org.id, slug });
     }
 
-    const invitation = await prisma.invitation.create({
+    const invitation = await prisma.invite.create({
       data: {
         email,
         orgId: org.id,
@@ -340,7 +340,7 @@ router.delete('/users/:userId', requireAuth, requireSuperAdminUser, async (req, 
 
     // Delete in dependency order
     await prisma.membership.deleteMany({ where: { userId } });
-    await prisma.invitation.deleteMany({ where: { invitedById: userId } });
+    await prisma.invite.deleteMany({ where: { invitedById: userId } });
     await prisma.user.delete({ where: { id: userId } });
 
     res.json({ success: true, message: 'User deleted' });

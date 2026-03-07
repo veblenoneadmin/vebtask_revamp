@@ -1,7 +1,6 @@
 import { useState, useEffect, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useSession } from '../lib/auth-client';
-import { useApiClient } from '../lib/api-client';
 import {
   Users, Building2, CheckSquare, FolderOpen, UserPlus, Trash2,
   Crown, Shield, UserCog, X, AlertTriangle, LayoutDashboard,
@@ -31,6 +30,11 @@ const VS = {
 };
 
 const SUPER_ADMIN_EMAIL = 'admin@eversense.ai';
+
+async function saFetch(url: string, options: RequestInit = {}) {
+  const res = await fetch(url, { ...options, credentials: 'include', headers: { 'Content-Type': 'application/json', ...(options.headers ?? {}) } });
+  return res.json();
+}
 
 const ROLE_CFG: Record<string, { color: string; label: string }> = {
   OWNER:  { color: VS.yellow, label: 'Owner'  },
@@ -114,7 +118,6 @@ function ConfirmDialog({ title, body, onConfirm, onCancel }: {
 }
 
 function InviteModal({ onClose, onSuccess }: { onClose: () => void; onSuccess: (msg: string) => void }) {
-  const api = useApiClient();
   const [email, setEmail] = useState('');
   const [name, setName]   = useState('');
   const [role, setRole]   = useState('STAFF');
@@ -124,8 +127,8 @@ function InviteModal({ onClose, onSuccess }: { onClose: () => void; onSuccess: (
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault(); setError(''); setLoading(true);
     try {
-      const data = await api.fetch('/api/super-admin/invite', {
-        method: 'POST', headers: { 'Content-Type': 'application/json' },
+      const data = await saFetch('/api/super-admin/invite', {
+        method: 'POST',
         body: JSON.stringify({ email, name: name || undefined, role }),
       });
       if (data.error) { setError(data.error); return; }
@@ -198,7 +201,6 @@ function NavItem({ icon: Icon, label, active, badge, onClick }: {
 // ── Main component ─────────────────────────────────────────────────────────────
 export function SuperAdmin() {
   const { data: session } = useSession();
-  const api = useApiClient();
   const navigate = useNavigate();
 
   const [section, setSection] = useState<Section>('overview');
@@ -222,10 +224,10 @@ export function SuperAdmin() {
     setLoading(true);
     try {
       const [sRes, uRes, oRes, eRes] = await Promise.all([
-        api.fetch('/api/super-admin/stats'),
-        api.fetch('/api/super-admin/users'),
-        api.fetch('/api/super-admin/orgs-detailed'),
-        api.fetch('/api/super-admin/errors'),
+        saFetch('/api/super-admin/stats'),
+        saFetch('/api/super-admin/users'),
+        saFetch('/api/super-admin/orgs-detailed'),
+        saFetch('/api/super-admin/errors'),
       ]);
       if (sRes.totalUsers !== undefined) setStats(sRes);
       if (uRes.users) setUsers(uRes.users);
@@ -233,13 +235,13 @@ export function SuperAdmin() {
       if (eRes.errors) setErrors(eRes.errors);
     } catch { showToast('Failed to load data', false); }
     finally { setLoading(false); }
-  }, [api, showToast]);
+  }, [showToast]);
 
   useEffect(() => { if (isSuperAdmin) loadAll(); }, [isSuperAdmin, loadAll]);
 
   async function handleDeleteUser(userId: string) {
     try {
-      const data = await api.fetch(`/api/super-admin/users/${userId}`, { method: 'DELETE' });
+      const data = await saFetch(`/api/super-admin/users/${userId}`, { method: 'DELETE' });
       if (data.error) { showToast(data.error, false); return; }
       setUsers(prev => prev.filter(u => u.id !== userId));
       showToast('User deleted', true);
@@ -249,7 +251,7 @@ export function SuperAdmin() {
 
   async function handleDeleteOrg(orgId: string) {
     try {
-      const data = await api.fetch(`/api/super-admin/orgs/${orgId}`, { method: 'DELETE' });
+      const data = await saFetch(`/api/super-admin/orgs/${orgId}`, { method: 'DELETE' });
       if (data.error) { showToast(data.error, false); return; }
       setOrgs(prev => prev.filter(o => o.id !== orgId));
       showToast('Organization deleted', true);
@@ -258,7 +260,7 @@ export function SuperAdmin() {
   }
 
   async function handleClearErrors() {
-    await api.fetch('/api/super-admin/errors/clear', { method: 'POST' });
+    await saFetch('/api/super-admin/errors/clear', { method: 'POST' });
     setErrors([]);
     showToast('Error log cleared', true);
   }
